@@ -1,11 +1,24 @@
 
 "use client";
 
-import { use, useState, useRef } from 'react';
+import { use, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Factory, FileText, Table as TableIcon, Upload, Trash2, ExternalLink, ArrowLeft, Loader2, Plus, X, FileUp } from 'lucide-react';
+import { 
+  Factory, 
+  FileText, 
+  Table as TableIcon, 
+  Trash2, 
+  ExternalLink, 
+  ArrowLeft, 
+  Loader2, 
+  Plus, 
+  X, 
+  FileUp, 
+  UploadCloud,
+  CheckCircle2
+} from 'lucide-react';
 import Link from 'next/link';
 import { useDoc, useFirestore, useMemoFirebase, useCollection, useStorage } from '@/firebase';
 import { doc, collection, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
@@ -14,6 +27,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 export default function ManufacturerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -28,6 +42,7 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   const manufacturerRef = useMemoFirebase(() => {
     if (!db || !id) return null;
@@ -54,6 +69,23 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
     setUploadFile(null);
     setIsUploading(false);
     setUploadProgress(0);
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) setUploadFile(file);
   };
 
   const handleFileUpload = async (type: 'specBooks' | 'pricingSheets') => {
@@ -91,6 +123,11 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
               uploadedAt: serverTimestamp()
             });
             
+            toast({
+              title: "File Uploaded",
+              description: `${finalName} has been added successfully.`
+            });
+            
             resetForm();
             type === 'specBooks' ? setIsAddingBook(false) : setIsAddingSheet(false);
             resolve(true);
@@ -113,13 +150,19 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
 
   const handleDeleteItem = async (collectionName: string, itemId: string) => {
     if (!db || !id) return;
-    await deleteDoc(doc(db, 'manufacturers', id, collectionName, itemId));
+    try {
+      await deleteDoc(doc(db, 'manufacturers', id, collectionName, itemId));
+      toast({ title: "Deleted", description: "The item has been removed." });
+    } catch (e) {
+      toast({ variant: 'destructive', title: "Error", description: "Failed to delete item." });
+    }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-sky-500" />
+        <p className="text-slate-500 font-medium">Loading manufacturer details...</p>
       </div>
     );
   }
@@ -137,14 +180,14 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center gap-4">
         <Link href="/admin/manufacturers">
-           <Button variant="ghost" size="icon" className="text-slate-400 hover:text-sky-600 rounded-full">
+           <Button variant="ghost" size="icon" className="text-slate-400 hover:text-sky-600 rounded-full transition-all">
               <ArrowLeft className="w-6 h-6" />
            </Button>
         </Link>
         <div>
           <h1 className="text-3xl font-bold text-slate-900 font-headline">{manufacturer.name}</h1>
           <div className="flex items-center gap-2 mt-1">
-             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded">ID: {id}</span>
+             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded">ID: {id}</span>
              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-600">Active</span>
           </div>
         </div>
@@ -152,7 +195,7 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {/* Specification Book Section */}
-        <Card className="glass-card border-slate-200 overflow-hidden">
+        <Card className="glass-card border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="border-b border-slate-100 pb-4">
             <div className="flex justify-between items-center">
               <div>
@@ -164,59 +207,92 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
               </div>
               <Dialog open={isAddingBook} onOpenChange={(open) => { setIsAddingBook(open); if(!open) resetForm(); }}>
                 <DialogTrigger asChild>
-                  <Button size="sm" variant="outline" className="border-sky-100 text-sky-600 hover:bg-sky-50">
+                  <Button size="sm" variant="outline" className="border-sky-100 text-sky-600 hover:bg-sky-50 rounded-xl">
                     <Plus className="w-4 h-4 mr-2" />
                     Add PDF
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="bg-white">
+                <DialogContent className="bg-white max-w-md">
                    <DialogHeader>
                       <DialogTitle>Add Specification Book</DialogTitle>
                    </DialogHeader>
                    <div className="space-y-6 py-4">
                       <div className="space-y-2">
                          <Label>Upload PDF File</Label>
-                         <div className="flex items-center gap-3">
-                           <Input 
+                         <div 
+                           onDragOver={handleDragOver}
+                           onDragLeave={handleDragLeave}
+                           onDrop={handleDrop}
+                           className={cn(
+                             "border-2 border-dashed rounded-2xl p-8 transition-all flex flex-col items-center justify-center text-center cursor-pointer",
+                             isDragging ? "border-sky-500 bg-sky-50" : "border-slate-200 hover:border-sky-400 hover:bg-slate-50/50",
+                             uploadFile ? "border-emerald-400 bg-emerald-50/20" : ""
+                           )}
+                         >
+                           <input 
+                              id="spec-file-input"
                               type="file" 
                               accept=".pdf"
                               onChange={e => setUploadFile(e.target.files?.[0] || null)}
-                              className="cursor-pointer"
+                              className="hidden"
                            />
+                           <label htmlFor="spec-file-input" className="cursor-pointer w-full flex flex-col items-center">
+                             {uploadFile ? (
+                               <>
+                                 <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
+                                 <p className="text-sm font-semibold text-emerald-700 truncate max-w-[250px]">{uploadFile.name}</p>
+                                 <p className="text-xs text-slate-400 mt-1">Ready to upload</p>
+                               </>
+                             ) : (
+                               <>
+                                 <UploadCloud className="w-10 h-10 text-slate-300 mb-2 group-hover:text-sky-400" />
+                                 <p className="text-sm font-medium text-slate-600">Drag & drop or <span className="text-sky-600">click to browse</span></p>
+                                 <p className="text-xs text-slate-400 mt-1">PDF only (Max 50MB)</p>
+                               </>
+                             )}
+                           </label>
                          </div>
                       </div>
+
                       <div className="relative">
                         <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-100"></span></div>
-                        <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-slate-400">Or use URL</span></div>
+                        <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest"><span className="bg-white px-2 text-slate-400">Or use URL</span></div>
                       </div>
-                      <div className="space-y-2">
-                         <Label>File Name</Label>
-                         <Input 
-                            placeholder="e.g. 2024 Design Catalog" 
-                            value={newFile.name}
-                            onChange={e => setNewFile({...newFile, name: e.target.value})}
-                         />
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                           <Label className="text-slate-600">File Name</Label>
+                           <Input 
+                              placeholder="e.g. 2024 Design Catalog" 
+                              value={newFile.name}
+                              onChange={e => setNewFile({...newFile, name: e.target.value})}
+                              className="bg-slate-50 border-slate-200"
+                           />
+                        </div>
+                        <div className="space-y-2">
+                           <Label className="text-slate-600">PDF URL</Label>
+                           <Input 
+                              placeholder="https://example.com/spec.pdf" 
+                              value={newFile.url}
+                              onChange={e => setNewFile({...newFile, url: e.target.value})}
+                              className="bg-slate-50 border-slate-200"
+                           />
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                         <Label>PDF URL</Label>
-                         <Input 
-                            placeholder="https://example.com/spec.pdf" 
-                            value={newFile.url}
-                            onChange={e => setNewFile({...newFile, url: e.target.value})}
-                         />
-                      </div>
+
                       {isUploading && (
                         <div className="space-y-2">
-                          <div className="flex justify-between text-xs font-medium">
+                          <div className="flex justify-between text-xs font-bold text-sky-600">
                             <span>Uploading...</span>
                             <span>{Math.round(uploadProgress)}%</span>
                           </div>
-                          <Progress value={uploadProgress} className="h-1.5" />
+                          <Progress value={uploadProgress} className="h-1.5 bg-sky-100" />
                         </div>
                       )}
-                      <Button onClick={() => handleFileUpload('specBooks')} className="w-full gradient-button" disabled={isUploading}>
+
+                      <Button onClick={() => handleFileUpload('specBooks')} className="w-full gradient-button h-11" disabled={isUploading || (!uploadFile && (!newFile.url || !newFile.name))}>
                         {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
-                        {uploadFile ? 'Upload and Add' : 'Add to Manufacturer'}
+                        {uploadFile ? 'Upload and Add' : 'Save Details'}
                       </Button>
                    </div>
                 </DialogContent>
@@ -226,28 +302,31 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
           <CardContent className="p-0">
             <div className="divide-y divide-slate-100">
                {loadingBooks ? (
-                 <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-slate-300" /></div>
+                 <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-slate-300" /></div>
                ) : specBooks?.length === 0 ? (
-                 <div className="p-12 text-center text-slate-400 italic bg-slate-50/30">No specification books uploaded yet.</div>
+                 <div className="p-16 text-center text-slate-400 italic bg-slate-50/20">
+                   <FileText className="w-12 h-12 text-slate-100 mx-auto mb-4" />
+                   No specification books uploaded yet.
+                 </div>
                ) : (
                  specBooks?.map((book: any) => (
-                   <div key={book.id} className="flex items-center justify-between p-4 hover:bg-slate-50/50 transition-colors">
+                   <div key={book.id} className="flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors group">
                       <div className="flex items-center gap-4">
-                         <div className="p-2.5 bg-sky-50 rounded-xl">
+                         <div className="p-2.5 bg-sky-50 rounded-xl group-hover:bg-sky-100 transition-colors">
                             <FileText className="w-5 h-5 text-sky-600" />
                          </div>
                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{book.fileName}</p>
-                            <p className="text-[10px] text-slate-400 uppercase tracking-tighter">Added: {book.uploadedAt?.toDate ? book.uploadedAt.toDate().toLocaleDateString() : 'Recent'}</p>
+                            <p className="text-sm font-semibold text-slate-900 truncate max-w-[200px] sm:max-w-[300px]">{book.fileName}</p>
+                            <p className="text-[10px] text-slate-400 uppercase tracking-tighter font-medium">Added: {book.uploadedAt?.toDate ? book.uploadedAt.toDate().toLocaleDateString() : 'Recent'}</p>
                          </div>
                       </div>
-                      <div className="flex gap-2">
-                         <Button asChild variant="ghost" size="icon" className="text-slate-400 hover:text-sky-600">
+                      <div className="flex gap-1">
+                         <Button asChild variant="ghost" size="icon" className="text-slate-400 hover:text-sky-600 rounded-full">
                             <a href={book.url} target="_blank" rel="noopener noreferrer">
                                <ExternalLink className="w-4 h-4" />
                             </a>
                          </Button>
-                         <Button onClick={() => handleDeleteItem('specBooks', book.id)} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600">
+                         <Button onClick={() => handleDeleteItem('specBooks', book.id)} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 rounded-full">
                             <Trash2 className="w-4 h-4" />
                          </Button>
                       </div>
@@ -259,7 +338,7 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
         </Card>
 
         {/* Pricing Sheet Section */}
-        <Card className="glass-card border-slate-200 overflow-hidden">
+        <Card className="glass-card border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="border-b border-slate-100 pb-4">
             <div className="flex justify-between items-center">
               <div>
@@ -267,61 +346,96 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
                   <TableIcon className="w-5 h-5 text-emerald-600" />
                   Pricing Sheets
                 </CardTitle>
-                <CardDescription className="text-slate-500">Excel or Google Sheet integration</CardDescription>
+                <CardDescription className="text-slate-500">Excel, CSV or Google Sheet integration</CardDescription>
               </div>
               <Dialog open={isAddingSheet} onOpenChange={(open) => { setIsAddingSheet(open); if(!open) resetForm(); }}>
                 <DialogTrigger asChild>
-                  <Button size="sm" variant="outline" className="border-emerald-100 text-emerald-600 hover:bg-emerald-50">
+                  <Button size="sm" variant="outline" className="border-emerald-100 text-emerald-600 hover:bg-emerald-50 rounded-xl">
                     <Plus className="w-4 h-4 mr-2" />
                     Add Sheet
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="bg-white">
+                <DialogContent className="bg-white max-w-md">
                    <DialogHeader>
                       <DialogTitle>Add Pricing Sheet</DialogTitle>
                    </DialogHeader>
                    <div className="space-y-6 py-4">
                       <div className="space-y-2">
-                         <Label>Upload Excel/CSV File</Label>
-                         <Input 
-                            type="file" 
-                            accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, .xlsm"
-                            onChange={e => setUploadFile(e.target.files?.[0] || null)}
-                            className="cursor-pointer"
-                         />
+                         <Label>Upload Spreadsheet File</Label>
+                         <div 
+                           onDragOver={handleDragOver}
+                           onDragLeave={handleDragLeave}
+                           onDrop={handleDrop}
+                           className={cn(
+                             "border-2 border-dashed rounded-2xl p-8 transition-all flex flex-col items-center justify-center text-center cursor-pointer",
+                             isDragging ? "border-emerald-500 bg-emerald-50" : "border-slate-200 hover:border-emerald-400 hover:bg-slate-50/50",
+                             uploadFile ? "border-emerald-400 bg-emerald-50/20" : ""
+                           )}
+                         >
+                           <input 
+                              id="sheet-file-input"
+                              type="file" 
+                              accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, .xlsm"
+                              onChange={e => setUploadFile(e.target.files?.[0] || null)}
+                              className="hidden"
+                           />
+                           <label htmlFor="sheet-file-input" className="cursor-pointer w-full flex flex-col items-center">
+                             {uploadFile ? (
+                               <>
+                                 <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
+                                 <p className="text-sm font-semibold text-emerald-700 truncate max-w-[250px]">{uploadFile.name}</p>
+                                 <p className="text-xs text-slate-400 mt-1">Ready to upload</p>
+                               </>
+                             ) : (
+                               <>
+                                 <UploadCloud className="w-10 h-10 text-slate-300 mb-2 group-hover:text-emerald-400" />
+                                 <p className="text-sm font-medium text-slate-600">Drag & drop or <span className="text-emerald-600">click to browse</span></p>
+                                 <p className="text-xs text-slate-400 mt-1">Excel/CSV/XLSM (Max 20MB)</p>
+                               </>
+                             )}
+                           </label>
+                         </div>
                       </div>
+
                       <div className="relative">
                         <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-100"></span></div>
-                        <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-slate-400">Or use URL</span></div>
+                        <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest"><span className="bg-white px-2 text-slate-400">Or use URL</span></div>
                       </div>
-                      <div className="space-y-2">
-                         <Label>Sheet Name</Label>
-                         <Input 
-                            placeholder="e.g. Winter 2024 Price List" 
-                            value={newFile.name}
-                            onChange={e => setNewFile({...newFile, name: e.target.value})}
-                         />
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                           <Label className="text-slate-600">Sheet Name</Label>
+                           <Input 
+                              placeholder="e.g. Winter 2024 Price List" 
+                              value={newFile.name}
+                              onChange={e => setNewFile({...newFile, name: e.target.value})}
+                              className="bg-slate-50 border-slate-200"
+                           />
+                        </div>
+                        <div className="space-y-2">
+                           <Label className="text-slate-600">Sheet URL (Excel/CSV/Google)</Label>
+                           <Input 
+                              placeholder="https://docs.google.com/..." 
+                              value={newFile.url}
+                              onChange={e => setNewFile({...newFile, url: e.target.value})}
+                              className="bg-slate-50 border-slate-200"
+                           />
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                         <Label>Sheet URL (Excel/CSV/Google)</Label>
-                         <Input 
-                            placeholder="https://docs.google.com/..." 
-                            value={newFile.url}
-                            onChange={e => setNewFile({...newFile, url: e.target.value})}
-                         />
-                      </div>
+
                       {isUploading && (
                         <div className="space-y-2">
-                          <div className="flex justify-between text-xs font-medium">
+                          <div className="flex justify-between text-xs font-bold text-emerald-600">
                             <span>Uploading...</span>
                             <span>{Math.round(uploadProgress)}%</span>
                           </div>
-                          <Progress value={uploadProgress} className="h-1.5" />
+                          <Progress value={uploadProgress} className="h-1.5 bg-emerald-100" />
                         </div>
                       )}
-                      <Button onClick={() => handleFileUpload('pricingSheets')} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl" disabled={isUploading}>
+
+                      <Button onClick={() => handleFileUpload('pricingSheets')} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-11 transition-all" disabled={isUploading || (!uploadFile && (!newFile.url || !newFile.name))}>
                         {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
-                        {uploadFile ? 'Upload and Add' : 'Add to Manufacturer'}
+                        {uploadFile ? 'Upload and Add' : 'Save Details'}
                       </Button>
                    </div>
                 </DialogContent>
@@ -331,28 +445,31 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
           <CardContent className="p-0">
             <div className="divide-y divide-slate-100">
                {loadingSheets ? (
-                 <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-slate-300" /></div>
+                 <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-slate-300" /></div>
                ) : pricingSheets?.length === 0 ? (
-                 <div className="p-12 text-center text-slate-400 italic bg-slate-50/30">No pricing sheets connected yet.</div>
+                 <div className="p-16 text-center text-slate-400 italic bg-slate-50/20">
+                    <TableIcon className="w-12 h-12 text-slate-100 mx-auto mb-4" />
+                    No pricing sheets connected yet.
+                 </div>
                ) : (
                  pricingSheets?.map((sheet: any) => (
-                   <div key={sheet.id} className="flex items-center justify-between p-4 hover:bg-slate-50/50 transition-colors">
+                   <div key={sheet.id} className="flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors group">
                       <div className="flex items-center gap-4">
-                         <div className="p-2.5 bg-emerald-50 rounded-xl">
+                         <div className="p-2.5 bg-emerald-50 rounded-xl group-hover:bg-emerald-100 transition-colors">
                             <TableIcon className="w-5 h-5 text-emerald-600" />
                          </div>
                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{sheet.fileName}</p>
-                            <p className="text-[10px] text-slate-400 uppercase tracking-tighter">Synced: {sheet.uploadedAt?.toDate ? sheet.uploadedAt.toDate().toLocaleDateString() : 'Just now'}</p>
+                            <p className="text-sm font-semibold text-slate-900 truncate max-w-[200px] sm:max-w-[300px]">{sheet.fileName}</p>
+                            <p className="text-[10px] text-slate-400 uppercase tracking-tighter font-medium">Synced: {sheet.uploadedAt?.toDate ? sheet.uploadedAt.toDate().toLocaleDateString() : 'Just now'}</p>
                          </div>
                       </div>
-                      <div className="flex gap-2">
-                         <Button asChild variant="ghost" size="icon" className="text-slate-400 hover:text-emerald-600">
+                      <div className="flex gap-1">
+                         <Button asChild variant="ghost" size="icon" className="text-slate-400 hover:text-emerald-600 rounded-full">
                             <a href={sheet.url} target="_blank" rel="noopener noreferrer">
                                <ExternalLink className="w-4 h-4" />
                             </a>
                          </Button>
-                         <Button onClick={() => handleDeleteItem('pricingSheets', sheet.id)} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600">
+                         <Button onClick={() => handleDeleteItem('pricingSheets', sheet.id)} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 rounded-full">
                             <Trash2 className="w-4 h-4" />
                          </Button>
                       </div>
