@@ -20,9 +20,6 @@ interface RoomData {
  * PRODUCTION-GRADE MULTI-PAGE PDF EXTRACTOR
  * 
  * Specifically engineered to handle 8+ page architectural sets.
- * 1. Uses a custom pager to ensure page boundaries are respected.
- * 2. Detects rooms per page via Main Header Block patterns.
- * 3. Handles continuation pages (Trim Lists) via context inheritance.
  */
 export async function extractCabinetsFromPdf(buffer: Buffer): Promise<{ rooms: RoomData[] }> {
   const rooms: RoomData[] = [];
@@ -44,31 +41,31 @@ export async function extractCabinetsFromPdf(buffer: Buffer): Promise<{ rooms: R
     }
   };
 
-  console.log('[Extractor] Initializing multi-page parse...');
+  console.log('[Extractor] Initializing deep multi-page parse...');
   const data = await pdf(buffer, options);
-  const pages = data.text.split('---KABS_PAGE_BREAK---');
-  console.log(`[Extractor] Detected ${pages.length} total pages in drawing set.`);
+  
+  // Ensure we get all text even if the pager was skipped by the library for some reason
+  const fullText = data.text;
+  const pages = fullText.split('---KABS_PAGE_BREAK---').map(p => p.trim()).filter(Boolean);
+  
+  console.log(`[Extractor] Total pages detected: ${pages.length}`);
 
   pages.forEach((pageText, index) => {
-    const text = pageText.toUpperCase().trim();
-    if (!text) return;
-
-    // 1. Handle Room Detection / Continuation via Header Block
+    const text = pageText.toUpperCase();
+    
+    // 1. Detect Room Name with higher sensitivity
     const detectedRoom = detectRoomNameFromHeader(text);
     
-    // Logic: If a page is labeled "TRIM LIST" or has no header, it belongs to the previous room
-    if (detectedRoom && !text.includes('TRIM LIST')) {
+    if (detectedRoom) {
       currentRoomName = detectedRoom;
-      console.log(`[Extractor] Page ${index + 1}: New Room Detected -> ${currentRoomName}`);
-    } else {
-      console.log(`[Extractor] Page ${index + 1}: Inheriting Context -> ${currentRoomName}`);
+      console.log(`[Extractor] Page ${index + 1}: Found Room -> ${currentRoomName}`);
     }
 
-    // 2. CABINET CODE REGEX (High Precision)
-    // Matches: W3042BUTT, B24 BUTT, VSB3634H, UF342, SB36, DWR3
-    // We normalize the text FIRST to handle internal spaces (e.g. "B 24" -> "B24")
-    const normalizedPageText = text.replace(/([WBSUVD])\s+(\d)/g, '$1$2');
-    const cabinetRegex = /\b(W\d{3,4}BUTT|W\d{3,4}|B\d{1,3}BUTT|B\d{1,3}|SB\d{1,3}|UF\d{1,4}|VSB\d{3,4}H?|DWR\d)\b/g;
+    // 2. High-Precision Cabinet Code Regex
+    // Now captures: W3042, W-3042, B24, B-24, VSB3634H, UF342, SB36, DWR3, etc.
+    // Handles internal spaces by normalizing text locally for regex match
+    const normalizedPageText = text.replace(/([WBSUVD])\s*[- ]?\s*(\d)/g, '$1$2');
+    const cabinetRegex = /\b([WBSUVD]\d{1,5}(?:BUTT|H)?|SB\d{1,3}|DWR\d)\b/g;
     const matches = normalizedPageText.match(cabinetRegex) || [];
 
     if (matches.length === 0) return;
@@ -78,7 +75,7 @@ export async function extractCabinetsFromPdf(buffer: Buffer): Promise<{ rooms: R
     if (!room) {
       room = {
         room_name: currentRoomName,
-        room_type: currentRoomName.includes('BATH') ? 'Bathroom' : 'Kitchen',
+        room_type: classifyRoomType(currentRoomName),
         sections: {
           'Wall Cabinets': [],
           'Base Cabinets': [],
@@ -113,40 +110,58 @@ export async function extractCabinetsFromPdf(buffer: Buffer): Promise<{ rooms: R
     });
   });
 
-  return { rooms };
+  // Final cleanup: Remove empty rooms if any
+  return { rooms: rooms.filter(r => Object.values(r.sections).some(s => s.length > 0)) };
 }
 
-/**
- * Searches for the Room Title in the Main Header Block (Top-Left).
- * Optimized for residential architectural layouts.
- */
 function detectRoomNameFromHeader(text: string): string | null {
-  // Check for common residential room markers
-  if (text.includes('STANDARD 42') && text.includes('KITCHEN')) return 'Standard Kitchen';
-  if (text.includes('OPT GOURMET') || text.includes('GOURMET KITCHEN')) return 'Gourmet Kitchen';
-  if (text.includes('OWNERS BATH') || text.includes("OWNER'S BATH")) return 'Owners Bath';
-  if (text.includes('BATH 2')) return 'Bath 2';
-  if (text.includes('BATH 3')) return 'Bath 3';
-  if (text.includes('LAUNDRY')) return 'Laundry Room';
-  if (text.includes('POWDER')) return 'Powder Room';
-  
-  // Specific pattern: ROOM: [TITLE]
-  const headerMatch = text.match(/ROOM:\s*([A-Z0-9\s-]+)/);
-  if (headerMatch && headerMatch[1]) {
-    const title = headerMatch[1].trim();
-    if (title.length > 3 && !['HARDWARE', 'PERIMETER'].includes(title)) {
+  const commonRooms = [
+    'STANDARD 42 KITCHEN',
+    'GOURMET KITCHEN',
+    'OWNERS BATH',
+    'OWNER\'S BATH',
+    'BATH 1', 'BATH 2', 'BATH 3', 'BATH 4',
+    'POWDER ROOM',
+    'LAUNDRY ROOM',
+    'GARAGE',
+    'PANTRY'
+  ];
+
+  for (const room of commonRooms) {
+    if (text.includes(room)) return room;
+  }
+
+  // Handle "ROOM: [NAME]" pattern
+  const roomMatch = text.match(/ROOM:\s*([A-Z0-9\s-]+)/);
+  if (roomMatch && roomMatch[1]) {
+    const title = roomMatch[1].trim();
+    if (title.length > 2 && !['HARDWARE', 'PERIMETER'].includes(title)) {
       return title;
     }
   }
+
+  // Handle Builder Layout Patterns
+  const layoutMatch = text.match(/([A-Z0-9\s]+)\s+LAYOUT/);
+  if (layoutMatch && layoutMatch[1]) {
+    const title = layoutMatch[1].trim();
+    if (title.length > 3 && title.length < 30) return title;
+  }
   
   return null;
+}
+
+function classifyRoomType(name: string): string {
+  const n = name.toUpperCase();
+  if (n.includes('BATH') || n.includes('POWDER')) return 'Bathroom';
+  if (n.includes('LAUNDRY')) return 'Laundry';
+  return 'Kitchen';
 }
 
 function classifyCabinet(code: string): string {
   const c = code.toUpperCase();
   if (c.startsWith('W')) return 'Wall Cabinets';
   if (c.startsWith('B') || c.startsWith('SB')) return 'Base Cabinets';
-  if (c.startsWith('UF')) return 'Tall Cabinets';
+  if (c.startsWith('UF') || c.startsWith('T')) return 'Tall Cabinets';
   if (c.startsWith('VSB')) return 'Vanity Cabinets';
   return 'Hardware';
 }

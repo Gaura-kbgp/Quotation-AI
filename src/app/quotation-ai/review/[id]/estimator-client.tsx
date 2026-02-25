@@ -83,7 +83,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   const fetchManConfig = useCallback(async (id: string) => {
     if (!id) return;
     setIsLoadingConfig(true);
-    console.log(`[Estimator] Fetching config for manufacturer: ${id}`);
     try {
       const res = await fetch(`/api/manufacturer-config?id=${id}`);
       const data = await res.json();
@@ -105,7 +104,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     if (initialSyncRef.current) return;
     
     if (project.extracted_data?.rooms && project.extracted_data.rooms.length > 0) {
-      console.log(`[Estimator] Loading ${project.extracted_data.rooms.length} rooms from project.`);
       setRooms(project.extracted_data.rooms);
     } else {
       setRooms([{
@@ -235,7 +233,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
           {rooms.map((room, rIdx) => (
             <div key={rIdx} className="space-y-6 border border-slate-100 rounded-[2.5rem] p-8 bg-white shadow-xl shadow-slate-200/50">
-               <div className="flex justify-between items-center px-2">
+               <div className="flex justify-between items-center px-2 border-b border-slate-100 pb-4">
                   <div className="flex items-center gap-4">
                      <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center">
                         <Package className="w-5 h-5 text-sky-600" />
@@ -269,7 +267,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                <div className="grid grid-cols-1 gap-12">
                   {Object.keys(room.sections).map((sectionKey) => {
                     const cabs = room.sections[sectionKey] || [];
-                    if (cabs.length === 0 && sectionKey !== 'Wall Cabinets') return null; // Keep Wall visible as entry point
+                    if (cabs.length === 0 && sectionKey !== 'Wall Cabinets') return null;
                     
                     return (
                       <div key={sectionKey} className="space-y-4">
@@ -281,7 +279,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                           <Table>
                             <TableHeader className="bg-slate-50/30">
                               <TableRow className="hover:bg-transparent border-slate-100">
-                                <TableHead className="w-[140px] text-[10px] font-bold uppercase tracking-widest text-slate-400 pl-6">Qty</TableHead>
+                                <TableHead className="w-[160px] text-[10px] font-bold uppercase tracking-widest text-slate-400 pl-6">Qty</TableHead>
                                 <TableHead className="w-[250px] text-[10px] font-bold uppercase tracking-widest text-slate-400">Cabinet SKU</TableHead>
                                 <TableHead className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Label / Note</TableHead>
                                 <TableHead className="w-[60px] text-right pr-6"></TableHead>
@@ -294,21 +292,21 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                     <div className="flex items-center gap-1.5">
                                       <button 
                                         onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: Math.max(1, (cab.qty || 1) - 1) })}
-                                        className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors"
+                                        className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors"
                                       >
-                                        <Minus className="w-3 h-3" />
+                                        <Minus className="w-3.5 h-3.5" />
                                       </button>
                                       <Input 
                                         type="number" 
                                         value={cab.qty} 
                                         onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: parseInt(e.target.value) || 1 })}
-                                        className="w-10 h-8 text-center bg-transparent border-none font-bold text-slate-900"
+                                        className="w-12 h-8 text-center bg-white border border-slate-200 rounded-md font-bold text-slate-900"
                                       />
                                       <button 
                                         onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: (cab.qty || 1) + 1 })}
-                                        className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors"
+                                        className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors"
                                       >
-                                        <Plus className="w-3 h-3" />
+                                        <Plus className="w-3.5 h-3.5" />
                                       </button>
                                     </div>
                                   </TableCell>
@@ -317,7 +315,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                       value={cab.code} 
                                       onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { code: e.target.value })}
                                       className="h-9 font-bold text-sky-600 bg-transparent border-none focus-visible:ring-1 focus-visible:ring-sky-100 rounded-lg"
-                                      placeholder="e.g. W3042"
+                                      placeholder="SKU"
                                     />
                                   </TableCell>
                                   <TableCell>
@@ -362,10 +360,10 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         </div>
 
         <div className="space-y-6">
-          <Card className="sticky top-28 border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.05)] rounded-[2rem] overflow-hidden">
+          <Card className="sticky top-28 border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.05)] rounded-[2rem] overflow-hidden bg-white">
             <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-6">
                <CardTitle className="text-lg font-bold flex items-center justify-between">
-                  Extraction Stats
+                  Project Stats
                   {isSaving ? <Loader2 className="w-4 h-4 animate-spin text-sky-500" /> : <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                </CardTitle>
             </CardHeader>
@@ -376,7 +374,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                     <p className="text-2xl font-black text-slate-900">{rooms.length}</p>
                  </div>
                  <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100/50">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total SKUs</p>
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">SKUs</p>
                     <p className="text-2xl font-black text-slate-900">{rooms.reduce((acc, r) => {
                       let count = 0;
                       Object.values(r.sections).forEach((s: any) => count += s.length);
@@ -386,11 +384,11 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
               </div>
 
               <div className="space-y-3">
-                 <p className="text-xs text-slate-500 leading-relaxed font-medium">Verify all extracted codes from your 8+ page drawing set before matching against manufacturer matrices.</p>
+                 <p className="text-xs text-slate-500 leading-relaxed font-medium">Verify all extracted cabinet codes match the architectural set before proceeding to manufacturer selection.</p>
               </div>
 
               <Button onClick={() => setStep('manufacturer')} className="w-full h-16 gradient-button rounded-2xl shadow-xl shadow-sky-500/20 text-lg group">
-                Continue to Branding
+                Select Brand
                 <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
             </CardContent>
@@ -400,6 +398,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     );
   }
 
+  // ... rest of the component remains same ...
   if (step === 'manufacturer') {
     return (
       <div className="max-w-xl mx-auto space-y-12 py-12">
