@@ -1,7 +1,7 @@
 'use server';
 /**
  * @fileOverview Production-Grade AI Flow for Architectural Cabinet Takeoff.
- * Optimized for Gemini 2.5 Flash to avoid nesting depth and validation errors.
+ * Optimized for Gemini 2.0 Flash to handle multi-page PDFs with visual reasoning.
  */
 
 import { ai } from '@/ai/genkit';
@@ -29,19 +29,27 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 /**
- * Prompt defined with Gemini 2.5 Flash.
+ * Prompt defined with Gemini 2.0 Flash.
  * Uses a flat string output schema to bypass 'maximum nesting depth' errors in GenerationConfig.
  */
 const prompt = ai.definePrompt({
   name: 'analyzeDrawingVisionPrompt',
-  model: 'googleai/gemini-2.5-flash',
+  model: 'googleai/gemini-2.0-flash',
   input: { schema: AnalyzeDrawingInputSchema },
   output: { schema: z.string() },
+  config: {
+    safetySettings: [
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+    ],
+  },
   prompt: `You are a professional architectural estimator specializing in cabinet takeoff. 
   
   TASK:
   Analyze the provided PDF drawing. This is a MULTI-PAGE document.
-  You MUST process EVERY SINGLE PAGE provided. 
+  You MUST process EVERY SINGLE PAGE provided. Do NOT stop after the first page.
   
   PROCESS:
   1. Iterate through EVERY page of the PDF.
@@ -73,8 +81,8 @@ const prompt = ai.definePrompt({
 export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSchema>): Promise<AnalyzeDrawingOutput> {
   const { text } = await prompt(input);
   
-  if (!text) {
-    throw new Error('AI failed to return extraction data. The model may have blocked the content or timed out.');
+  if (!text || text.trim() === '') {
+    throw new Error('AI returned an empty response. This may be due to a processing timeout or safety filter. Please try again with a smaller file.');
   }
 
   // Manually parse the JSON to bypass nesting depth errors in API config
@@ -144,7 +152,7 @@ export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSc
 
   return {
     rooms: roomsList,
-    summary: `Processed multiple pages using Gemini 2.5 Flash. Extracted ${items.length} raw line items and aggregated into ${roomsMap.size} rooms.`
+    summary: `Processed multiple pages using Gemini 2.0 Flash. Extracted ${items.length} raw line items and aggregated into ${roomsMap.size} rooms.`
   };
 }
 
