@@ -9,7 +9,7 @@ export const createServerSupabase = () => {
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('Supabase Server: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
+    throw new Error('Supabase Server: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.');
   }
 
   return createClient(supabaseUrl, supabaseServiceRoleKey, {
