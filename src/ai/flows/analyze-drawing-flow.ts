@@ -1,7 +1,7 @@
 'use server';
 /**
  * @fileOverview Production-Grade AI Flow for Architectural Cabinet Takeoff.
- * Resolved "maximum nesting depth" and "INVALID_ARGUMENT" errors.
+ * Optimized for Gemini 2.5 Flash to avoid nesting depth and validation errors.
  */
 
 import { ai } from '@/ai/genkit';
@@ -29,12 +29,12 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 /**
- * Prompt defined with a stable model ID.
- * Model is specified at the top level to avoid GenerationConfig schema errors.
+ * Prompt defined with Gemini 2.5 Flash.
+ * Uses a flat string output schema to bypass 'maximum nesting depth' errors in GenerationConfig.
  */
 const prompt = ai.definePrompt({
   name: 'analyzeDrawingVisionPrompt',
-  model: 'googleai/gemini-1.5-flash',
+  model: 'googleai/gemini-2.5-flash',
   input: { schema: AnalyzeDrawingInputSchema },
   output: { schema: z.string() },
   prompt: `You are a professional architectural estimator specializing in cabinet takeoff. 
@@ -144,7 +144,7 @@ export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSc
 
   return {
     rooms: roomsList,
-    summary: `Processed multiple pages. Extracted ${items.length} raw line items and aggregated into ${roomsMap.size} rooms.`
+    summary: `Processed multiple pages using Gemini 2.5 Flash. Extracted ${items.length} raw line items and aggregated into ${roomsMap.size} rooms.`
   };
 }
 
