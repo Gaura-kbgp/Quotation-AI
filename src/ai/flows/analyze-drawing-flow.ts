@@ -2,7 +2,7 @@
 'use server';
 /**
  * @fileOverview Production-Grade AI Flow for Architectural Cabinet Takeoff.
- * Uses Gemini 2.5 Flash for Hybrid Vision/Document analysis of multi-page PDFs.
+ * Uses Gemini 2.5 Flash for Native PDF multi-page analysis.
  */
 
 import { ai } from '@/ai/genkit';
@@ -44,25 +44,24 @@ export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 const prompt = ai.definePrompt({
   name: 'analyzeDrawingVisionPrompt',
+  model: 'googleai/gemini-2.5-flash',
   input: { schema: AnalyzeDrawingInputSchema },
   output: { schema: z.object({ extractions: z.array(PageExtractionSchema) }) },
-  config: {
-    model: 'googleai/gemini-2.5-flash',
-  },
   prompt: `You are a professional architectural estimator specializing in cabinet takeoff. 
   
   TASK:
-  Analyze every page of the provided PDF architectural drawing.
+  Analyze the provided PDF architectural drawing. This is a MULTI-PAGE document.
+  You MUST process EVERY SINGLE PAGE provided in the file. 
   
   PROCESS:
-  1. Iterate through EVERY page of the PDF.
-  2. CLASSIFY: Determine if the page is a Cabinet Page (Floor Plan, Schedule, Elevation, Kitchen/Bath Detail) or an Ignore Page (Electrical, HVAC, Lighting, HVAC, Cover).
+  1. Iterate through EVERY page of the PDF from start to finish.
+  2. CLASSIFY: Determine if the page is a Cabinet Page (Floor Plan, Schedule, Elevation, Kitchen/Bath Detail) or an Ignore Page (Electrical, HVAC, Lighting, Cover).
   3. EXTRACT: On Cabinet Pages, identify all cabinet codes (SKUs). 
      - Include Wall (Wxxx), Base (Bxxx, SBxxx), Tall (UFxxx), Vanity (VSBxxx), and Fillers.
-     - Include items from both Floor Plans and Interior Elevations.
-     - Detect exact quantities.
-  4. IGNORE: Do NOT extract electrical symbols, lighting fixtures, appliance labels (unless they are cabinet SKUs), or ceiling items.
-  5. ROOMS: Detect the room name per page (e.g., Standard Kitchen, Owners Bath, Bath 2, Laundry).
+     - Look for codes in Floor Plans, Schedules, and Interior Elevations.
+     - Detect exact quantities based on the drawing markers or schedules.
+  4. IGNORE: Do NOT extract electrical symbols, lighting fixtures, or HVAC items.
+  5. ROOMS: Detect the specific room name for each page (e.g., Standard Kitchen, Owners Bath, Bath 2, Laundry).
   
   RULES FOR CABINET CODES:
   - Normalize codes by removing internal spaces (e.g., "B 24" -> "B24").
@@ -77,8 +76,12 @@ const prompt = ai.definePrompt({
 });
 
 export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSchema>): Promise<AnalyzeDrawingOutput> {
+  // Use the default model if not explicitly overridden in prompt definition
   const { output } = await prompt(input);
-  if (!output || !output.extractions) throw new Error('AI failed to extract multi-page data.');
+  
+  if (!output || !output.extractions) {
+    throw new Error('AI failed to extract multi-page data or returned an empty payload.');
+  }
 
   // Aggregate room data across all pages
   const roomsMap = new Map<string, any>();
@@ -113,9 +116,26 @@ export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSc
     });
   });
 
+  const roomsList = Array.from(roomsMap.values());
+
+  if (roomsList.length === 0) {
+    // Return at least one default room if nothing was found to avoid UI crashes
+    roomsList.push({
+      room_name: 'Standard Kitchen',
+      room_type: 'Kitchen',
+      sections: {
+        'Wall Cabinets': [],
+        'Base Cabinets': [],
+        'Tall Cabinets': [],
+        'Vanity Cabinets': [],
+        'Hardware': []
+      }
+    });
+  }
+
   return {
-    rooms: Array.from(roomsMap.values()),
-    summary: `Extracted data from ${output.extractions.length} pages. Detected ${roomsMap.size} rooms.`
+    rooms: roomsList,
+    summary: `Processed ${output.extractions.length} pages. Aggregated data into ${roomsMap.size} rooms.`
   };
 }
 
