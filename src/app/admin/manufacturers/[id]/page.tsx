@@ -1,7 +1,6 @@
-
 "use client";
 
-import { use, useState, useCallback } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,472 +13,323 @@ import {
   ArrowLeft, 
   Loader2, 
   Plus, 
-  X, 
   FileUp, 
   UploadCloud,
-  CheckCircle2
+  CheckCircle2,
+  Database
 } from 'lucide-react';
 import Link from 'next/link';
-import { useDoc, useFirestore, useMemoFirebase, useCollection, useStorage } from '@/firebase';
-import { doc, collection, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { supabase } from '@/lib/supabase-client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { extractSpecifications } from '../../actions';
 
 export default function ManufacturerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { db } = useFirestore();
-  const { storage } = useStorage();
   const { toast } = useToast();
 
-  const [isAddingSheet, setIsAddingSheet] = useState(false);
-  const [isAddingBook, setIsAddingBook] = useState(false);
-  
-  const [newFile, setNewFile] = useState({ name: '', url: '' });
+  const [manufacturer, setManufacturer] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [files, setFiles] = useState<any[]>([]);
+  const [specsSummary, setSpecsSummary] = useState<any>(null);
+
+  const [isAddingFile, setIsAddingFile] = useState<{ open: boolean, type: 'spec' | 'pricing' | null }>({ open: false, type: null });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  const manufacturerRef = useMemoFirebase(() => {
-    if (!db || !id) return null;
-    return doc(db, 'manufacturers', id);
-  }, [db, id]);
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const [mRes, fRes, sRes] = await Promise.all([
+      supabase.from('manufacturers').select('*').eq('id', id).single(),
+      supabase.from('manufacturer_files').select('*').eq('manufacturer_id', id).order('created_at', { ascending: false }),
+      supabase.from('manufacturer_specifications').select('collection_name, door_style').eq('manufacturer_id', id)
+    ]);
 
-  const { data: manufacturer, loading } = useDoc(manufacturerRef);
-
-  const pricingSheetsQuery = useMemoFirebase(() => {
-    if (!db || !id) return null;
-    return collection(db, 'manufacturers', id, 'pricingSheets');
-  }, [db, id]);
-
-  const specBooksQuery = useMemoFirebase(() => {
-    if (!db || !id) return null;
-    return collection(db, 'manufacturers', id, 'specBooks');
-  }, [db, id]);
-
-  const { data: pricingSheets, loading: loadingSheets } = useCollection(pricingSheetsQuery);
-  const { data: specBooks, loading: loadingBooks } = useCollection(specBooksQuery);
-
-  const resetForm = () => {
-    setNewFile({ name: '', url: '' });
-    setUploadFile(null);
-    setIsUploading(false);
-    setUploadProgress(0);
-    setIsDragging(false);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) setUploadFile(file);
-  };
-
-  const handleFileUpload = async (type: 'specBooks' | 'pricingSheets') => {
-    if (!db || !id || !storage) return;
-
-    let finalUrl = newFile.url;
-    let finalName = newFile.name;
-
-    if (uploadFile) {
-      setIsUploading(true);
-      const storageRef = ref(storage, `manufacturers/${id}/${type}/${Date.now()}_${uploadFile.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, uploadFile);
-
-      return new Promise((resolve, reject) => {
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            setUploadProgress(progress);
-          },
-          (error) => {
-            toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
-            setIsUploading(false);
-            reject(error);
-          },
-          async () => {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            finalUrl = downloadURL;
-            if (!finalName) finalName = uploadFile.name;
-            
-            await addDoc(collection(db, 'manufacturers', id, type), {
-              fileName: finalName,
-              url: finalUrl,
-              type: type === 'pricingSheets' ? (uploadFile.name.endsWith('.csv') ? 'CSV' : 'XLSX') : 'PDF',
-              uploadedAt: serverTimestamp()
-            });
-            
-            toast({
-              title: "File Uploaded",
-              description: `${finalName} has been added successfully.`
-            });
-            
-            resetForm();
-            type === 'specBooks' ? setIsAddingBook(false) : setIsAddingSheet(false);
-            resolve(true);
-          }
-        );
-      });
-    } else if (finalUrl && finalName) {
-      await addDoc(collection(db, 'manufacturers', id, type), {
-        fileName: finalName,
-        url: finalUrl,
-        type: type === 'pricingSheets' ? 'XLSX' : 'PDF',
-        uploadedAt: serverTimestamp()
-      });
-      resetForm();
-      type === 'specBooks' ? setIsAddingBook(false) : setIsAddingSheet(false);
+    if (mRes.error) {
+      toast({ variant: 'destructive', title: 'Error', description: mRes.error.message });
     } else {
-      toast({ variant: 'destructive', title: 'Missing Info', description: 'Please provide a file or a URL and name.' });
+      setManufacturer(mRes.data);
+      setFiles(fRes.data || []);
+      
+      // Calculate summary
+      if (sRes.data) {
+        const collections = new Set(sRes.data.map(s => s.collection_name));
+        const styles = new Set(sRes.data.map(s => s.door_style));
+        setSpecsSummary({
+          collections: collections.size,
+          styles: styles.size,
+          count: sRes.data.length
+        });
+      }
     }
+    setLoading(false);
+  }, [id, toast]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleFileUpload = async () => {
+    if (!uploadFile || !isAddingFile.type) return;
+
+    if (uploadFile.size > 20 * 1024 * 1024) {
+      toast({ variant: 'destructive', title: 'File too large', description: 'Maximum file size is 20MB' });
+      return;
+    }
+
+    setIsUploading(true);
+    const fileExt = uploadFile.name.split('.').pop();
+    const fileName = `${id}/${isAddingFile.type}s/${crypto.randomUUID()}.${fileExt}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('manufacturer-docs')
+      .upload(fileName, uploadFile, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      toast({ variant: 'destructive', title: 'Upload Failed', description: uploadError.message });
+      setIsUploading(false);
+      return;
+    }
+
+    const { data: { publicUrl } } = supabase.storage.from('manufacturer-docs').getPublicUrl(fileName);
+
+    const { data: dbData, error: dbError } = await supabase
+      .from('manufacturer_files')
+      .insert([{
+        manufacturer_id: id,
+        file_type: isAddingFile.type,
+        file_name: uploadFile.name,
+        file_url: publicUrl,
+        file_format: fileExt?.toLowerCase()
+      }])
+      .select()
+      .single();
+
+    if (dbError) {
+      toast({ variant: 'destructive', title: 'Database Error', description: dbError.message });
+    } else {
+      toast({ title: 'File Uploaded Successfully' });
+      
+      // If it's a pricing file, trigger specification extraction
+      if (isAddingFile.type === 'pricing') {
+        toast({ title: 'Extracting specifications...' });
+        const extRes = await extractSpecifications(dbData.id, id, publicUrl);
+        if (extRes.success) {
+          toast({ title: 'Extraction Complete', description: `Successfully parsed ${extRes.count} specifications.` });
+        } else {
+          toast({ variant: 'destructive', title: 'Extraction Failed', description: extRes.error });
+        }
+      }
+
+      setUploadFile(null);
+      setIsAddingFile({ open: false, type: null });
+      fetchData();
+    }
+    setIsUploading(false);
   };
 
-  const handleDeleteItem = async (collectionName: string, itemId: string) => {
-    if (!db || !id) return;
-    try {
-      await deleteDoc(doc(db, 'manufacturers', id, collectionName, itemId));
-      toast({ title: "Deleted", description: "The item has been removed." });
-    } catch (e) {
-      toast({ variant: 'destructive', title: "Error", description: "Failed to delete item." });
+  const handleDeleteFile = async (file: any) => {
+    // Delete from storage
+    const path = file.file_url.split('/public/manufacturer-docs/')[1];
+    if (path) {
+      await supabase.storage.from('manufacturer-docs').remove([path]);
     }
+    
+    // Delete from DB
+    await supabase.from('manufacturer_files').delete().eq('id', file.id);
+    fetchData();
+    toast({ title: 'File deleted' });
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-        <Loader2 className="w-10 h-10 animate-spin text-sky-500" />
-        <p className="text-slate-500 font-medium">Loading manufacturer details...</p>
-      </div>
-    );
-  }
-
-  if (!manufacturer) {
-    return (
-      <div className="text-center py-20">
-        <h2 className="text-2xl font-bold text-slate-900">Manufacturer not found</h2>
-        <Link href="/admin/manufacturers" className="text-sky-600 hover:underline mt-4 block">Return to list</Link>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="animate-spin text-sky-500 w-8 h-8" /></div>;
+  if (!manufacturer) return <div className="text-center py-20"><h2 className="text-2xl font-bold">Manufacturer not found</h2></div>;
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-4">
         <Link href="/admin/manufacturers">
-           <Button variant="ghost" size="icon" className="text-slate-400 hover:text-sky-600 rounded-full transition-all">
+           <Button variant="ghost" size="icon" className="rounded-full">
               <ArrowLeft className="w-6 h-6" />
            </Button>
         </Link>
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 font-headline">{manufacturer.name}</h1>
-          <div className="flex items-center gap-2 mt-1">
-             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded">ID: {id}</span>
-             <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-600">Active</span>
-          </div>
+          <h1 className="text-3xl font-bold text-slate-900">{manufacturer.name}</h1>
+          <p className="text-slate-500">Manage technical specifications and pricing documents.</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {/* Specification Book Section */}
-        <Card className="glass-card border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="border-b border-slate-100 pb-4">
-            <div className="flex justify-between items-center">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8">
+          {/* Specification Books */}
+          <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100">
               <div>
-                <CardTitle className="text-xl flex items-center gap-2 text-slate-900">
+                <CardTitle className="text-xl flex items-center gap-2">
                   <FileText className="w-5 h-5 text-sky-600" />
                   Specification Books
                 </CardTitle>
-                <CardDescription className="text-slate-500">Technical documentation and PDF catalogs</CardDescription>
+                <CardDescription>Multiple PDF catalogs support.</CardDescription>
               </div>
-              <Dialog open={isAddingBook} onOpenChange={(open) => { setIsAddingBook(open); if(!open) resetForm(); }}>
-                <DialogTrigger asChild>
-                  <Button size="sm" variant="outline" className="border-sky-100 text-sky-600 hover:bg-sky-50 rounded-xl">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add PDF
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="bg-white max-w-md">
-                   <DialogHeader>
-                      <DialogTitle>Add Specification Book</DialogTitle>
-                   </DialogHeader>
-                   <div className="space-y-6 py-4">
-                      <div className="space-y-2">
-                         <Label>Upload PDF File</Label>
-                         <div 
-                           onDragOver={handleDragOver}
-                           onDragLeave={handleDragLeave}
-                           onDrop={handleDrop}
-                           className={cn(
-                             "border-2 border-dashed rounded-2xl p-8 transition-all flex flex-col items-center justify-center text-center cursor-pointer",
-                             isDragging ? "border-sky-500 bg-sky-50" : "border-slate-200 hover:border-sky-400 hover:bg-slate-50/50",
-                             uploadFile ? "border-emerald-400 bg-emerald-50/20" : ""
-                           )}
-                         >
-                           <input 
-                              id="spec-file-input"
-                              type="file" 
-                              accept=".pdf"
-                              onChange={e => setUploadFile(e.target.files?.[0] || null)}
-                              className="hidden"
-                           />
-                           <label htmlFor="spec-file-input" className="cursor-pointer w-full flex flex-col items-center">
-                             {uploadFile ? (
-                               <>
-                                 <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
-                                 <p className="text-sm font-semibold text-emerald-700 truncate max-w-[250px]">{uploadFile.name}</p>
-                                 <p className="text-xs text-slate-400 mt-1">Ready to upload</p>
-                               </>
-                             ) : (
-                               <>
-                                 <UploadCloud className="w-10 h-10 text-slate-300 mb-2 group-hover:text-sky-400" />
-                                 <p className="text-sm font-medium text-slate-600">Drag & drop or <span className="text-sky-600">click to browse</span></p>
-                                 <p className="text-xs text-slate-400 mt-1">PDF only (Max 50MB)</p>
-                               </>
-                             )}
-                           </label>
-                         </div>
-                      </div>
-
-                      <div className="relative">
-                        <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-100"></span></div>
-                        <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest"><span className="bg-white px-2 text-slate-400">Or use URL</span></div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                           <Label className="text-slate-600">File Name</Label>
-                           <Input 
-                              placeholder="e.g. 2024 Design Catalog" 
-                              value={newFile.name}
-                              onChange={e => setNewFile({...newFile, name: e.target.value})}
-                              className="bg-slate-50 border-slate-200"
-                           />
-                        </div>
-                        <div className="space-y-2">
-                           <Label className="text-slate-600">PDF URL</Label>
-                           <Input 
-                              placeholder="https://example.com/spec.pdf" 
-                              value={newFile.url}
-                              onChange={e => setNewFile({...newFile, url: e.target.value})}
-                              className="bg-slate-50 border-slate-200"
-                           />
+              <Button onClick={() => setIsAddingFile({ open: true, type: 'spec' })} variant="outline" size="sm" className="rounded-xl">
+                <Plus className="w-4 h-4 mr-2" />
+                Add PDF
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-slate-100">
+                {files.filter(f => f.file_type === 'spec').length === 0 ? (
+                  <div className="p-12 text-center text-slate-400">No specification books uploaded.</div>
+                ) : (
+                  files.filter(f => f.file_type === 'spec').map(file => (
+                    <div key={file.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-5 h-5 text-sky-500" />
+                        <div>
+                          <p className="text-sm font-semibold">{file.file_name}</p>
+                          <p className="text-[10px] text-slate-400 uppercase tracking-widest">{new Date(file.created_at).toLocaleDateString()}</p>
                         </div>
                       </div>
-
-                      {isUploading && (
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-xs font-bold text-sky-600">
-                            <span>Uploading...</span>
-                            <span>{Math.round(uploadProgress)}%</span>
-                          </div>
-                          <Progress value={uploadProgress} className="h-1.5 bg-sky-100" />
-                        </div>
-                      )}
-
-                      <Button onClick={() => handleFileUpload('specBooks')} className="w-full gradient-button h-11" disabled={isUploading || (!uploadFile && (!newFile.url || !newFile.name))}>
-                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
-                        {uploadFile ? 'Upload and Add' : 'Save Details'}
-                      </Button>
-                   </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-slate-100">
-               {loadingBooks ? (
-                 <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-slate-300" /></div>
-               ) : specBooks?.length === 0 ? (
-                 <div className="p-16 text-center text-slate-400 italic bg-slate-50/20">
-                   <FileText className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                   No specification books uploaded yet.
-                 </div>
-               ) : (
-                 specBooks?.map((book: any) => (
-                   <div key={book.id} className="flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors group">
-                      <div className="flex items-center gap-4">
-                         <div className="p-2.5 bg-sky-50 rounded-xl group-hover:bg-sky-100 transition-colors">
-                            <FileText className="w-5 h-5 text-sky-600" />
-                         </div>
-                         <div>
-                            <p className="text-sm font-semibold text-slate-900 truncate max-w-[200px] sm:max-w-[300px]">{book.fileName}</p>
-                            <p className="text-[10px] text-slate-400 uppercase tracking-tighter font-medium">Added: {book.uploadedAt?.toDate ? book.uploadedAt.toDate().toLocaleDateString() : 'Recent'}</p>
-                         </div>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="icon" asChild><a href={file.file_url} target="_blank"><ExternalLink className="w-4 h-4" /></a></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteFile(file)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></Button>
                       </div>
-                      <div className="flex gap-1">
-                         <Button asChild variant="ghost" size="icon" className="text-slate-400 hover:text-sky-600 rounded-full">
-                            <a href={book.url} target="_blank" rel="noopener noreferrer">
-                               <ExternalLink className="w-4 h-4" />
-                            </a>
-                         </Button>
-                         <Button onClick={() => handleDeleteItem('specBooks', book.id)} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 rounded-full">
-                            <Trash2 className="w-4 h-4" />
-                         </Button>
-                      </div>
-                   </div>
-                 ))
-               )}
-            </div>
-          </CardContent>
-        </Card>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* Pricing Sheet Section */}
-        <Card className="glass-card border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="border-b border-slate-100 pb-4">
-            <div className="flex justify-between items-center">
+          {/* Pricing Files */}
+          <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100">
               <div>
-                <CardTitle className="text-xl flex items-center gap-2 text-emerald-600">
+                <CardTitle className="text-xl flex items-center gap-2">
                   <TableIcon className="w-5 h-5 text-emerald-600" />
-                  Pricing Sheets
+                  Pricing Files (XLSX, XLSM, CSV)
                 </CardTitle>
-                <CardDescription className="text-slate-500">Excel, CSV or Google Sheet integration</CardDescription>
+                <CardDescription>Automatic extraction enabled on upload.</CardDescription>
               </div>
-              <Dialog open={isAddingSheet} onOpenChange={(open) => { setIsAddingSheet(open); if(!open) resetForm(); }}>
-                <DialogTrigger asChild>
-                  <Button size="sm" variant="outline" className="border-emerald-100 text-emerald-600 hover:bg-emerald-50 rounded-xl">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Sheet
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="bg-white max-w-md">
-                   <DialogHeader>
-                      <DialogTitle>Add Pricing Sheet</DialogTitle>
-                   </DialogHeader>
-                   <div className="space-y-6 py-4">
-                      <div className="space-y-2">
-                         <Label>Upload Spreadsheet File</Label>
-                         <div 
-                           onDragOver={handleDragOver}
-                           onDragLeave={handleDragLeave}
-                           onDrop={handleDrop}
-                           className={cn(
-                             "border-2 border-dashed rounded-2xl p-8 transition-all flex flex-col items-center justify-center text-center cursor-pointer",
-                             isDragging ? "border-emerald-500 bg-emerald-50" : "border-slate-200 hover:border-emerald-400 hover:bg-slate-50/50",
-                             uploadFile ? "border-emerald-400 bg-emerald-50/20" : ""
-                           )}
-                         >
-                           <input 
-                              id="sheet-file-input"
-                              type="file" 
-                              accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, .xlsm"
-                              onChange={e => setUploadFile(e.target.files?.[0] || null)}
-                              className="hidden"
-                           />
-                           <label htmlFor="sheet-file-input" className="cursor-pointer w-full flex flex-col items-center">
-                             {uploadFile ? (
-                               <>
-                                 <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
-                                 <p className="text-sm font-semibold text-emerald-700 truncate max-w-[250px]">{uploadFile.name}</p>
-                                 <p className="text-xs text-slate-400 mt-1">Ready to upload</p>
-                               </>
-                             ) : (
-                               <>
-                                 <UploadCloud className="w-10 h-10 text-slate-300 mb-2 group-hover:text-emerald-400" />
-                                 <p className="text-sm font-medium text-slate-600">Drag & drop or <span className="text-emerald-600">click to browse</span></p>
-                                 <p className="text-xs text-slate-400 mt-1">Excel/CSV/XLSM (Max 20MB)</p>
-                               </>
-                             )}
-                           </label>
-                         </div>
-                      </div>
-
-                      <div className="relative">
-                        <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-100"></span></div>
-                        <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest"><span className="bg-white px-2 text-slate-400">Or use URL</span></div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                           <Label className="text-slate-600">Sheet Name</Label>
-                           <Input 
-                              placeholder="e.g. Winter 2024 Price List" 
-                              value={newFile.name}
-                              onChange={e => setNewFile({...newFile, name: e.target.value})}
-                              className="bg-slate-50 border-slate-200"
-                           />
-                        </div>
-                        <div className="space-y-2">
-                           <Label className="text-slate-600">Sheet URL (Excel/CSV/Google)</Label>
-                           <Input 
-                              placeholder="https://docs.google.com/..." 
-                              value={newFile.url}
-                              onChange={e => setNewFile({...newFile, url: e.target.value})}
-                              className="bg-slate-50 border-slate-200"
-                           />
-                        </div>
-                      </div>
-
-                      {isUploading && (
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-xs font-bold text-emerald-600">
-                            <span>Uploading...</span>
-                            <span>{Math.round(uploadProgress)}%</span>
+              <Button onClick={() => setIsAddingFile({ open: true, type: 'pricing' })} variant="outline" size="sm" className="rounded-xl border-emerald-100 text-emerald-600">
+                <Plus className="w-4 h-4 mr-2" />
+                Add File
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-slate-100">
+                {files.filter(f => f.file_type === 'pricing').length === 0 ? (
+                  <div className="p-12 text-center text-slate-400">No pricing files uploaded.</div>
+                ) : (
+                  files.filter(f => f.file_type === 'pricing').map(file => (
+                    <div key={file.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                      <div className="flex items-center gap-3">
+                        <TableIcon className="w-5 h-5 text-emerald-500" />
+                        <div>
+                          <p className="text-sm font-semibold">{file.file_name}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-widest">{new Date(file.created_at).toLocaleDateString()}</span>
+                            <span className="px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[9px] font-bold uppercase tracking-wider">Specifications Extracted</span>
                           </div>
-                          <Progress value={uploadProgress} className="h-1.5 bg-emerald-100" />
                         </div>
-                      )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="icon" asChild><a href={file.file_url} target="_blank"><ExternalLink className="w-4 h-4" /></a></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteFile(file)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-                      <Button onClick={() => handleFileUpload('pricingSheets')} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-11 transition-all" disabled={isUploading || (!uploadFile && (!newFile.url || !newFile.name))}>
-                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
-                        {uploadFile ? 'Upload and Add' : 'Save Details'}
-                      </Button>
-                   </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-slate-100">
-               {loadingSheets ? (
-                 <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-slate-300" /></div>
-               ) : pricingSheets?.length === 0 ? (
-                 <div className="p-16 text-center text-slate-400 italic bg-slate-50/20">
-                    <TableIcon className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                    No pricing sheets connected yet.
-                 </div>
-               ) : (
-                 pricingSheets?.map((sheet: any) => (
-                   <div key={sheet.id} className="flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors group">
-                      <div className="flex items-center gap-4">
-                         <div className="p-2.5 bg-emerald-50 rounded-xl group-hover:bg-emerald-100 transition-colors">
-                            <TableIcon className="w-5 h-5 text-emerald-600" />
-                         </div>
-                         <div>
-                            <p className="text-sm font-semibold text-slate-900 truncate max-w-[200px] sm:max-w-[300px]">{sheet.fileName}</p>
-                            <p className="text-[10px] text-slate-400 uppercase tracking-tighter font-medium">Synced: {sheet.uploadedAt?.toDate ? sheet.uploadedAt.toDate().toLocaleDateString() : 'Just now'}</p>
-                         </div>
-                      </div>
-                      <div className="flex gap-1">
-                         <Button asChild variant="ghost" size="icon" className="text-slate-400 hover:text-emerald-600 rounded-full">
-                            <a href={sheet.url} target="_blank" rel="noopener noreferrer">
-                               <ExternalLink className="w-4 h-4" />
-                            </a>
-                         </Button>
-                         <Button onClick={() => handleDeleteItem('pricingSheets', sheet.id)} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 rounded-full">
-                            <Trash2 className="w-4 h-4" />
-                         </Button>
-                      </div>
-                   </div>
-                 ))
-               )}
-            </div>
-          </CardContent>
-        </Card>
+        {/* Specs Summary */}
+        <div className="space-y-6">
+          <Card className="glass-card sticky top-24">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Database className="w-5 h-5 text-sky-600" />
+                Parsed Specs Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-2xl font-bold text-slate-900">{specsSummary?.collections || 0}</p>
+                  <p className="text-xs text-slate-500 uppercase font-semibold">Collections</p>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-2xl font-bold text-slate-900">{specsSummary?.styles || 0}</p>
+                  <p className="text-xs text-slate-500 uppercase font-semibold">Door Styles</p>
+                </div>
+              </div>
+              <div className="p-4 rounded-xl bg-sky-50 border border-sky-100">
+                <p className="text-sm text-sky-700 font-medium">{specsSummary?.count || 0} normalized rows stored in database.</p>
+              </div>
+              <div className="pt-4 border-t border-slate-100">
+                <p className="text-xs text-slate-400">System automatically scans for structured data upon spreadsheet upload.</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
+
+      {/* Upload Dialog */}
+      <Dialog open={isAddingFile.open} onOpenChange={(open) => !open && setIsAddingFile({ open: false, type: null })}>
+        <DialogContent className="bg-white max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload {isAddingFile.type === 'pricing' ? 'Pricing File' : 'Specification Book'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div 
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if(f) setUploadFile(f); }}
+              className={cn(
+                "border-2 border-dashed rounded-2xl p-8 transition-all flex flex-col items-center justify-center text-center cursor-pointer",
+                isDragging ? "border-sky-500 bg-sky-50" : "border-slate-200 hover:border-sky-400 hover:bg-slate-50/50",
+                uploadFile ? "border-emerald-400 bg-emerald-50/20" : ""
+              )}
+            >
+              <input 
+                id="file-input" 
+                type="file" 
+                accept={isAddingFile.type === 'pricing' ? '.xlsx,.xlsm,.csv' : '.pdf'} 
+                className="hidden" 
+                onChange={e => setUploadFile(e.target.files?.[0] || null)} 
+              />
+              <label htmlFor="file-input" className="cursor-pointer w-full flex flex-col items-center">
+                {uploadFile ? (
+                  <>
+                    <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
+                    <p className="text-sm font-semibold text-emerald-700">{uploadFile.name}</p>
+                    <p className="text-xs text-slate-400 mt-1">Ready to upload</p>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-10 h-10 text-slate-300 mb-2" />
+                    <p className="text-sm font-medium">Drag & drop or <span className="text-sky-600">browse</span></p>
+                    <p className="text-xs text-slate-400 mt-1">{isAddingFile.type === 'pricing' ? 'Excel / CSV' : 'PDF'} up to 20MB</p>
+                  </>
+                )}
+              </label>
+            </div>
+            <Button onClick={handleFileUpload} className="w-full h-11 gradient-button" disabled={isUploading || !uploadFile}>
+              {isUploading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
+              {isUploading ? 'Uploading...' : 'Upload & Process'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

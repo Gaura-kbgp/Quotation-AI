@@ -1,11 +1,10 @@
-
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Factory, Plus, Search, MoreHorizontal, Edit, Trash2, Eye, Loader2, ChevronRight } from 'lucide-react';
+import { Factory, Plus, Search, MoreHorizontal, Trash2, Eye, Loader2, ChevronRight } from 'lucide-react';
 import { 
   Table, 
   TableBody, 
@@ -23,72 +22,78 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, deleteDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
+import { supabase } from '@/lib/supabase-client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ManufacturersPage() {
-  const { db } = useFirestore();
   const router = useRouter();
+  const { toast } = useToast();
+  const [manufacturers, setManufacturers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [newManufacturerName, setNewManufacturerName] = useState('');
 
-  const manufacturersQuery = useMemoFirebase(() => {
-    if (!db) return null;
-    return collection(db, 'manufacturers');
-  }, [db]);
+  const fetchManufacturers = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('manufacturers')
+      .select('*')
+      .order('name');
+    
+    if (error) {
+      toast({ variant: 'destructive', title: 'Error fetching data', description: error.message });
+    } else {
+      setManufacturers(data || []);
+    }
+    setLoading(false);
+  };
 
-  const { data: manufacturers, loading } = useCollection(manufacturersQuery);
+  useEffect(() => {
+    fetchManufacturers();
+  }, []);
 
-  const filteredManufacturers = manufacturers?.filter(m => 
+  const filteredManufacturers = manufacturers.filter(m => 
     m.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleAddManufacturer = () => {
-    if (!db || !newManufacturerName.trim()) return;
+  const handleAddManufacturer = async () => {
+    if (!newManufacturerName.trim()) return;
     
-    const manufacturerData = {
-      name: newManufacturerName,
-      status: 'Active',
-      createdAt: serverTimestamp(),
-    };
+    const { data, error } = await supabase
+      .from('manufacturers')
+      .insert([{ name: newManufacturerName, status: 'Active' }])
+      .select();
 
-    addDoc(collection(db, 'manufacturers'), manufacturerData)
-      .then(() => {
-        setNewManufacturerName('');
-        setIsAdding(false);
-      })
-      .catch(async (e) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: 'manufacturers',
-          operation: 'create',
-          requestResourceData: manufacturerData
-        }));
-      });
+    if (error) {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    } else {
+      setNewManufacturerName('');
+      setIsAdding(false);
+      fetchManufacturers();
+      toast({ title: 'Manufacturer added' });
+    }
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!db) return;
-    const docRef = doc(db, 'manufacturers', id);
-    deleteDoc(docRef).catch(async (e) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: docRef.path,
-        operation: 'delete'
-      }));
-    });
+    const { error } = await supabase.from('manufacturers').delete().eq('id', id);
+    if (error) {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    } else {
+      fetchManufacturers();
+      toast({ title: 'Manufacturer removed' });
+    }
   };
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 font-headline">Manufacturers</h1>
-          <p className="text-slate-500 mt-1">Manage manufacturer data and specification files.</p>
+          <h1 className="text-3xl font-bold text-slate-900">Manufacturers</h1>
+          <p className="text-slate-500 mt-1">Production data managed via Supabase.</p>
         </div>
         
         <Dialog open={isAdding} onOpenChange={setIsAdding}>
@@ -146,7 +151,7 @@ export default function ManufacturersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredManufacturers?.map((m: any) => (
+              {filteredManufacturers.map((m: any) => (
                 <TableRow 
                   key={m.id} 
                   className="border-slate-100 hover:bg-slate-50 cursor-pointer group"
@@ -169,7 +174,7 @@ export default function ManufacturersPage() {
                     </span>
                   </TableCell>
                   <TableCell className="text-slate-500">
-                    {m.createdAt?.toDate ? m.createdAt.toDate().toLocaleDateString() : 'N/A'}
+                    {m.created_at ? new Date(m.created_at).toLocaleDateString() : 'N/A'}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -197,10 +202,10 @@ export default function ManufacturersPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {(!filteredManufacturers || filteredManufacturers.length === 0) && (
+              {filteredManufacturers.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-12 text-slate-400">
-                    No manufacturers found. Click "Add Manufacturer" to begin.
+                    No manufacturers found.
                   </TableCell>
                 </TableRow>
               )}

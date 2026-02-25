@@ -1,12 +1,10 @@
-
 "use client";
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { useAuth } from '@/firebase';
+import { supabase } from '@/lib/supabase-client';
 import { createSession } from '../actions';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,7 +28,6 @@ const loginSchema = z.object({
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
-  const { auth } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -43,13 +40,20 @@ export function LoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof loginSchema>) {
-    if (!auth) return;
     setIsLoading(true);
     
     try {
-      await signInWithEmailAndPassword(auth, values.email, values.password);
-      await createSession();
-      router.push('/admin/dashboard');
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: values.email,
+        password: values.password,
+      });
+
+      if (error) throw error;
+
+      if (data.session) {
+        await createSession(data.session.access_token);
+        router.push('/admin/dashboard');
+      }
     } catch (error: any) {
       toast({
         variant: 'destructive',
