@@ -8,8 +8,8 @@ export const maxDuration = 120;
 /**
  * HIGH-PERFORMANCE MULTI-PAGE EXTRACTION ENGINE
  * 
- * 1. Regex-based multi-page parser (Instant)
- * 2. Gemini AI fallback (Slow) if text parsing fails
+ * 1. Fast Multi-Page Regex Parser (Preferred)
+ * 2. Gemini 2.5 Flash Fallback (If text parsing is insufficient)
  */
 export async function POST(req: Request) {
   try {
@@ -25,45 +25,50 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    console.log('[Analyzer] Starting Multi-Page Page Extraction...');
+    console.log('[Analyzer] Starting Multi-Page Extraction...');
     
-    // --- STEP 1: FAST TEXT PARSING ---
+    // --- STEP 1: FAST TEXT PARSING (MULTI-PAGE) ---
     let extractionResult = await extractCabinetsFromPdf(buffer);
     const totalFound = extractionResult.rooms.reduce((acc, r) => 
       acc + Object.values(r.sections).flat().length, 0
     );
 
-    // --- STEP 2: AI FALLBACK ---
+    // --- STEP 2: AI FALLBACK (If < 5 items found) ---
     if (totalFound < 5) {
-      console.log(`[Analyzer] Only ${totalFound} items found. Falling back to AI...`);
+      console.log(`[Analyzer] Only ${totalFound} items found via Regex. Falling back to AI...`);
       const dataUri = `data:application/pdf;base64,${buffer.toString('base64')}`;
-      const aiResult = await analyzeDrawing({ pdfDataUri: dataUri });
       
-      // Transform AI flat response to room-based sections for the Review UI
-      const aiRooms = aiResult.rooms.map(room => {
-        const sections: any = {
-          'Base Cabinets': [],
-          'Wall Cabinets': [],
-          'Tall Cabinets': [],
-          'Vanity Cabinets': [],
-          'Hardware': []
-        };
+      try {
+        const aiResult = await analyzeDrawing({ pdfDataUri: dataUri });
         
-        room.cabinets.forEach((c: any) => {
-          const type = c.type.includes('Base') ? 'Base Cabinets' :
-                       c.type.includes('Wall') ? 'Wall Cabinets' :
-                       c.type.includes('Tall') ? 'Tall Cabinets' :
-                       c.type.includes('Vanity') ? 'Vanity Cabinets' : 'Hardware';
-          sections[type].push({ ...c, type });
+        const aiRooms = aiResult.rooms.map(room => {
+          const sections: any = {
+            'Base Cabinets': [],
+            'Wall Cabinets': [],
+            'Tall Cabinets': [],
+            'Vanity Cabinets': [],
+            'Hardware': []
+          };
+          
+          room.cabinets.forEach((c: any) => {
+            const type = c.type.includes('Base') ? 'Base Cabinets' :
+                         c.type.includes('Wall') ? 'Wall Cabinets' :
+                         c.type.includes('Tall') ? 'Tall Cabinets' :
+                         c.type.includes('Vanity') ? 'Vanity Cabinets' : 'Hardware';
+            sections[type].push({ ...c, type });
+          });
+
+          return { room_name: room.room_name, room_type: room.room_type, sections };
         });
 
-        return { room_name: room.room_name, room_type: room.room_type, sections };
-      });
-
-      extractionResult = { rooms: aiRooms };
+        extractionResult = { rooms: aiRooms };
+      } catch (aiError) {
+        console.error('[Analyzer] AI Fallback failed:', aiError);
+        // Keep the (limited) regex result if AI also fails
+      }
     }
 
-    // --- STEP 3: STORAGE & DB ---
+    // --- STEP 3: PERSISTENCE ---
     const storagePath = `quotations/drawings/${crypto.randomUUID()}.pdf`;
     await supabase.storage.from('manufacturer-docs').upload(storagePath, buffer, { contentType: 'application/pdf' });
     const { data: { publicUrl } } = supabase.storage.from('manufacturer-docs').getPublicUrl(storagePath);
