@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview AI flow for analyzing architectural PDF drawings with strict title rules.
@@ -56,35 +55,18 @@ const prompt = ai.definePrompt({
   name: 'analyzeDrawingPrompt',
   input: { schema: AnalyzeDrawingInputSchema },
   output: { schema: FlatExtractionSchema },
-  prompt: `You are an expert architectural plan analyst specializing in cabinetry BOM extraction.
+  prompt: `You are an expert architectural plan analyst. 
   
-Analyze the provided PDF drawing. Your primary goal is to extract a Bill of Materials (BOM) for cabinetry, following these STRICT rules:
+Analyze the provided PDF drawing to extract a Bill of Materials (BOM) for cabinetry.
 
-### 1. ROOM TITLE EXTRACTION RULES
-- ONLY extract room titles from the MAIN HEADER BLOCK (usually top-left of each drawing page).
-- A valid room title MUST contain:
-  1. Builder Name (e.g., MI HOMES SARASOTA)
-  2. Project Name (e.g., 4031 MAGNOLIA)
-  3. Room Descriptor (e.g., STANDARD 42" KITCHEN, OWNERS BATH, BATH 2, OPT LAUNDRY)
-  4. Orientation (e.g., GARAGE RIGHT)
-- IGNORE footer shorthand/reference labels (e.g., "MIH 4031 MAGNOLIA STD 42 KITCHEN GR 1951").
-- DO NOT treat the following as room titles:
-  - HARDWARE, PERIMETER, BUMP, OPT CROWN, OPT LIGHT RAIL, TRIM LIST, INSTALLATION NOTE.
-- Pages labeled "Trim List" are continuation pages of the PREVIOUS room and MUST NOT create new room entries.
-
-### 2. ROOM CLASSIFICATION & LABELING
-- LAUNDRY pages MUST be labeled exactly: "OPT LAUNDRY – [ORIENTATION] – [MODEL]" (e.g., OPT LAUNDRY – GARAGE RIGHT – 1951).
-- HARDWARE items belong INSIDE the specific room they serve as a sub-section. 
-- NEVER classify standalone Hardware or Trim pages as new Kitchen/Bath rooms.
-
-### 3. CABINET EXTRACTION
-- Extract every cabinet code (normalized: remove spaces/hyphens) and its quantity.
-- Group items by the valid room title identified in Section 1.
-- Use professional judgment for standard architectural notation.
-
-### 4. NKBA VALIDATION
-- Apply NKBA (National Kitchen & Bath Association) logic to identify clearance or spacing issues.
-- Use provided NKBA Context if available: {{{nkbaContext}}}
+### RULES
+1. ROOM TITLES: Only extract titles from the MAIN HEADER BLOCK (top-left of each page).
+   - Valid titles MUST include Builder, Project, Room, and Orientation (e.g., MI HOMES - 4031 MAGNOLIA - KITCHEN - GR).
+   - Ignore small footer reference labels.
+2. CONTINUATION: Pages like "Trim List" are continuations of the previous room; do NOT create a new room entry.
+3. CABINETS: Extract every cabinet code (e.g., B24, W3612) and its quantity.
+4. HARDWARE: Group hardware items inside the room they serve.
+5. NKBA: Identify clearance issues or spacing anomalies.
 
 Drawing File: {{media url=pdfDataUri}}`,
 });
@@ -96,6 +78,7 @@ const analyzeDrawingFlow = ai.defineFlow(
     outputSchema: AnalyzeDrawingOutputSchema,
   },
   async (input) => {
+    // Call the AI with a strict timeout internal to the prompt if needed
     const { output } = await prompt(input);
     if (!output) throw new Error('AI failed to extract data from the drawing.');
 
