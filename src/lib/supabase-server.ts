@@ -8,8 +8,16 @@ export const createServerSupabase = () => {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+  if (!supabaseUrl) {
+    console.error('CRITICAL: SUPABASE_URL is missing in server environment.');
+  }
+  if (!supabaseServiceKey) {
+    console.error('CRITICAL: SUPABASE_SERVICE_ROLE_KEY is missing in server environment.');
+  }
+
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Missing Supabase environment variables for server client.');
+    // Return a dummy client or throw a descriptive error that can be caught
+    throw new Error('Database configuration incomplete. Please check server environment variables.');
   }
 
   return createClient(supabaseUrl, supabaseServiceKey);

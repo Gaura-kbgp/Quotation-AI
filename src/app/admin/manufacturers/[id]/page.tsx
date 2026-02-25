@@ -7,14 +7,15 @@ import Link from 'next/link';
 
 export default async function ManufacturerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = createServerSupabase();
-
+  
   let manufacturer = null;
   let files: any[] = [];
   let specsSummary = null;
   let error: string | null = null;
 
   try {
+    const supabase = createServerSupabase();
+    
     const [mRes, fRes, sRes] = await Promise.all([
       supabase.from('manufacturers').select('*').eq('id', id).single(),
       supabase.from('manufacturer_files').select('*').eq('manufacturer_id', id).order('created_at', { ascending: false }),
@@ -36,7 +37,7 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
       };
     }
   } catch (err: any) {
-    console.error('Manufacturer Detail Fetch Error:', err.message);
+    console.error(`Manufacturer Detail Page Error [${id}]:`, err.message);
     error = err.message;
   }
 
@@ -51,11 +52,19 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
         </Link>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle className="font-bold">Fetch Error</AlertTitle>
+          <AlertTitle className="font-bold">System Connection Error</AlertTitle>
           <AlertDescription className="mt-2 text-red-700 leading-relaxed">
-            Could not load manufacturer data from the server. {error}
+            The server encountered an error while loading this manufacturer: {error}
           </AlertDescription>
         </Alert>
+        <div className="flex justify-center pt-4">
+          <Link href={`/admin/manufacturers/${id}`}>
+            <Button className="gradient-button px-8">
+              <RefreshCcw className="w-4 h-4 mr-2" />
+              Try Again
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -64,8 +73,9 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
     return (
       <div className="p-20 text-center">
         <h2 className="text-2xl font-bold text-slate-900">Manufacturer not found</h2>
+        <p className="text-slate-500 mt-2">The requested ID does not exist in our database.</p>
         <Link href="/admin/manufacturers">
-           <Button variant="outline" className="mt-4">Return to List</Button>
+           <Button variant="outline" className="mt-6">Return to List</Button>
         </Link>
       </div>
     );
