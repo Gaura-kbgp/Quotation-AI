@@ -83,7 +83,33 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
-  // Initialize rooms from extracted_data
+  const fetchManConfig = useCallback(async (id: string) => {
+    if (!id) return;
+    
+    console.log(`[UI] Fetching config for brand ID: ${id}`);
+    setIsLoadingConfig(true);
+    
+    try {
+      const res = await fetch(`/api/manufacturer-config?id=${id}`);
+      const data = await res.json();
+      
+      if (data.error) throw new Error(data.error);
+      
+      console.log(`[UI] Received config:`, data);
+      setManConfig(data);
+    } catch (err: any) {
+      console.error(`[UI] Fetch Error:`, err);
+      toast({ 
+        variant: 'destructive', 
+        title: 'Config Error', 
+        description: 'Failed to load brand specifications.' 
+      });
+    } finally {
+      setIsLoadingConfig(false);
+    }
+  }, [toast]);
+
+  // Initialize rooms and fetch existing config on mount
   useEffect(() => {
     if (project.extracted_data?.rooms) {
       const initialRooms = project.extracted_data.rooms.map((r: any) => {
@@ -106,7 +132,12 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       });
       setRooms(initialRooms);
     }
-  }, [project]);
+
+    // Auto-fetch config if manufacturer is already selected
+    if (project.manufacturer_id) {
+      fetchManConfig(project.manufacturer_id);
+    }
+  }, [project, fetchManConfig]);
 
   function classifyCabinet(code: string): string {
     const c = code.toUpperCase();
@@ -179,29 +210,9 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     }]);
   };
 
-  const fetchManConfig = async (id: string) => {
-    console.log(`[UI] Fetching config for brand ID: ${id}`);
+  const handleSelectManufacturer = (id: string) => {
     setSelectedManId(id);
-    setIsLoadingConfig(true);
-    
-    try {
-      const res = await fetch(`/api/manufacturer-config?id=${id}`);
-      const data = await res.json();
-      
-      if (data.error) throw new Error(data.error);
-      
-      console.log(`[UI] Received config:`, data);
-      setManConfig(data);
-    } catch (err: any) {
-      console.error(`[UI] Fetch Error:`, err);
-      toast({ 
-        variant: 'destructive', 
-        title: 'Config Error', 
-        description: 'Failed to load brand specifications.' 
-      });
-    } finally {
-      setIsLoadingConfig(false);
-    }
+    fetchManConfig(id);
   };
 
   const handleFinalize = async () => {
@@ -428,7 +439,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
              manufacturers.map(m => (
                <button 
                  key={m.id}
-                 onClick={() => fetchManConfig(m.id)}
+                 onClick={() => handleSelectManufacturer(m.id)}
                  className={cn(
                    "p-6 rounded-3xl border text-left transition-all duration-300 flex items-center justify-between group",
                    selectedManId === m.id 
@@ -481,12 +492,16 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         <Card className="rounded-3xl border-slate-100 shadow-xl overflow-hidden p-8 space-y-6">
            <div className="space-y-2">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Collection</label>
-              <Select onValueChange={(v) => setSelection(prev => ({ ...prev, collection: v }))} defaultValue={selection.collection}>
+              <Select 
+                onValueChange={(v) => setSelection(prev => ({ ...prev, collection: v }))} 
+                defaultValue={selection.collection}
+                disabled={isLoadingConfig}
+              >
                 <SelectTrigger className="h-14 rounded-2xl border-slate-200 text-lg font-bold">
                   <SelectValue placeholder={isLoadingConfig ? "Loading Collections..." : "Select Collection"} />
                 </SelectTrigger>
                 <SelectContent className="rounded-2xl border-slate-200 bg-white">
-                   {manConfig.collections.length === 0 ? (
+                   {!isLoadingConfig && manConfig.collections.length === 0 ? (
                      <div className="p-4 text-xs text-slate-400 text-center">No collections found.</div>
                    ) : (
                      manConfig.collections.map((c: string) => (
@@ -499,12 +514,16 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
            <div className="space-y-2">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Door Style</label>
-              <Select onValueChange={(v) => setSelection(prev => ({ ...prev, doorStyle: v }))} defaultValue={selection.doorStyle}>
+              <Select 
+                onValueChange={(v) => setSelection(prev => ({ ...prev, doorStyle: v }))} 
+                defaultValue={selection.doorStyle}
+                disabled={isLoadingConfig || !selection.collection}
+              >
                 <SelectTrigger className="h-14 rounded-2xl border-slate-200 text-lg font-bold">
                   <SelectValue placeholder={isLoadingConfig ? "Loading Styles..." : "Select Style"} />
                 </SelectTrigger>
                 <SelectContent className="rounded-2xl border-slate-200 bg-white">
-                   {manConfig.styles.length === 0 ? (
+                   {!isLoadingConfig && manConfig.styles.length === 0 ? (
                      <div className="p-4 text-xs text-slate-400 text-center">No styles found.</div>
                    ) : (
                      manConfig.styles.map((s: string) => (
