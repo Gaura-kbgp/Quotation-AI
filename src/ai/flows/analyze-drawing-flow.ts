@@ -1,7 +1,8 @@
+
 'use server';
 /**
  * @fileOverview AI flow for analyzing architectural PDF drawings.
- * Optimized for speed and minimal nesting depth.
+ * Optimized for Gemini 2.5 Flash as requested.
  */
 
 import { ai } from '@/ai/genkit';
@@ -21,7 +22,6 @@ const RoomSchema = z.object({
 
 const AnalyzeDrawingOutputSchema = z.object({
   rooms: z.array(RoomSchema),
-  nkba_flags: z.array(z.string()).describe('Rule violations found.'),
   summary: z.string().describe('Professional extraction summary.'),
 });
 
@@ -33,7 +33,6 @@ const FlatExtractionSchema = z.object({
     qty: z.number(),
     type: z.string()
   })),
-  nkba_flags: z.array(z.string()),
   summary: z.string()
 });
 
@@ -51,6 +50,9 @@ const prompt = ai.definePrompt({
   name: 'analyzeDrawingPrompt',
   input: { schema: AnalyzeDrawingInputSchema },
   output: { schema: FlatExtractionSchema },
+  config: {
+    model: 'googleai/gemini-2.5-flash',
+  },
   prompt: `Extract cabinet BOM from this architectural drawing.
   
 RULES:
@@ -83,7 +85,6 @@ const analyzeDrawingFlow = ai.defineFlow(
 
     return {
       rooms: Array.from(roomsMap.values()),
-      nkba_flags: output.nkba_flags,
       summary: output.summary
     };
   }
