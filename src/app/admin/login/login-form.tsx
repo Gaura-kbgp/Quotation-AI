@@ -1,10 +1,13 @@
+
 "use client";
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { login } from '../actions';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useAuth } from '@/firebase';
+import { createSession } from '../actions';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -18,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -26,7 +30,9 @@ const loginSchema = z.object({
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
+  const { auth } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -37,14 +43,18 @@ export function LoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof loginSchema>) {
+    if (!auth) return;
     setIsLoading(true);
-    const result = await login(values.email, values.password);
     
-    if (result?.error) {
+    try {
+      await signInWithEmailAndPassword(auth, values.email, values.password);
+      await createSession();
+      router.push('/admin/dashboard');
+    } catch (error: any) {
       toast({
         variant: 'destructive',
         title: 'Authentication Failed',
-        description: result.error,
+        description: error.message || "Invalid credentials.",
       });
       setIsLoading(false);
     }
@@ -57,7 +67,7 @@ export function LoginForm() {
           <ShieldAlert className="w-8 h-8 text-sky-600" />
         </div>
         <CardTitle className="text-2xl font-bold text-slate-900">Admin Portal</CardTitle>
-        <CardDescription className="text-slate-500">Enter your credentials to access the management system</CardDescription>
+        <CardDescription className="text-slate-500">Authorized Personnel Only</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>

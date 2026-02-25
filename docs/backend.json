@@ -1,0 +1,59 @@
+
+{
+  "entities": {
+    "Manufacturer": {
+      "title": "Manufacturer",
+      "description": "Details of a product manufacturer",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Pending", "Inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" }
+      },
+      "required": ["name", "status"]
+    },
+    "PricingSheet": {
+      "title": "Pricing Sheet",
+      "description": "A spreadsheet containing pricing data",
+      "type": "object",
+      "properties": {
+        "fileName": { "type": "string" },
+        "url": { "type": "string" },
+        "uploadedAt": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["XLSX", "CSV", "GSheet"] }
+      },
+      "required": ["fileName", "url"]
+    },
+    "NkbaRule": {
+      "title": "NKBA Rule Document",
+      "description": "Official NKBA standards document",
+      "type": "object",
+      "properties": {
+        "version": { "type": "string" },
+        "fileName": { "type": "string" },
+        "url": { "type": "string" },
+        "uploadedAt": { "type": "string", "format": "date-time" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["version", "fileName", "url"]
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "/manufacturers/{manufacturerId}": {
+      "schema": "Manufacturer",
+      "description": "Collection of kitchen/bath manufacturers"
+    },
+    "/manufacturers/{manufacturerId}/pricingSheets/{sheetId}": {
+      "schema": "PricingSheet",
+      "description": "Pricing configuration sheets"
+    },
+    "/nkba_rules/{ruleId}": {
+      "schema": "NkbaRule",
+      "description": "Uploaded NKBA rule documents"
+    }
+  }
+}
