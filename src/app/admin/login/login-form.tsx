@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { supabaseClient } from '@/lib/supabase-client';
 import { createSession } from '../actions';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,29 +42,27 @@ export function LoginForm() {
     setIsLoading(true);
     
     try {
-      const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email: values.email,
-        password: values.password,
-      });
-
-      if (error) throw error;
-
-      if (data.session) {
-        await createSession(data.session.access_token);
+      // Hardcoded credentials check as requested
+      if (values.email === 'admin@kabs.com' && values.password === 'admin123') {
+        await createSession('kabs_fixed_admin_session_token');
+        
+        toast({
+          title: 'Access Granted',
+          description: 'Welcome back, Administrator.',
+        });
+        
         router.push('/admin/dashboard');
+        return;
       }
+
+      throw new Error("Invalid credentials. Please use the authorized administrator account.");
     } catch (error: any) {
       console.error('Login Error:', error);
-      let message = error.message || "Invalid credentials.";
       
-      if (message.includes('Failed to fetch')) {
-        message = "Connection Timeout: Unable to reach the Supabase auth service. Please check your internet connection or verify the project status.";
-      }
-
       toast({
         variant: 'destructive',
         title: 'Authentication Failed',
-        description: message,
+        description: error.message,
       });
       setIsLoading(false);
     }
