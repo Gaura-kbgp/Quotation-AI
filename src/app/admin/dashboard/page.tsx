@@ -1,76 +1,57 @@
-"use client";
-
-import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Factory, BookOpen, Database, Quote, Loader2, AlertCircle, RefreshCcw } from 'lucide-react';
-import { supabaseClient } from '@/lib/supabase-client';
+import { Factory, BookOpen, Database, Quote, RefreshCcw, AlertCircle } from 'lucide-react';
+import { createServerSupabase } from '@/lib/supabase-server';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
-export default function AdminDashboardPage() {
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default async function AdminDashboardPage() {
+  const supabase = createServerSupabase();
+  
+  let stats = {
+    manufacturers: 0,
+    specifications: 0,
+    files: 0,
+    status: 'Live'
+  };
+  
+  let error: string | null = null;
 
-  const fetchStats = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [mRes, sRes, fRes] = await Promise.all([
-        supabaseClient.from('manufacturers').select('*', { count: 'exact', head: true }),
-        supabaseClient.from('manufacturer_specifications').select('*', { count: 'exact', head: true }),
-        supabaseClient.from('manufacturer_files').select('*', { count: 'exact', head: true }),
-      ]);
+  try {
+    const [mRes, sRes, fRes] = await Promise.all([
+      supabase.from('manufacturers').select('*', { count: 'exact', head: true }),
+      supabase.from('manufacturer_specifications').select('*', { count: 'exact', head: true }),
+      supabase.from('manufacturer_files').select('*', { count: 'exact', head: true }),
+    ]);
 
-      if (mRes.error) throw new Error(mRes.error.message);
-      if (sRes.error) throw new Error(sRes.error.message);
-      if (fRes.error) throw new Error(fRes.error.message);
+    if (mRes.error) throw new Error(mRes.error.message);
+    if (sRes.error) throw new Error(sRes.error.message);
+    if (fRes.error) throw new Error(fRes.error.message);
 
-      setStats({
-        manufacturers: mRes.count || 0,
-        specifications: sRes.count || 0,
-        files: fRes.count || 0,
-        status: 'Live'
-      });
-    } catch (err: any) {
-      console.error('Dashboard Stats Fetch Error:', err.message, err);
-      let message = err.message || 'An unexpected error occurred';
-      
-      if (message.includes('Failed to fetch') || message.includes('fetch')) {
-        message = 'Connection Timeout: The browser could not reach Supabase. Please verify your internet connection or check if the Supabase project is active.';
-      }
-      
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
-
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center p-20 space-y-4">
-      <Loader2 className="animate-spin text-sky-500 w-8 h-8" />
-      <p className="text-slate-500 font-medium">Updating system metrics...</p>
-    </div>
-  );
+    stats.manufacturers = mRes.count || 0;
+    stats.specifications = sRes.count || 0;
+    stats.files = fRes.count || 0;
+  } catch (err: any) {
+    console.error('Server-side Stats Fetch Error:', err.message);
+    error = err.message;
+  }
 
   if (error) return (
     <div className="p-8 max-w-2xl mx-auto space-y-6">
-      <Alert variant="destructive" className="bg-red-50 border-red-200">
+      <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle className="font-bold">Database Sync Error</AlertTitle>
+        <AlertTitle className="font-bold">System Connection Error</AlertTitle>
         <AlertDescription className="mt-2 text-red-700 leading-relaxed">
-          {error}
+          The server could not connect to the database. Error: {error}
         </AlertDescription>
       </Alert>
       <div className="flex justify-center">
-        <Button onClick={fetchStats} className="gradient-button px-8">
-          <RefreshCcw className="w-4 h-4 mr-2" />
-          Retry Connection
-        </Button>
+        <Link href="/admin/dashboard">
+          <Button className="gradient-button px-8">
+            <RefreshCcw className="w-4 h-4 mr-2" />
+            Retry Connection
+          </Button>
+        </Link>
       </div>
     </div>
   );
@@ -89,15 +70,17 @@ export default function AdminDashboardPage() {
           <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
           <p className="text-slate-500 mt-1">Real-time overview of the quotation platform infrastructure.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchStats} className="text-slate-500">
-          <RefreshCcw className="w-3.5 h-3.5 mr-2" />
-          Refresh
-        </Button>
+        <Link href="/admin/dashboard">
+          <Button variant="outline" size="sm" className="text-slate-500">
+            <RefreshCcw className="w-3.5 h-3.5 mr-2" />
+            Refresh
+          </Button>
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {cards.map((stat) => (
-          <Card key={stat.name} className="glass-card border-slate-200">
+          <Card key={stat.name} className="glass-card border-slate-200 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium text-slate-500">{stat.name}</CardTitle>
               <div className={`${stat.bg} p-2 rounded-lg`}>
