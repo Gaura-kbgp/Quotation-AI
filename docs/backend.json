@@ -29,15 +29,15 @@
     },
     "ManufacturerSpecification": {
       "title": "Manufacturer Specification",
-      "description": "Extracted cabinet specifications",
+      "description": "Extracted cabinet specifications including SKUs and pricing",
       "type": "object",
       "properties": {
         "id": { "type": "string", "format": "uuid" },
         "manufacturer_id": { "type": "string", "format": "uuid" },
         "collection_name": { "type": "string" },
         "door_style": { "type": "string" },
-        "finish": { "type": "string" },
-        "category": { "type": "string" },
+        "sku": { "type": "string" },
+        "price": { "type": "number" },
         "raw_source_file_id": { "type": "string", "format": "uuid" },
         "created_at": { "type": "string", "format": "date-time" }
       }
@@ -51,7 +51,6 @@
         "version": { "type": "string" },
         "file_name": { "type": "string" },
         "file_url": { "type": "string" },
-        "is_active": { "type": "boolean" },
         "created_at": { "type": "string", "format": "date-time" }
       }
     }
@@ -63,6 +62,6 @@
     "/manufacturers/{id}": { "schema": "Manufacturer" },
     "/manufacturer_files/{id}": { "schema": "ManufacturerFile" },
     "/manufacturer_specifications/{id}": { "schema": "ManufacturerSpecification" },
-    "/nkba_rules/{id}": { "schema": "NkbaRule" }
+    "/nkba_files/{id}": { "schema": "NkbaRule" }
   }
 }

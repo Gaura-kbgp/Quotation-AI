@@ -20,7 +20,7 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
     const [mRes, fRes, sRes] = await Promise.all([
       supabase.from('manufacturers').select('*').eq('id', id).single(),
       supabase.from('manufacturer_files').select('*').eq('manufacturer_id', id).order('created_at', { ascending: false }),
-      supabase.from('manufacturer_specifications').select('collection_name, door_style').eq('manufacturer_id', id)
+      supabase.from('manufacturer_specifications').select('collection_name, door_style, sku').eq('manufacturer_id', id)
     ]);
 
     if (mRes.error) throw new Error(mRes.error.message);
@@ -31,10 +31,13 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
     if (sRes.data) {
       const collections = new Set(sRes.data.map(s => s.collection_name));
       const styles = new Set(sRes.data.map(s => s.door_style));
+      const skus = new Set(sRes.data.map(s => s.sku));
+      
       specsSummary = {
         collections: collections.size,
         styles: styles.size,
-        count: sRes.data.length
+        skuCount: skus.size,
+        totalRows: sRes.data.length
       };
     }
   } catch (err: any) {

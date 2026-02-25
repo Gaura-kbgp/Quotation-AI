@@ -15,7 +15,8 @@ import {
   FileUp, 
   UploadCloud,
   CheckCircle2,
-  Database
+  Database,
+  Hash
 } from 'lucide-react';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -71,7 +72,7 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
         toast({ 
           title: 'Success', 
           description: result.count 
-            ? `Extracted ${result.count} specifications from ${result.fileName}` 
+            ? `Extracted ${result.count} pricing points from ${result.fileName}` 
             : `${result.fileName} uploaded successfully.` 
         });
         setIsAddingFile({ open: false, type: null });
@@ -213,18 +214,32 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <p className="text-2xl font-bold text-slate-900">{specsSummary?.collections || 0}</p>
-                  <p className="text-xs text-slate-500 uppercase font-semibold">Collections</p>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase font-semibold">Collections</p>
+                    <p className="text-2xl font-bold text-slate-900">{specsSummary?.collections || 0}</p>
+                  </div>
+                  <Database className="w-6 h-6 text-sky-200" />
                 </div>
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <p className="text-2xl font-bold text-slate-900">{specsSummary?.styles || 0}</p>
-                  <p className="text-xs text-slate-500 uppercase font-semibold">Door Styles</p>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase font-semibold">Door Styles</p>
+                    <p className="text-2xl font-bold text-slate-900">{specsSummary?.styles || 0}</p>
+                  </div>
+                  <TableIcon className="w-6 h-6 text-emerald-200" />
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase font-semibold">Active SKUs</p>
+                    <p className="text-2xl font-bold text-slate-900">{specsSummary?.skuCount || 0}</p>
+                  </div>
+                  <Hash className="w-6 h-6 text-purple-200" />
                 </div>
               </div>
               <div className="p-4 rounded-xl bg-sky-50 border border-sky-100">
-                <p className="text-sm text-sky-700 font-medium">{specsSummary?.count || 0} normalized rows stored.</p>
+                <p className="text-[10px] text-sky-600 uppercase font-bold tracking-widest mb-1">Normalized Capacity</p>
+                <p className="text-sm text-sky-700 font-medium">{specsSummary?.totalRows || 0} pricing records stored.</p>
               </div>
             </CardContent>
           </Card>
