@@ -28,8 +28,8 @@ export function AdminSidebar() {
             <span className="font-bold text-white text-xl">K</span>
           </div>
           <div>
-            <h1 className="font-bold text-slate-100 leading-tight">KABS</h1>
-            <p className="text-[10px] text-sky-500 uppercase tracking-[0.2em] font-bold">Quotation AI</p>
+            <h1 className="font-bold text-slate-900 leading-tight">KABS</h1>
+            <p className="text-[10px] text-sky-600 uppercase tracking-[0.2em] font-bold">Quotation AI</p>
           </div>
         </div>
       </div>
@@ -44,12 +44,12 @@ export function AdminSidebar() {
               className={cn(
                 "group flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200",
                 isActive 
-                  ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" 
-                  : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
+                  ? "bg-sky-50 text-sky-600 border border-sky-100" 
+                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
               )}
             >
               <div className="flex items-center gap-3">
-                <item.icon className={cn("w-5 h-5", isActive ? "text-sky-400" : "text-slate-500 group-hover:text-slate-300")} />
+                <item.icon className={cn("w-5 h-5", isActive ? "text-sky-600" : "text-slate-400 group-hover:text-slate-600")} />
                 <span className="font-medium">{item.name}</span>
               </div>
               {isActive && <ChevronRight className="w-4 h-4 text-sky-500" />}
@@ -58,12 +58,12 @@ export function AdminSidebar() {
         })}
       </nav>
 
-      <div className="p-6 border-t border-slate-800/50">
+      <div className="p-6 border-t border-slate-200">
         <Link 
           href="/admin/settings" 
-          className="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-all duration-200"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200"
         >
-          <Settings className="w-5 h-5 text-slate-500" />
+          <Settings className="w-5 h-5 text-slate-400" />
           <span className="font-medium">Settings</span>
         </Link>
       </div>

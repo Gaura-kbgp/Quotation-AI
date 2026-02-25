@@ -4,24 +4,24 @@
 
 @layer base {
   :root {
-    --background: 222.2 47.4% 11.2%; /* #0f172a */
-    --foreground: 210 40% 98%;
-    --card: 222.2 47.4% 11.2%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 47.4% 11.2%;
-    --popover-foreground: 210 40% 98%;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
     --primary: 199 89% 48%; /* Sky Blue #05ACFE */
     --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
     --accent: 180 67% 62%; /* #60DBDB Cyan-Teal */
     --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
     --ring: 199 89% 48%;
     --radius: 0.75rem;
   }
@@ -33,18 +33,17 @@
   }
   body {
     @apply bg-background text-foreground font-body antialiased;
-    background-color: #0f172a;
   }
 }
 
 .glass-card {
-  @apply bg-slate-900/40 backdrop-blur-md border border-slate-800 shadow-xl;
+  @apply bg-white/80 backdrop-blur-md border border-slate-200 shadow-xl;
 }
 
 .gradient-button {
-  @apply bg-gradient-to-r from-sky-400 to-sky-600 text-white font-semibold transition-all duration-300 hover:scale-105 hover:shadow-[0_0_20px_rgba(56,189,248,0.5)] active:scale-95 rounded-xl;
+  @apply bg-gradient-to-r from-sky-500 to-sky-600 text-white font-semibold transition-all duration-300 hover:scale-105 hover:shadow-[0_10px_20px_rgba(14,165,233,0.3)] active:scale-95 rounded-xl;
 }
 
 .admin-sidebar {
-  @apply bg-slate-950/50 backdrop-blur-xl border-r border-slate-800;
+  @apply bg-slate-50/80 backdrop-blur-xl border-r border-slate-200;
 }

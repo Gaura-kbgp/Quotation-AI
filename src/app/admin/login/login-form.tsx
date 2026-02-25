@@ -51,13 +51,13 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-md glass-card border-slate-800">
+    <Card className="w-full max-w-md glass-card border-slate-200">
       <CardHeader className="space-y-1 text-center">
-        <div className="mx-auto bg-sky-500/10 p-3 rounded-full w-fit mb-4">
-          <ShieldAlert className="w-8 h-8 text-sky-500" />
+        <div className="mx-auto bg-sky-50 p-3 rounded-full w-fit mb-4">
+          <ShieldAlert className="w-8 h-8 text-sky-600" />
         </div>
-        <CardTitle className="text-2xl font-bold">Admin Portal</CardTitle>
-        <CardDescription>Enter your credentials to access the management system</CardDescription>
+        <CardTitle className="text-2xl font-bold text-slate-900">Admin Portal</CardTitle>
+        <CardDescription className="text-slate-500">Enter your credentials to access the management system</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -67,12 +67,12 @@ export function LoginForm() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel className="text-slate-700">Email</FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="admin@kabs.com" 
                       {...field} 
-                      className="bg-slate-900/50 border-slate-700"
+                      className="bg-white border-slate-200"
                     />
                   </FormControl>
                   <FormMessage />
@@ -84,13 +84,13 @@ export function LoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel className="text-slate-700">Password</FormLabel>
                   <FormControl>
                     <Input 
                       type="password" 
                       placeholder="••••••••" 
                       {...field} 
-                      className="bg-slate-900/50 border-slate-700"
+                      className="bg-white border-slate-200"
                     />
                   </FormControl>
                   <FormMessage />
