@@ -185,7 +185,7 @@ export function ManufacturersList({ initialManufacturers }: { initialManufacture
                           Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
-                    </サイクル>
+                    </DropdownMenu>
                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-sky-500 transition-colors" />
                   </div>
                 </TableCell>

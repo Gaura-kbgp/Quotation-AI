@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
 /**
- * Standard Client-side Supabase client for Browser components.
- * This client is used in 'use client' components for interactive features.
+ * Client-side Supabase client for interactive components.
+ * Strictly uses public anon key for security.
  */
-export const supabaseClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+export const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
