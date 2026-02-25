@@ -36,12 +36,15 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       }
     }
 
-    // PRODUCTION VALIDATION
+    // PRODUCTION VALIDATION: If we find zero or too many, something is wrong
+    if (collections.length === 0) {
+      console.warn(`No collections detected in sheet: ${sheetName}`);
+    }
     if (collections.length > 50) {
       throw new Error(`Incorrect header detection: Found ${collections.length} potential collections. Please check file format.`);
     }
 
-    // Scan row 3 for Door Styles (often rotated headers)
+    // Scan row 3 (Index 3) for Door Styles (often rotated headers)
     const doorStyleRow = data[3] || [];
     for (let c = 1; c < doorStyleRow.length; c++) {
       const val = String(doorStyleRow[c] || '').trim();
@@ -54,6 +57,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     let skuStartRow = -1;
     for (let i = 0; i < data.length; i++) {
       const firstCell = String(data[i][0] || '').toUpperCase();
+      // Look for common headers or markers
       if (firstCell.includes('STANDARD WALL CABINETS') || firstCell.includes('SKU') || firstCell.includes('CODE')) {
         skuStartRow = i + 1;
         break;
@@ -70,7 +74,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
       const rawSku = String(row[0]).trim();
       
-      // Filter valid SKU codes using standard regex
+      // Filter valid SKU codes
       if (!skuRegex.test(rawSku) || rawSku.length < 2 || rawSku.length > 25) continue;
       
       // Map valid SKU to each detected collection column
@@ -94,5 +98,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   });
 
+  console.log(`Parsed ${specs.length} specification records for Manufacturer: ${manufacturerId}`);
   return specs;
 }

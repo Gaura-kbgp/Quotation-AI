@@ -71,7 +71,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   // Data State
   const [rooms, setRooms] = useState<any[]>([]);
   const [selectedManId, setSelectedManId] = useState<string>(project.manufacturer_id || '');
-  const [manConfig, setManConfig] = useState<any>({ collections: [], styles: [] });
+  const [manConfig, setManConfig] = useState<{ collections: string[], styles: string[] }>({ collections: [], styles: [] });
   const [selection, setSelection] = useState({
     collection: project.selected_collection || '',
     doorStyle: project.selected_door_style || '',
@@ -81,15 +81,14 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
   // Initialize rooms from extracted_data
   useEffect(() => {
     if (project.extracted_data?.rooms) {
-      // Convert Phase 2 nested structure to the new Section-based structure if needed
       const initialRooms = project.extracted_data.rooms.map((r: any) => {
         if (r.sections) return r;
         
-        // Migrate old flat cabinets to sections
         const sections: any = {
           'Base Cabinets': [],
           'Wall Cabinets': [],
@@ -129,7 +128,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     setIsSaving(false);
   }, [project.id, toast]);
 
-  // Debounced Auto-save
   useEffect(() => {
     const timer = setTimeout(() => {
       if (rooms.length > 0) saveProject(rooms);
@@ -137,7 +135,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     return () => clearTimeout(timer);
   }, [rooms, saveProject]);
 
-  // Handlers
   const handleUpdateCabinet = (roomIdx: number, sectionKey: string, cabIdx: number, updates: Partial<Cabinet>) => {
     const newRooms = [...rooms];
     const cab = newRooms[roomIdx].sections[sectionKey][cabIdx];
@@ -183,10 +180,28 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   };
 
   const fetchManConfig = async (id: string) => {
+    console.log(`[UI] Fetching config for brand ID: ${id}`);
     setSelectedManId(id);
-    const res = await fetch(`/api/manufacturer-config?id=${id}`);
-    const data = await res.json();
-    setManConfig(data);
+    setIsLoadingConfig(true);
+    
+    try {
+      const res = await fetch(`/api/manufacturer-config?id=${id}`);
+      const data = await res.json();
+      
+      if (data.error) throw new Error(data.error);
+      
+      console.log(`[UI] Received config:`, data);
+      setManConfig(data);
+    } catch (err: any) {
+      console.error(`[UI] Fetch Error:`, err);
+      toast({ 
+        variant: 'destructive', 
+        title: 'Config Error', 
+        description: 'Failed to load brand specifications.' 
+      });
+    } finally {
+      setIsLoadingConfig(false);
+    }
   };
 
   const handleFinalize = async () => {
@@ -344,7 +359,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
           ))}
         </div>
 
-        {/* Sidebar Summary */}
         <div className="space-y-6">
           <Card className="sticky top-28 border-slate-100 shadow-xl rounded-3xl overflow-hidden">
             <CardHeader className="bg-slate-50/50 border-b border-slate-100">
@@ -406,29 +420,35 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         </div>
 
         <div className="grid grid-cols-1 gap-4">
-           {manufacturers.map(m => (
-             <button 
-               key={m.id}
-               onClick={() => fetchManConfig(m.id)}
-               className={cn(
-                 "p-6 rounded-3xl border text-left transition-all duration-300 flex items-center justify-between group",
-                 selectedManId === m.id 
-                   ? "border-sky-500 bg-sky-50/50 ring-4 ring-sky-500/10" 
-                   : "border-slate-100 hover:border-sky-200 hover:bg-white bg-slate-50/30"
-               )}
-             >
-                <div className="flex items-center gap-4">
-                   <div className={cn(
-                     "w-12 h-12 rounded-2xl flex items-center justify-center transition-colors",
-                     selectedManId === m.id ? "bg-sky-600 text-white" : "bg-white text-slate-400 group-hover:text-sky-600"
-                   )}>
-                      <Factory className="w-6 h-6" />
-                   </div>
-                   <span className="text-xl font-bold text-slate-900">{m.name}</span>
-                </div>
-                {selectedManId === m.id && <CheckCircle2 className="w-6 h-6 text-sky-600" />}
-             </button>
-           ))}
+           {manufacturers.length === 0 ? (
+             <div className="p-12 text-center text-slate-400 border border-dashed rounded-3xl">
+                No active manufacturers found in system.
+             </div>
+           ) : (
+             manufacturers.map(m => (
+               <button 
+                 key={m.id}
+                 onClick={() => fetchManConfig(m.id)}
+                 className={cn(
+                   "p-6 rounded-3xl border text-left transition-all duration-300 flex items-center justify-between group",
+                   selectedManId === m.id 
+                     ? "border-sky-500 bg-sky-50/50 ring-4 ring-sky-500/10" 
+                     : "border-slate-100 hover:border-sky-200 hover:bg-white bg-slate-50/30"
+                 )}
+               >
+                  <div className="flex items-center gap-4">
+                     <div className={cn(
+                       "w-12 h-12 rounded-2xl flex items-center justify-center transition-colors",
+                       selectedManId === m.id ? "bg-sky-600 text-white" : "bg-white text-slate-400 group-hover:text-sky-600"
+                     )}>
+                        <Factory className="w-6 h-6" />
+                     </div>
+                     <span className="text-xl font-bold text-slate-900">{m.name}</span>
+                  </div>
+                  {selectedManId === m.id && <CheckCircle2 className="w-6 h-6 text-sky-600" />}
+               </button>
+             ))
+           )}
         </div>
 
         <div className="flex gap-4">
@@ -437,10 +457,10 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
            </Button>
            <Button 
              className="h-14 flex-1 rounded-2xl gradient-button" 
-             disabled={!selectedManId}
+             disabled={!selectedManId || isLoadingConfig}
              onClick={() => setStep('specifications')}
            >
-              Continue
+              {isLoadingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Continue'}
            </Button>
         </div>
       </div>
@@ -463,12 +483,16 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Collection</label>
               <Select onValueChange={(v) => setSelection(prev => ({ ...prev, collection: v }))} defaultValue={selection.collection}>
                 <SelectTrigger className="h-14 rounded-2xl border-slate-200 text-lg font-bold">
-                  <SelectValue placeholder="Select Collection" />
+                  <SelectValue placeholder={isLoadingConfig ? "Loading Collections..." : "Select Collection"} />
                 </SelectTrigger>
                 <SelectContent className="rounded-2xl border-slate-200 bg-white">
-                   {manConfig.collections?.map((c: string) => (
-                     <SelectItem key={c} value={c} className="rounded-xl py-3 font-medium">{c}</SelectItem>
-                   ))}
+                   {manConfig.collections.length === 0 ? (
+                     <div className="p-4 text-xs text-slate-400 text-center">No collections found.</div>
+                   ) : (
+                     manConfig.collections.map((c: string) => (
+                       <SelectItem key={c} value={c} className="rounded-xl py-3 font-medium">{c}</SelectItem>
+                     ))
+                   )}
                 </SelectContent>
               </Select>
            </div>
@@ -477,12 +501,16 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Door Style</label>
               <Select onValueChange={(v) => setSelection(prev => ({ ...prev, doorStyle: v }))} defaultValue={selection.doorStyle}>
                 <SelectTrigger className="h-14 rounded-2xl border-slate-200 text-lg font-bold">
-                  <SelectValue placeholder="Select Style" />
+                  <SelectValue placeholder={isLoadingConfig ? "Loading Styles..." : "Select Style"} />
                 </SelectTrigger>
                 <SelectContent className="rounded-2xl border-slate-200 bg-white">
-                   {manConfig.styles?.map((s: string) => (
-                     <SelectItem key={s} value={s} className="rounded-xl py-3 font-medium">{s}</SelectItem>
-                   ))}
+                   {manConfig.styles.length === 0 ? (
+                     <div className="p-4 text-xs text-slate-400 text-center">No styles found.</div>
+                   ) : (
+                     manConfig.styles.map((s: string) => (
+                       <SelectItem key={s} value={s} className="rounded-xl py-3 font-medium">{s}</SelectItem>
+                     ))
+                   )}
                 </SelectContent>
               </Select>
            </div>
