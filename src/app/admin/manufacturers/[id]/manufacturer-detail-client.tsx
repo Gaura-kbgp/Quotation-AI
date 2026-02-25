@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -43,8 +44,13 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
   const handleFileUpload = async () => {
     if (!uploadFile || !isAddingFile.type) return;
 
-    if (uploadFile.size > 20 * 1024 * 1024) {
-      toast({ variant: 'destructive', title: 'File too large', description: 'Maximum file size is 20MB' });
+    // Increased client-side check to 50MB to match next.config.ts
+    if (uploadFile.size > 50 * 1024 * 1024) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'File too large', 
+        description: 'Maximum file size is 50MB' 
+      });
       return;
     }
 
@@ -59,15 +65,25 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
       const result = await uploadManufacturerFileAction(formData);
 
       if (!result.success) {
-        toast({ variant: 'destructive', title: 'Upload Failed', description: result.error });
+        toast({ 
+          variant: 'destructive', 
+          title: 'Upload Failed', 
+          description: result.error || 'An unexpected error occurred during upload.' 
+        });
       } else {
-        toast({ title: 'File Uploaded Successfully', description: result.extractionSummary });
-        // Since we are using Server Actions with revalidatePath, we could just refresh the page
-        // or manually update local state if we want instant feedback.
+        toast({ 
+          title: 'File Uploaded Successfully', 
+          description: result.extractionSummary || 'The file has been saved to storage.' 
+        });
         window.location.reload(); 
       }
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'System Error', description: err.message });
+      console.error('Upload catch error:', err);
+      toast({ 
+        variant: 'destructive', 
+        title: 'System Error', 
+        description: err.message || 'The server connection was interrupted. The file might be too large or the network is unstable.' 
+      });
     } finally {
       setIsUploading(false);
       setUploadFile(null);
@@ -247,20 +263,20 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
                   <>
                     <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
                     <p className="text-sm font-semibold text-emerald-700">{uploadFile.name}</p>
-                    <p className="text-xs text-slate-400 mt-1">Ready to upload</p>
+                    <p className="text-xs text-slate-400 mt-1">Ready to upload ({(uploadFile.size / (1024 * 1024)).toFixed(1)}MB)</p>
                   </>
                 ) : (
                   <>
                     <UploadCloud className="w-10 h-10 text-slate-300 mb-2" />
                     <p className="text-sm font-medium">Drag & drop or <span className="text-sky-600">browse</span></p>
-                    <p className="text-xs text-slate-400 mt-1">{isAddingFile.type === 'pricing' ? 'Excel / CSV' : 'PDF'} up to 20MB</p>
+                    <p className="text-xs text-slate-400 mt-1">{isAddingFile.type === 'pricing' ? 'Excel / CSV' : 'PDF'} up to 50MB</p>
                   </>
                 )}
               </label>
             </div>
             <Button onClick={handleFileUpload} className="w-full h-11 gradient-button" disabled={isUploading || !uploadFile}>
               {isUploading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
-              {isUploading ? 'Processing...' : 'Upload & Process'}
+              {isUploading ? 'Processing...' : 'Upload & Save'}
             </Button>
           </div>
         </DialogContent>
