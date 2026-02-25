@@ -75,7 +75,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     const c = String(code || '').toUpperCase().trim();
     if (c.startsWith('W')) return 'Wall Cabinets';
     if (c.startsWith('B') || c.startsWith('SB')) return 'Base Cabinets';
-    if (c.startsWith('UF') || c.includes('FILLER')) return 'Tall Cabinets';
+    if (c.startsWith('UF')) return 'Tall Cabinets';
     if (c.startsWith('VSB')) return 'Vanity Cabinets';
     return 'Hardware';
   }
@@ -83,6 +83,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   const fetchManConfig = useCallback(async (id: string) => {
     if (!id) return;
     setIsLoadingConfig(true);
+    console.log(`[Estimator] Fetching config for manufacturer: ${id}`);
     try {
       const res = await fetch(`/api/manufacturer-config?id=${id}`);
       const data = await res.json();
@@ -92,17 +93,19 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         styles: data.styles || []
       });
     } catch (err: any) {
+      console.error('[Estimator] Config Fetch Error:', err);
       toast({ variant: 'destructive', title: 'Data Error', description: 'Failed to load brand configuration.' });
     } finally {
       setIsLoadingConfig(false);
     }
   }, [toast]);
 
-  // Initial Data Load
+  // Initial Data Load & Multi-Page Sync
   useEffect(() => {
     if (initialSyncRef.current) return;
     
-    if (project.extracted_data?.rooms) {
+    if (project.extracted_data?.rooms && project.extracted_data.rooms.length > 0) {
+      console.log(`[Estimator] Loading ${project.extracted_data.rooms.length} rooms from project.`);
       setRooms(project.extracted_data.rooms);
     } else {
       setRooms([{
@@ -124,7 +127,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     initialSyncRef.current = true;
   }, [project, fetchManConfig]);
 
-  // Debounced Auto-Save
+  // Auto-Save Edits
   useEffect(() => {
     if (!initialSyncRef.current || rooms.length === 0) return;
     const timer = setTimeout(async () => {
@@ -141,25 +144,26 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   }, [rooms, project.id]);
 
   const handleUpdateCabinet = (roomIdx: number, sectionKey: string, cabIdx: number, updates: Partial<Cabinet>) => {
-    const nr = [...rooms];
+    const nr = JSON.parse(JSON.stringify(rooms));
     const cab = nr[roomIdx].sections[sectionKey][cabIdx];
+    
     if (updates.code) {
       updates.code = updates.code.toUpperCase().replace(/\s/g, '');
       const newType = classifyCabinet(updates.code);
       if (newType !== sectionKey) {
-        // Move item to new section
         nr[roomIdx].sections[sectionKey].splice(cabIdx, 1);
         nr[roomIdx].sections[newType].push({ ...cab, ...updates, type: newType });
         setRooms(nr);
         return;
       }
     }
+    
     nr[roomIdx].sections[sectionKey][cabIdx] = { ...cab, ...updates };
     setRooms(nr);
   };
 
   const handleAddRow = (roomIdx: number, sectionKey: string) => {
-    const nr = [...rooms];
+    const nr = JSON.parse(JSON.stringify(rooms));
     nr[roomIdx].sections[sectionKey].push({
       code: '',
       qty: 1,
@@ -170,7 +174,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   };
 
   const handleRemoveCabinet = (roomIdx: number, sectionKey: string, cabIdx: number) => {
-    const nr = [...rooms];
+    const nr = JSON.parse(JSON.stringify(rooms));
     nr[roomIdx].sections[sectionKey].splice(cabIdx, 1);
     setRooms(nr);
   };
@@ -220,7 +224,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                 <Layout className="w-6 h-6 text-sky-600" />
                 <div>
                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Review Extraction</h2>
-                   <p className="text-xs text-slate-500">Multi-page analysis complete. Validate quantities below.</p>
+                   <p className="text-xs text-slate-500">Multi-page analysis complete. Verify rooms and quantities.</p>
                 </div>
              </div>
              <Button onClick={handleAddRoom} variant="outline" className="rounded-xl border-sky-100 text-sky-600 hover:bg-sky-50">
@@ -250,7 +254,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                     variant="ghost" 
                     size="icon" 
                     onClick={() => {
-                      if(confirm('Delete room?')) {
+                      if(confirm('Delete entire room?')) {
                         const nr = [...rooms];
                         nr.splice(rIdx, 1);
                         setRooms(nr);
@@ -265,6 +269,8 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                <div className="grid grid-cols-1 gap-12">
                   {Object.keys(room.sections).map((sectionKey) => {
                     const cabs = room.sections[sectionKey] || [];
+                    if (cabs.length === 0 && sectionKey !== 'Wall Cabinets') return null; // Keep Wall visible as entry point
+                    
                     return (
                       <div key={sectionKey} className="space-y-4">
                         <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 w-fit">
@@ -359,7 +365,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
           <Card className="sticky top-28 border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.05)] rounded-[2rem] overflow-hidden">
             <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-6">
                <CardTitle className="text-lg font-bold flex items-center justify-between">
-                  Project Stats
+                  Extraction Stats
                   {isSaving ? <Loader2 className="w-4 h-4 animate-spin text-sky-500" /> : <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                </CardTitle>
             </CardHeader>
@@ -370,17 +376,21 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                     <p className="text-2xl font-black text-slate-900">{rooms.length}</p>
                  </div>
                  <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100/50">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">SKUs</p>
-                    <p className="text-2xl font-black text-slate-900">{rooms.reduce((acc, r) => acc + Object.values(r.sections).flat().length, 0)}</p>
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total SKUs</p>
+                    <p className="text-2xl font-black text-slate-900">{rooms.reduce((acc, r) => {
+                      let count = 0;
+                      Object.values(r.sections).forEach((s: any) => count += s.length);
+                      return acc + count;
+                    }, 0)}</p>
                  </div>
               </div>
 
               <div className="space-y-3">
-                 <p className="text-xs text-slate-500 leading-relaxed font-medium">Verify all extracted cabinet codes match the architectural set before proceeding to manufacturer selection.</p>
+                 <p className="text-xs text-slate-500 leading-relaxed font-medium">Verify all extracted codes from your 8+ page drawing set before matching against manufacturer matrices.</p>
               </div>
 
               <Button onClick={() => setStep('manufacturer')} className="w-full h-16 gradient-button rounded-2xl shadow-xl shadow-sky-500/20 text-lg group">
-                Select Brand
+                Continue to Branding
                 <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
             </CardContent>
@@ -395,7 +405,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       <div className="max-w-xl mx-auto space-y-12 py-12">
         <div className="text-center space-y-4">
            <h2 className="text-4xl font-black tracking-tight text-slate-900">Select Manufacturer</h2>
-           <p className="text-slate-500 text-lg">Choose a brand to match SKUs against their specific pricing matrix.</p>
+           <p className="text-slate-500 text-lg">Apply branding and pricing matrix to the extracted BOM.</p>
         </div>
         <div className="grid grid-cols-1 gap-4">
            {manufacturers.map(m => (
@@ -437,8 +447,8 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     return (
       <div className="max-w-xl mx-auto space-y-12 py-12">
         <div className="text-center space-y-4">
-           <h2 className="text-4xl font-black tracking-tight text-slate-900">Configure Options</h2>
-           <p className="text-slate-500 text-lg">Select collection and style for precision pricing.</p>
+           <h2 className="text-4xl font-black tracking-tight text-slate-900">Precision Config</h2>
+           <p className="text-slate-500 text-lg">Define the collection and door style for final pricing.</p>
         </div>
 
         <Card className="p-10 space-y-10 rounded-[3rem] border-slate-200 shadow-2xl shadow-slate-200/50 bg-white">
@@ -449,11 +459,11 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                 defaultValue={selection.collection}
               >
                 <SelectTrigger className="h-16 rounded-2xl border-slate-100 bg-slate-50/50 text-lg font-bold">
-                  <SelectValue placeholder={isLoadingConfig ? "Fetching data..." : "Choose Collection"} />
+                  <SelectValue placeholder={isLoadingConfig ? "Matching brand data..." : "Choose Collection"} />
                 </SelectTrigger>
                 <SelectContent className="bg-white rounded-2xl border-slate-200">
                    {manConfig.collections.length === 0 ? (
-                     <p className="p-6 text-sm text-slate-400 text-center font-medium">No collections found.</p>
+                     <p className="p-6 text-sm text-slate-400 text-center font-medium">No collections found for this brand.</p>
                    ) : (
                      manConfig.collections.map(c => <SelectItem key={c} value={c} className="font-bold py-3">{c}</SelectItem>)
                    )}
@@ -490,7 +500,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
              onClick={handleFinalize}
            >
               {isProcessing ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
-              Generate Quotation
+              Finalize Quotation
            </Button>
         </div>
       </div>
