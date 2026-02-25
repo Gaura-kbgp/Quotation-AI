@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Factory, Plus, Search, MoreHorizontal, Trash2, Eye, Loader2, ChevronRight } from 'lucide-react';
+import { Factory, Plus, Search, MoreHorizontal, Trash2, Eye, Loader2, ChevronRight, AlertCircle, RefreshCcw } from 'lucide-react';
 import { 
   Table, 
   TableBody, 
@@ -26,29 +26,43 @@ import { supabase } from '@/lib/supabase-client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function ManufacturersPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [manufacturers, setManufacturers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [newManufacturerName, setNewManufacturerName] = useState('');
 
   const fetchManufacturers = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('manufacturers')
-      .select('*')
-      .order('name');
-    
-    if (error) {
-      toast({ variant: 'destructive', title: 'Error fetching data', description: error.message });
-    } else {
+    setError(null);
+    try {
+      const { data, error } = await supabase
+        .from('manufacturers')
+        .select('*')
+        .order('name');
+      
+      if (error) throw error;
       setManufacturers(data || []);
+    } catch (err: any) {
+      console.error('Supabase connection error:', err);
+      const message = err.message === 'Failed to fetch' 
+        ? 'Connection timed out. Please check if your Supabase project is active and reachable.' 
+        : err.message;
+      setError(message);
+      toast({ 
+        variant: 'destructive', 
+        title: 'Connection Error', 
+        description: message 
+      });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -62,29 +76,32 @@ export default function ManufacturersPage() {
   const handleAddManufacturer = async () => {
     if (!newManufacturerName.trim()) return;
     
-    const { data, error } = await supabase
-      .from('manufacturers')
-      .insert([{ name: newManufacturerName, status: 'Active' }])
-      .select();
+    try {
+      const { data, error } = await supabase
+        .from('manufacturers')
+        .insert([{ name: newManufacturerName, status: 'Active' }])
+        .select();
 
-    if (error) {
-      toast({ variant: 'destructive', title: 'Error', description: error.message });
-    } else {
+      if (error) throw error;
+      
       setNewManufacturerName('');
       setIsAdding(false);
       fetchManufacturers();
       toast({ title: 'Manufacturer added' });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.message });
     }
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const { error } = await supabase.from('manufacturers').delete().eq('id', id);
-    if (error) {
-      toast({ variant: 'destructive', title: 'Error', description: error.message });
-    } else {
+    try {
+      const { error } = await supabase.from('manufacturers').delete().eq('id', id);
+      if (error) throw error;
       fetchManufacturers();
       toast({ title: 'Manufacturer removed' });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.message });
     }
   };
 
@@ -123,6 +140,20 @@ export default function ManufacturersPage() {
         </Dialog>
       </div>
 
+      {error && (
+        <Alert variant="destructive" className="bg-red-50 border-red-200">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Network Error</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>{error}</span>
+            <Button variant="outline" size="sm" onClick={fetchManufacturers} className="ml-4 border-red-200 text-red-700 hover:bg-red-100">
+              <RefreshCcw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card className="glass-card border-slate-200 overflow-hidden">
         <div className="p-4 border-b border-slate-200 flex items-center gap-4 bg-slate-50/50">
           <div className="relative flex-1 max-w-sm">
@@ -132,6 +163,7 @@ export default function ManufacturersPage() {
               className="pl-10 bg-white border-slate-200"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              disabled={!!error}
             />
           </div>
         </div>
@@ -140,7 +172,7 @@ export default function ManufacturersPage() {
           <div className="flex items-center justify-center p-12">
             <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
           </div>
-        ) : (
+        ) : !error ? (
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-slate-200">
@@ -211,6 +243,10 @@ export default function ManufacturersPage() {
               )}
             </TableBody>
           </Table>
+        ) : (
+          <div className="p-12 text-center text-slate-400">
+            Please resolve the connection error to view manufacturers.
+          </div>
         )}
       </Card>
     </div>
