@@ -77,19 +77,25 @@ export async function uploadManufacturerFileAction(formData: FormData) {
 
   try {
     const fileExt = file.name.split('.').pop();
-    const filePath = `${manufacturerId}/${fileType}s/${crypto.randomUUID()}.${fileExt}`;
+    const fileName = `${crypto.randomUUID()}.${fileExt}`;
+    const filePath = `${manufacturerId}/${fileType}s/${fileName}`;
+    
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
     // Upload to Storage
+    // NOTE: Ensure the 'manufacturer-docs' bucket exists in your Supabase project with public access
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('manufacturer-docs')
       .upload(filePath, buffer, {
         contentType: file.type,
-        upsert: false
+        upsert: true
       });
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      console.error('Storage Upload Error:', uploadError);
+      throw new Error(`Storage error: ${uploadError.message}`);
+    }
 
     const { data: { publicUrl } } = supabase.storage.from('manufacturer-docs').getPublicUrl(filePath);
 
@@ -106,7 +112,10 @@ export async function uploadManufacturerFileAction(formData: FormData) {
       .select()
       .single();
 
-    if (dbError) throw dbError;
+    if (dbError) {
+      console.error('Database Insertion Error:', dbError);
+      throw new Error(`Database error: ${dbError.message}`);
+    }
 
     // Trigger Extraction for pricing files
     let extractionSummary = null;
@@ -132,7 +141,11 @@ export async function deleteManufacturerFileAction(fileId: string, fileUrl: stri
   const supabase = createServerSupabase();
   
   try {
-    const path = fileUrl.split('/public/manufacturer-docs/')[1];
+    // Extract relative path from public URL
+    // Public URL format usually: .../storage/v1/object/public/manufacturer-docs/PATH
+    const pathParts = fileUrl.split('/public/manufacturer-docs/');
+    const path = pathParts.length > 1 ? pathParts[1] : null;
+
     if (path) {
       await supabase.storage.from('manufacturer-docs').remove([path]);
     }
@@ -167,10 +180,10 @@ export async function extractSpecifications(fileId: string, manufacturerId: stri
       
       if (data.length < 2) return;
 
-      const headers = data[0];
+      // Simple heuristic for cabinet specs: Row[0]=Collection, Row[1]=Style, Row[2]=Finish
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
-        if (!row || row.length === 0) continue;
+        if (!row || row.length < 2) continue;
 
         if (row[0] && row[1]) {
           specs.push({
