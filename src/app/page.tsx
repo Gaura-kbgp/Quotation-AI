@@ -1,6 +1,7 @@
+
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -14,39 +15,51 @@ export default function Home() {
       {/* Admin Login Button */}
       <div className="absolute top-8 right-8">
         <Link href="/admin/login">
-          <Button variant="outline" className="rounded-full border-sky-200 text-sky-600 hover:bg-sky-50 transition-all duration-300">
-            <ShieldCheck className="w-4 h-4 mr-2" />
-            Admin Login
+          <Button variant="ghost" className="rounded-full text-slate-500 hover:text-sky-600 hover:bg-sky-50 transition-all duration-300">
+            Admin Access
           </Button>
         </Link>
       </div>
 
+      <div className="absolute top-8 left-8 flex items-center gap-2">
+         <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white font-bold text-xl">K</div>
+         <span className="font-bold text-xl tracking-tight">KABS</span>
+      </div>
+
       {/* Hero Section */}
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-8 text-slate-900 font-headline">
-          KABS <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 to-sky-600">Quotation AI</span>
-        </h1>
-        <p className="text-xl text-slate-500 mb-12 max-w-2xl mx-auto leading-relaxed">
-          The next generation of kitchen and bathroom quotation management. Precision driven by intelligence.
-        </p>
+      <div className="max-w-4xl mx-auto space-y-12">
+        <div className="space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 border border-sky-100 text-sky-600 text-[10px] font-bold uppercase tracking-widest mx-auto">
+            <Sparkles className="w-3 h-3" />
+            Empowering Precision
+          </div>
+          <h1 className="text-6xl md:text-8xl font-black tracking-tighter text-slate-900 leading-[0.9]">
+            KABS <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 to-sky-600">Quotation AI</span>
+          </h1>
+          <p className="text-lg text-slate-500 max-w-xl mx-auto leading-relaxed">
+            The next generation of kitchen and bathroom estimation. AI-powered extraction meets professional-grade precision.
+          </p>
+        </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
           <Link href="/quotation-ai">
-            <Button className="gradient-button h-16 px-10 text-lg w-full sm:w-auto shadow-xl">
-              Quotation AI
+            <Button className="gradient-button h-16 px-12 text-lg rounded-2xl shadow-lg shadow-sky-500/20 group">
+              Start Quotation
+              <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
             </Button>
           </Link>
           <Link href="/design-ai">
-            <Button className="h-16 px-10 text-lg w-full sm:w-auto border-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all duration-300 rounded-xl">
+            <Button variant="outline" className="h-16 px-12 text-lg rounded-2xl border-slate-200 text-slate-600 hover:bg-slate-50">
               Design AI
             </Button>
           </Link>
         </div>
       </div>
 
-      <footer className="absolute bottom-8 text-slate-400 text-sm">
-        &copy; {new Date().getFullYear()} KABS Inc. All rights reserved.
+      <footer className="absolute bottom-8 text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">
+        &copy; {new Date().getFullYear()} KABS Inc. Precision Engineering.
       </footer>
     </main>
   );

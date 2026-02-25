@@ -61,10 +61,15 @@
       "properties": {
         "id": { "type": "string", "format": "uuid" },
         "project_name": { "type": "string" },
+        "status": { "type": "string", "enum": ["Draft", "Reviewed", "Priced"] },
+        "manufacturer_id": { "type": "string", "format": "uuid" },
+        "selected_collection": { "type": "string" },
+        "selected_door_style": { "type": "string" },
+        "selected_finish": { "type": "string" },
+        "selected_hardware": { "type": "string" },
         "raw_pdf_url": { "type": "string" },
         "extracted_data": { "type": "object" },
-        "manufacturer_id": { "type": "string", "format": "uuid" },
-        "status": { "type": "string", "enum": ["Draft", "Reviewed", "Priced"] },
+        "bom_data": { "type": "object" },
         "created_at": { "type": "string", "format": "date-time" }
       }
     },

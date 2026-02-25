@@ -1,10 +1,11 @@
 
 import { createServerSupabase } from '@/lib/supabase-server';
-import { ReviewClient } from './review-client';
+import { EstimatorClient } from './estimator-client';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 export default async function ReviewProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,36 +14,43 @@ export default async function ReviewProjectPage({ params }: { params: Promise<{ 
   try {
     const [pRes, mRes] = await Promise.all([
       supabase.from('quotation_projects').select('*').eq('id', id).single(),
-      supabase.from('manufacturers').select('id, name').order('name')
+      supabase.from('manufacturers').select('id, name').eq('status', 'Active').order('name')
     ]);
 
-    if (pRes.error) throw pRes.error;
+    if (pRes.error || !pRes.data) {
+      console.error('Project Fetch Error:', pRes.error);
+      redirect('/quotation-ai');
+    }
 
     const project = pRes.data;
     const manufacturers = mRes.data || [];
 
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900 p-8">
-         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,_var(--tw-gradient-stops))] from-sky-500/5 via-transparent to-transparent -z-10" />
-         
-         <div className="max-w-6xl mx-auto space-y-12">
-            <div className="flex justify-between items-end">
-               <div>
-                  <Link href="/quotation-ai">
-                     <Button variant="ghost" className="text-slate-500 hover:text-sky-600 p-0 mb-4">
-                        <ArrowLeft className="w-4 h-4 mr-2" />
-                        Back to Upload
-                     </Button>
-                  </Link>
-                  <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Review AI Extraction</h1>
-                  <p className="text-slate-500 mt-2">Project: <span className="text-sky-600 font-semibold">{project.project_name}</span></p>
-               </div>
-               <div className="px-4 py-2 rounded-xl bg-sky-50 border border-sky-100 text-sky-600 text-sm font-bold uppercase tracking-widest">
-                  Extraction Mode: Accurate
-               </div>
+      <main className="min-h-screen bg-white text-slate-900">
+         {/* Sticky Estimator Header */}
+         <header className="sticky top-0 z-50 bg-white border-b border-slate-100 px-8 h-20 flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <Link href="/quotation-ai">
+                <Button variant="ghost" size="icon" className="rounded-full h-10 w-10">
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              </Link>
+              <div>
+                <h1 className="text-xl font-bold tracking-tight text-slate-900">{project.project_name}</h1>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Project ID: {id.substring(0, 8).toUpperCase()}</p>
+              </div>
             </div>
 
-            <ReviewClient project={project} manufacturers={manufacturers} />
+            <div className="flex items-center gap-4">
+               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Auto-Saving Enabled</span>
+               </div>
+            </div>
+         </header>
+
+         <div className="p-8">
+            <EstimatorClient project={project} manufacturers={manufacturers} />
          </div>
       </main>
     );
