@@ -31,6 +31,16 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
 
   const handleUpload = async () => {
     if (!file || !version) return;
+
+    if (file.size > 50 * 1024 * 1024) {
+      toast({
+        variant: 'destructive',
+        title: 'File too large',
+        description: 'Maximum file size is 50MB'
+      });
+      return;
+    }
+
     setIsUploading(true);
 
     const formData = new FormData();
