@@ -53,6 +53,37 @@
         "file_url": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" }
       }
+    },
+    "QuotationProject": {
+      "title": "Quotation Project",
+      "description": "An AI-powered quotation session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "project_name": { "type": "string" },
+        "raw_pdf_url": { "type": "string" },
+        "extracted_data": { "type": "object" },
+        "manufacturer_id": { "type": "string", "format": "uuid" },
+        "status": { "type": "string", "enum": ["Draft", "Reviewed", "Priced"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "QuotationBom": {
+      "title": "Quotation BOM",
+      "description": "Line items for a quotation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "project_id": { "type": "string", "format": "uuid" },
+        "sku": { "type": "string" },
+        "qty": { "type": "number" },
+        "unit_price": { "type": "number" },
+        "line_total": { "type": "number" },
+        "room": { "type": "string" },
+        "collection": { "type": "string" },
+        "door_style": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -62,6 +93,8 @@
     "/manufacturers/{id}": { "schema": "Manufacturer" },
     "/manufacturer_files/{id}": { "schema": "ManufacturerFile" },
     "/manufacturer_specifications/{id}": { "schema": "ManufacturerSpecification" },
-    "/nkba_files/{id}": { "schema": "NkbaRule" }
+    "/nkba_files/{id}": { "schema": "NkbaRule" },
+    "/quotation_projects/{id}": { "schema": "QuotationProject" },
+    "/quotation_bom/{id}": { "schema": "QuotationBom" }
   }
 }
