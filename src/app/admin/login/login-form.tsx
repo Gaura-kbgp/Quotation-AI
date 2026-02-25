@@ -56,10 +56,16 @@ export function LoginForm() {
       }
     } catch (error: any) {
       console.error('Login Error:', error);
+      let message = error.message || "Invalid credentials.";
+      
+      if (message.includes('Failed to fetch')) {
+        message = "Connection Timeout: Unable to reach the Supabase auth service. Please check your internet connection or verify the project status.";
+      }
+
       toast({
         variant: 'destructive',
         title: 'Authentication Failed',
-        description: error.message || "Invalid credentials.",
+        description: message,
       });
       setIsLoading(false);
     }
