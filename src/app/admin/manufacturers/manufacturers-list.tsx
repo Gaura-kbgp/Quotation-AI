@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Factory, Plus, Search, MoreHorizontal, Trash2, Eye, ChevronRight } from 'lucide-react';
+import { Factory, Plus, Search, MoreHorizontal, Trash2, Eye, ChevronRight, Loader2 } from 'lucide-react';
 import { 
   Table, 
   TableBody, 
@@ -21,10 +21,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { supabaseClient } from '@/lib/supabase-client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { addManufacturer, deleteManufacturer } from '../actions';
 
 export function ManufacturersList({ initialManufacturers }: { initialManufacturers: any[] }) {
   const router = useRouter();
@@ -32,6 +32,7 @@ export function ManufacturersList({ initialManufacturers }: { initialManufacture
   const [manufacturers, setManufacturers] = useState(initialManufacturers);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [newManufacturerName, setNewManufacturerName] = useState('');
 
   const filteredManufacturers = manufacturers.filter(m => 
@@ -41,47 +42,60 @@ export function ManufacturersList({ initialManufacturers }: { initialManufacture
   const handleAddManufacturer = async () => {
     if (!newManufacturerName.trim()) return;
     
-    const { data, error: addError } = await supabaseClient
-      .from('manufacturers')
-      .insert([{ name: newManufacturerName, status: 'Active' }])
-      .select()
-      .single();
+    setIsSubmitting(true);
+    try {
+      const result = await addManufacturer(newManufacturerName);
 
-    if (addError) {
+      if (!result.success) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Error adding manufacturer', 
+          description: result.error 
+        });
+        return;
+      }
+      
+      const newData = result.data;
+      setManufacturers(prev => [...prev, newData].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewManufacturerName('');
+      setIsAdding(false);
+      toast({ title: 'Manufacturer added successfully' });
+    } catch (error: any) {
       toast({ 
         variant: 'destructive', 
-        title: 'Error adding manufacturer', 
-        description: addError.message 
+        title: 'System Error', 
+        description: 'Failed to reach the server. Please try again.' 
       });
-      return;
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setManufacturers(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
-    setNewManufacturerName('');
-    setIsAdding(false);
-    toast({ title: 'Manufacturer added successfully' });
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this manufacturer?')) return;
     
-    const { error: delError } = await supabaseClient
-      .from('manufacturers')
-      .delete()
-      .eq('id', id);
-        
-    if (delError) {
+    try {
+      const result = await deleteManufacturer(id);
+          
+      if (!result.success) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Error deleting manufacturer', 
+          description: result.error 
+        });
+        return;
+      }
+      
+      setManufacturers(prev => prev.filter(m => m.id !== id));
+      toast({ title: 'Manufacturer removed' });
+    } catch (error: any) {
       toast({ 
         variant: 'destructive', 
-        title: 'Error deleting manufacturer', 
-        description: delError.message 
+        title: 'System Error', 
+        description: 'Failed to reach the server.' 
       });
-      return;
     }
-    
-    setManufacturers(prev => prev.filter(m => m.id !== id));
-    toast({ title: 'Manufacturer removed' });
   };
 
   return (
@@ -111,9 +125,23 @@ export function ManufacturersList({ initialManufacturers }: { initialManufacture
                   value={newManufacturerName} 
                   onChange={(e) => setNewManufacturerName(e.target.value)} 
                   placeholder="e.g. Premium Cabinets Co."
+                  disabled={isSubmitting}
                 />
               </div>
-              <Button onClick={handleAddManufacturer} className="w-full gradient-button">Create Manufacturer</Button>
+              <Button 
+                onClick={handleAddManufacturer} 
+                className="w-full gradient-button h-11"
+                disabled={isSubmitting || !newManufacturerName.trim()}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Manufacturer'
+                )}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

@@ -21,6 +21,45 @@ export async function logout() {
 }
 
 /**
+ * Adds a new manufacturer to the database.
+ */
+export async function addManufacturer(name: string) {
+  const supabase = createServerSupabase();
+  
+  const { data, error } = await supabase
+    .from('manufacturers')
+    .insert([{ name, status: 'Active' }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Add Manufacturer Error:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true, data };
+}
+
+/**
+ * Deletes a manufacturer from the database.
+ */
+export async function deleteManufacturer(id: string) {
+  const supabase = createServerSupabase();
+  
+  const { error } = await supabase
+    .from('manufacturers')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Delete Manufacturer Error:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
  * Parses an Excel/XLSM file and extracts cabinet specifications.
  */
 export async function extractSpecifications(fileId: string, manufacturerId: string, fileUrl: string) {
