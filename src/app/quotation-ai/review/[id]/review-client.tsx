@@ -44,7 +44,6 @@ export function ReviewClient({ project, manufacturers }: ReviewClientProps) {
     setSelectedManId(manId);
     setIsFetchingConfig(true);
     try {
-      // Fetch unique collections/styles via production API
       const res = await fetch(`/api/manufacturer-config?id=${manId}`);
       const data = await res.json();
       setAvailableCollections(data.collections || []);
@@ -79,15 +78,15 @@ export function ReviewClient({ project, manufacturers }: ReviewClientProps) {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2 space-y-8">
         {nkbaFlags.length > 0 && (
-          <div className="p-6 rounded-3xl bg-amber-500/10 border border-amber-500/20 space-y-3">
-             <div className="flex items-center gap-2 text-amber-400 font-bold">
+          <div className="p-6 rounded-3xl bg-amber-50 border border-amber-200 space-y-3 shadow-sm">
+             <div className="flex items-center gap-2 text-amber-700 font-bold">
                 <AlertTriangle className="w-5 h-5" />
                 NKBA Validation Alerts
              </div>
              <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {nkbaFlags.map((flag: string, i: number) => (
-                  <li key={i} className="text-sm text-slate-300 flex gap-2">
-                     <span className="text-amber-500/50">•</span>
+                  <li key={i} className="text-sm text-slate-600 flex gap-2">
+                     <span className="text-amber-500">•</span>
                      {flag}
                   </li>
                 ))}
@@ -96,32 +95,32 @@ export function ReviewClient({ project, manufacturers }: ReviewClientProps) {
         )}
 
         {rooms.map((room: any, idx: number) => (
-          <Card key={idx} className="dark-glass border-white/5 overflow-hidden">
-            <CardHeader className="border-b border-white/5 bg-white/5">
+          <Card key={idx} className="bg-white border-slate-200 shadow-md overflow-hidden">
+            <CardHeader className="border-b border-slate-100 bg-slate-50/50">
               <div className="flex justify-between items-center">
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <Box className="w-5 h-5 text-sky-400" />
+                <CardTitle className="text-xl flex items-center gap-2 text-slate-900">
+                  <Box className="w-5 h-5 text-sky-500" />
                   {room.room_name}
                 </CardTitle>
-                <Badge variant="outline" className="border-sky-500/30 text-sky-400 uppercase tracking-widest text-[10px]">
+                <Badge variant="outline" className="border-sky-200 text-sky-600 uppercase tracking-widest text-[10px] font-bold">
                   {room.room_type}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-white/5">
+              <div className="divide-y divide-slate-100">
                 {room.cabinets.map((cab: any, cIdx: number) => (
-                  <div key={cIdx} className="p-4 flex items-center justify-between hover:bg-white/5 transition-colors">
+                  <div key={cIdx} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center font-bold text-sky-400 border border-white/10">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-sky-600 border border-slate-200">
                         {cab.qty}
                       </div>
                       <div>
-                        <p className="font-bold text-lg tracking-tight">{cab.code}</p>
-                        <p className="text-xs text-slate-500 uppercase font-semibold">{cab.type} Cabinet</p>
+                        <p className="font-bold text-lg tracking-tight text-slate-900">{cab.code}</p>
+                        <p className="text-xs text-slate-500 uppercase font-bold">{cab.type} Cabinet</p>
                       </div>
                     </div>
-                    <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                    <Badge className="bg-emerald-50 text-emerald-600 border-emerald-100">
                       Verified
                     </Badge>
                   </div>
@@ -133,10 +132,10 @@ export function ReviewClient({ project, manufacturers }: ReviewClientProps) {
       </div>
 
       <div className="space-y-6">
-        <Card className="dark-glass border-sky-500/20 sticky top-8 shadow-[0_0_50px_rgba(14,165,233,0.1)]">
-          <CardHeader className="border-b border-white/5">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-sky-400" />
+        <Card className="bg-white border-slate-200 sticky top-8 shadow-xl">
+          <CardHeader className="border-b border-slate-100 bg-slate-50/50">
+            <CardTitle className="text-lg flex items-center gap-2 text-slate-900">
+              <Calculator className="w-5 h-5 text-sky-500" />
               Pricing Config
             </CardTitle>
           </CardHeader>
@@ -145,10 +144,10 @@ export function ReviewClient({ project, manufacturers }: ReviewClientProps) {
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Manufacturer</label>
                 <Select onValueChange={fetchManufacturerConfig}>
-                  <SelectTrigger className="bg-white/5 border-white/10 h-12">
+                  <SelectTrigger className="bg-white border-slate-200 h-12 text-slate-900">
                     <SelectValue placeholder="Select Brand" />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-950 border-white/10 text-slate-100">
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
                     {manufacturers.map(m => (
                       <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                     ))}
@@ -164,10 +163,10 @@ export function ReviewClient({ project, manufacturers }: ReviewClientProps) {
                       disabled={isFetchingConfig} 
                       onValueChange={(v) => setConfig(prev => ({ ...prev, collection: v }))}
                     >
-                      <SelectTrigger className="bg-white/5 border-white/10 h-12">
+                      <SelectTrigger className="bg-white border-slate-200 h-12 text-slate-900">
                         <SelectValue placeholder={isFetchingConfig ? "Loading..." : "Select Collection"} />
                       </SelectTrigger>
-                      <SelectContent className="bg-slate-950 border-white/10 text-slate-100">
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
                         {availableCollections.map(c => (
                           <SelectItem key={c} value={c}>{c}</SelectItem>
                         ))}
@@ -181,10 +180,10 @@ export function ReviewClient({ project, manufacturers }: ReviewClientProps) {
                       disabled={isFetchingConfig || !config.collection} 
                       onValueChange={(v) => setConfig(prev => ({ ...prev, doorStyle: v }))}
                     >
-                      <SelectTrigger className="bg-white/5 border-white/10 h-12">
+                      <SelectTrigger className="bg-white border-slate-200 h-12 text-slate-900">
                         <SelectValue placeholder="Select Style" />
                       </SelectTrigger>
-                      <SelectContent className="bg-slate-950 border-white/10 text-slate-100">
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
                         {availableStyles.map(s => (
                           <SelectItem key={s} value={s}>{s}</SelectItem>
                         ))}
@@ -213,7 +212,7 @@ export function ReviewClient({ project, manufacturers }: ReviewClientProps) {
               )}
             </Button>
 
-            <div className="pt-4 border-t border-white/5 flex items-center justify-center gap-4 text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-4 text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">
                <div className="flex items-center gap-1">
                   <div className="w-2 h-2 rounded-full bg-emerald-500" />
                   Live Matcher
