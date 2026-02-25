@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -38,7 +38,7 @@ export default function ManufacturersPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [newManufacturerName, setNewManufacturerName] = useState('');
 
-  const fetchManufacturers = async () => {
+  const fetchManufacturers = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -50,31 +50,23 @@ export default function ManufacturersPage() {
       if (supabaseError) throw supabaseError;
       setManufacturers(data || []);
     } catch (err: any) {
-      console.error('Supabase fetch error detail:', {
-        message: err.message,
-        stack: err.stack,
-        err
-      });
-
-      let message = err.message || 'An unknown error occurred';
-      if (message.includes('Failed to fetch')) {
-        message = 'Connection Timeout: The browser could not reach Supabase. Please check if your project is active and your internet allows connections to your Supabase URL.';
+      console.error('Fetch manufacturers failed:', err);
+      let message = err.message || 'An unexpected error occurred';
+      
+      // Heuristic for network timeouts/blockage
+      if (message.includes('Failed to fetch') || !err.status) {
+        message = 'Connection Timeout: Unable to reach the Supabase server. Please verify that your Supabase project is active and your network allows outgoing requests.';
       }
       
       setError(message);
-      toast({ 
-        variant: 'destructive', 
-        title: 'Connection Error', 
-        description: message 
-      });
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchManufacturers();
-  }, []);
+  }, [fetchManufacturers]);
 
   const filteredManufacturers = manufacturers.filter(m => 
     m.name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -82,41 +74,42 @@ export default function ManufacturersPage() {
 
   const handleAddManufacturer = async () => {
     if (!newManufacturerName.trim()) return;
-    
     try {
-      const { error } = await supabase
+      const { error: addError } = await supabase
         .from('manufacturers')
         .insert([{ name: newManufacturerName, status: 'Active' }]);
 
-      if (error) throw error;
+      if (addError) throw addError;
       
       setNewManufacturerName('');
       setIsAdding(false);
       fetchManufacturers();
-      toast({ title: 'Manufacturer added' });
+      toast({ title: 'Manufacturer added successfully' });
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message });
+      toast({ variant: 'destructive', title: 'Error adding manufacturer', description: err.message });
     }
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this manufacturer?')) return;
+    
     try {
-      const { error } = await supabase.from('manufacturers').delete().eq('id', id);
-      if (error) throw error;
+      const { error: delError } = await supabase.from('manufacturers').delete().eq('id', id);
+      if (delError) throw delError;
       fetchManufacturers();
       toast({ title: 'Manufacturer removed' });
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message });
+      toast({ variant: 'destructive', title: 'Error deleting manufacturer', description: err.message });
     }
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Manufacturers</h1>
-          <p className="text-slate-500 mt-1">Production data managed via Supabase.</p>
+          <p className="text-slate-500 mt-1">Manage cabinetry suppliers and their technical documentation.</p>
         </div>
         
         <Dialog open={isAdding} onOpenChange={setIsAdding}>
@@ -149,7 +142,7 @@ export default function ManufacturersPage() {
       {error && (
         <Alert variant="destructive" className="bg-red-50 border-red-200">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Network Error</AlertTitle>
+          <AlertTitle>Database Connection Error</AlertTitle>
           <AlertDescription className="flex flex-col gap-4">
             <p className="text-red-700 leading-relaxed">{error}</p>
             <Button variant="outline" size="sm" onClick={fetchManufacturers} className="w-fit border-red-200 text-red-700 hover:bg-red-100">
@@ -175,11 +168,11 @@ export default function ManufacturersPage() {
         </div>
 
         {loading && manufacturers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 space-y-4">
+          <div className="flex flex-col items-center justify-center p-20 space-y-4">
             <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
-            <p className="text-slate-400 text-sm">Querying Supabase...</p>
+            <p className="text-slate-400 text-sm font-medium">Connecting to Supabase...</p>
           </div>
-        ) : !error || manufacturers.length > 0 ? (
+        ) : manufacturers.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-slate-200">
@@ -224,11 +217,9 @@ export default function ManufacturersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="bg-white border-slate-200 text-slate-700">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/admin/manufacturers/${m.id}`}>
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Details
-                            </Link>
+                          <DropdownMenuItem onClick={() => router.push(`/admin/manufacturers/${m.id}`)}>
+                            <Eye className="w-4 h-4 mr-2" />
+                            View Details
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={(e) => handleDelete(m.id, e)} className="text-red-600 hover:text-red-700 focus:text-red-700">
                             <Trash2 className="w-4 h-4 mr-2" />
@@ -241,7 +232,7 @@ export default function ManufacturersPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {filteredManufacturers.length === 0 && !loading && (
+              {filteredManufacturers.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-12 text-slate-400">
                     No manufacturers found.
@@ -250,9 +241,9 @@ export default function ManufacturersPage() {
               )}
             </TableBody>
           </Table>
-        ) : (
-          <div className="p-12 text-center text-slate-400">
-            Please resolve the connection error to view manufacturers.
+        ) : !loading && (
+          <div className="p-20 text-center text-slate-400">
+            {error ? "Unable to load data. Please retry." : "No manufacturers added yet."}
           </div>
         )}
       </Card>

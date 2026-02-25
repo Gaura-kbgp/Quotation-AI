@@ -3,27 +3,24 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('Supabase Client: Environment variables NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY are missing.');
+}
+
 /**
- * Production-ready Supabase client.
- * Strictly uses environment variables from .env.
+ * Standard production Supabase client for client-side usage.
  */
 export const supabase = createClient(
   supabaseUrl || '', 
-  supabaseAnonKey || '', 
+  supabaseAnonKey || '',
   {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true
+    },
+    global: {
+      headers: { 'x-application-name': 'kabs-quotation-ai' }
     }
   }
 );
-
-// Debug helper to verify environment variables are loaded in the browser
-if (typeof window !== 'undefined') {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('Supabase Client: Missing environment variables! Check your .env file.');
-  } else {
-    console.log('Supabase Client: Initialized for project:', supabaseUrl);
-  }
-}

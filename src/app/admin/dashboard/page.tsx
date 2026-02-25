@@ -33,9 +33,9 @@ export default function AdminDashboardPage() {
         status: 'Live'
       });
     } catch (err: any) {
-      console.error('Dashboard Fetch Error:', err);
+      console.error('Dashboard Stats Fetch Error:', err);
       setError(err.message === 'Failed to fetch' 
-        ? 'Connection Timeout: Unable to reach Supabase. Please check if the project is paused or your internet connection is stable.' 
+        ? 'Connection Timeout: The browser could not reach Supabase. Please verify your internet connection or check if the Supabase project is active.' 
         : err.message
       );
     } finally {
@@ -50,7 +50,7 @@ export default function AdminDashboardPage() {
   if (loading) return (
     <div className="flex flex-col items-center justify-center p-20 space-y-4">
       <Loader2 className="animate-spin text-sky-500 w-8 h-8" />
-      <p className="text-slate-500 font-medium">Connecting to Supabase...</p>
+      <p className="text-slate-500 font-medium">Updating system metrics...</p>
     </div>
   );
 
@@ -58,7 +58,7 @@ export default function AdminDashboardPage() {
     <div className="p-8 max-w-2xl mx-auto space-y-6">
       <Alert variant="destructive" className="bg-red-50 border-red-200">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle className="font-bold">Database Connection Error</AlertTitle>
+        <AlertTitle className="font-bold">Database Sync Error</AlertTitle>
         <AlertDescription className="mt-2 text-red-700 leading-relaxed">
           {error}
         </AlertDescription>
@@ -74,7 +74,7 @@ export default function AdminDashboardPage() {
 
   const cards = [
     { name: 'Active Manufacturers', value: stats.manufacturers, icon: Factory, color: 'text-sky-600', bg: 'bg-sky-50' },
-    { name: 'Specifications Stored', value: stats.specifications.toLocaleString(), icon: Database, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { name: 'Specifications Stored', value: (stats.specifications || 0).toLocaleString(), icon: Database, color: 'text-purple-600', bg: 'bg-purple-50' },
     { name: 'Technical Documents', value: stats.files, icon: BookOpen, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { name: 'System Status', value: stats.status, icon: Quote, color: 'text-amber-600', bg: 'bg-amber-50' },
   ];
@@ -84,11 +84,11 @@ export default function AdminDashboardPage() {
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 mt-1">Overview of the Production AI platform.</p>
+          <p className="text-slate-500 mt-1">Real-time overview of the quotation platform infrastructure.</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchStats} className="text-slate-500">
           <RefreshCcw className="w-3.5 h-3.5 mr-2" />
-          Refresh Data
+          Refresh
         </Button>
       </div>
 
@@ -120,17 +120,17 @@ export default function AdminDashboardPage() {
         </Card>
         <Card className="glass-card border-slate-200">
           <CardHeader>
-            <CardTitle className="text-slate-900">Recent Logs</CardTitle>
+            <CardTitle className="text-slate-900">Operational Status</CardTitle>
           </CardHeader>
           <CardContent className="border-t border-slate-100 py-4">
              <div className="space-y-4">
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                   <p className="text-xs text-emerald-700 font-medium">Specs extraction engine active</p>
+                   <p className="text-xs text-emerald-700 font-medium">Specs extraction engine: Idle</p>
                 </div>
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-sky-50 border border-sky-100">
                    <div className="w-2 h-2 rounded-full bg-sky-500"></div>
-                   <p className="text-xs text-sky-700 font-medium">Supabase Storage buckets verified</p>
+                   <p className="text-xs text-sky-700 font-medium">Database connectivity: Verified</p>
                 </div>
              </div>
           </CardContent>
