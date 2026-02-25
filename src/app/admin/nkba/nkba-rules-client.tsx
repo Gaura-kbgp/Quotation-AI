@@ -28,7 +28,8 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
   const [file, setFile] = useState<File | null>(null);
   const [version, setVersion] = useState('');
 
-  const activeRule = rules.find(r => r.is_active);
+  // Use the most recent rule as the implied active one since we removed is_active
+  const latestRule = rules.length > 0 ? rules[0] : null;
 
   const handleUpload = async () => {
     if (!file || !version) return;
@@ -114,17 +115,17 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
                {isUploading ? 'Streaming...' : 'Publish New Rule Set'}
              </Button>
 
-             {activeRule && (
+             {latestRule && (
                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-between">
                  <div className="flex items-center gap-3">
                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                    <div>
-                     <p className="text-sm font-bold text-emerald-900">Active: {activeRule.file_name}</p>
-                     <p className="text-xs text-emerald-600">Version {activeRule.version}</p>
+                     <p className="text-sm font-bold text-emerald-900">Latest Version: {latestRule.version}</p>
+                     <p className="text-xs text-emerald-600">{latestRule.file_name}</p>
                    </div>
                  </div>
                  <Button variant="ghost" size="icon" asChild>
-                   <a href={activeRule.file_url} target="_blank"><ExternalLink className="w-4 h-4" /></a>
+                   <a href={latestRule.file_url} target="_blank"><ExternalLink className="w-4 h-4" /></a>
                  </Button>
                </div>
              )}
@@ -143,16 +144,18 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
               {rules.length === 0 ? (
                 <div className="p-12 text-center text-slate-400">No rules uploaded yet.</div>
               ) : (
-                rules.map(rule => (
+                rules.map((rule, idx) => (
                   <div key={rule.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         "w-2 h-2 rounded-full",
-                        rule.is_active ? "bg-emerald-500 animate-pulse" : "bg-slate-300"
+                        idx === 0 ? "bg-emerald-500 animate-pulse" : "bg-slate-300"
                       )} />
                       <div>
-                        <p className="text-sm font-semibold">{rule.version}</p>
-                        <p className="text-[10px] text-slate-400 uppercase tracking-widest">{new Date(rule.created_at).toLocaleDateString()}</p>
+                        <p className="text-sm font-semibold">Version {rule.version}</p>
+                        <p className="text-[10px] text-slate-400 uppercase tracking-widest">
+                          {rule.file_name} • {new Date(rule.created_at).toLocaleDateString()}
+                        </p>
                       </div>
                     </div>
                     <div className="flex gap-2">

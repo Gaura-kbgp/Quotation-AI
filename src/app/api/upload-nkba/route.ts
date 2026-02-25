@@ -1,8 +1,10 @@
+
 import { createServerSupabase } from '@/lib/supabase-server';
 import { revalidatePath } from 'next/cache';
 
 /**
  * Route Handler for NKBA PDF uploads.
+ * Uses the production-ready nkba_files table.
  */
 export async function POST(req: Request) {
   try {
@@ -15,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     const supabase = createServerSupabase();
-    const fileName = `nkba-rules/${crypto.randomUUID()}.pdf`;
+    const fileName = `nkba-docs/versions/${crypto.randomUUID()}.pdf`;
     
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -32,12 +34,11 @@ export async function POST(req: Request) {
     const { data: { publicUrl } } = supabase.storage.from('manufacturer-docs').getPublicUrl(fileName);
 
     const { error: dbError } = await supabase
-      .from('nkba_rules')
+      .from('nkba_files')
       .insert([{
         version,
         file_name: file.name,
-        file_url: publicUrl,
-        is_active: true
+        file_url: publicUrl
       }]);
 
     if (dbError) throw dbError;

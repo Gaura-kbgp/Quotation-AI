@@ -12,13 +12,14 @@ export default async function NkbaRulesPage() {
 
   try {
     const { data, error: fetchError } = await supabase
-      .from('nkba_rules')
+      .from('nkba_files')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (fetchError) throw new Error(fetchError.message);
     rules = data || [];
   } catch (err: any) {
+    console.error('NKBA Fetch Error:', err.message);
     error = err.message;
   }
 

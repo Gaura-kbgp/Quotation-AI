@@ -72,6 +72,9 @@ export async function deleteManufacturer(id: string) {
 export async function deleteManufacturerFileAction(fileId: string, fileUrl: string, manufacturerId: string) {
   try {
     const supabase = createServerSupabase();
+    
+    // Extract path from public URL for deletion
+    // Example: .../public/manufacturer-docs/uuid/spec-books/filename.pdf
     const pathParts = fileUrl.split('/public/manufacturer-docs/');
     const path = pathParts.length > 1 ? pathParts[1] : null;
     
@@ -90,7 +93,7 @@ export async function deleteManufacturerFileAction(fileId: string, fileUrl: stri
 }
 
 /**
- * Deletes an NKBA rule.
+ * Deletes an NKBA rule from the nkba_files table.
  */
 export async function deleteNkbaRuleAction(id: string, fileUrl: string) {
   try {
@@ -102,7 +105,7 @@ export async function deleteNkbaRuleAction(id: string, fileUrl: string) {
       await supabase.storage.from('manufacturer-docs').remove([path]);
     }
     
-    await supabase.from('nkba_rules').delete().eq('id', id);
+    await supabase.from('nkba_files').delete().eq('id', id);
     
     revalidatePath('/admin/nkba');
     return { success: true };
