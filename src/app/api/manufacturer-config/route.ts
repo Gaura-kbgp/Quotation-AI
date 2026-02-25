@@ -17,6 +17,7 @@ export async function GET(req: Request) {
     const supabase = createServerSupabase();
     
     // Fetch unique values from the specifications table
+    // We fetch raw columns to ensure we get exactly what's in the DB
     const { data: specs, error } = await supabase
       .from('manufacturer_specifications')
       .select('collection_name, door_style')
@@ -24,28 +25,32 @@ export async function GET(req: Request) {
 
     if (error) {
       console.error('[API] Supabase Query Error:', error);
-      throw error;
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
     if (!specs || specs.length === 0) {
-      console.warn(`[API] DATABASE EMPTY: No specification records found for ID: ${id}. Please ensure a pricing file was uploaded and parsed in the Admin panel.`);
+      console.warn(`[API] DATABASE EMPTY: No specification records found for ID: ${id}.`);
       return Response.json({ collections: [], styles: [] });
     }
 
-    console.log(`[API] Retreived ${specs.length} raw specification records.`);
+    console.log(`[API] Retrieved ${specs.length} raw specification records for processing.`);
 
-    // Extract unique values
-    const collections = Array.from(new Set(specs.map(s => s.collection_name)))
-      .filter((val): val is string => Boolean(val && val.trim().length > 0))
+    // Extract unique values with cleaning
+    const collections = Array.from(new Set(specs.map(s => String(s.collection_name || '').trim())))
+      .filter(val => val.length > 0)
       .sort();
       
-    const styles = Array.from(new Set(specs.map(s => s.door_style)))
-      .filter((val): val is string => Boolean(val && val.trim().length > 0))
+    const styles = Array.from(new Set(specs.map(s => String(s.door_style || '').trim())))
+      .filter(val => val.length > 0)
       .sort();
 
-    console.log(`[API] Success: Found ${collections.length} Collections and ${styles.length} Styles.`);
+    console.log(`[API] Found ${collections.length} unique Collections and ${styles.length} unique Styles.`);
 
-    return Response.json({ collections, styles });
+    return Response.json({ 
+      collections, 
+      styles,
+      count: specs.length 
+    });
 
   } catch (err: any) {
     console.error('[API] Critical Error:', err.message);

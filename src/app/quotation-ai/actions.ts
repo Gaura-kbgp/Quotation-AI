@@ -5,10 +5,11 @@ import { createServerSupabase } from '@/lib/supabase-server';
 import { revalidatePath } from 'next/cache';
 
 /**
- * Normalizes cabinet codes and generates a priced BOM based on the new room structure.
+ * Normalizes cabinet codes and generates a priced BOM based on the room structure.
  */
 export async function generateBOMAction(projectId: string, manufacturerId: string, collection: string, doorStyle: string) {
   try {
+    console.log(`[BOM] Starting generation for Project: ${projectId}, Brand: ${manufacturerId}`);
     const supabase = createServerSupabase();
 
     // 1. Fetch project data
@@ -18,11 +19,13 @@ export async function generateBOMAction(projectId: string, manufacturerId: strin
       .eq('id', projectId)
       .single();
 
-    if (pError) throw pError;
+    if (pError || !project) throw new Error(pError?.message || 'Project not found');
 
     const rooms = project.extracted_data?.rooms || [];
+    if (rooms.length === 0) throw new Error('No room data found in project extraction');
     
     // 2. Fetch Pricing Matrix
+    console.log(`[BOM] Fetching pricing for Collection: ${collection}, Style: ${doorStyle}`);
     const { data: pricing, error: prError } = await supabase
       .from('manufacturer_specifications')
       .select('sku, price')
@@ -30,26 +33,34 @@ export async function generateBOMAction(projectId: string, manufacturerId: strin
       .eq('collection_name', collection)
       .eq('door_style', doorStyle);
 
-    if (prError) throw prError;
+    if (prError) throw new Error(`Pricing fetch error: ${prError.message}`);
 
-    const pricingMap = new Map(pricing.map(p => [p.sku.toUpperCase().replace(/\s/g, ''), p.price]));
+    // Create a map for fast lookup - normalize keys for matching
+    const pricingMap = new Map(
+      (pricing || []).map(p => [String(p.sku).toUpperCase().replace(/\s/g, ''), p.price])
+    );
+
+    console.log(`[BOM] Loaded ${pricingMap.size} pricing points for this configuration.`);
 
     // 3. Process each room and its sections
     const bomItems: any[] = [];
     
     rooms.forEach((room: any) => {
-      Object.keys(room.sections || {}).forEach((sectionKey) => {
-        const cabinets = room.sections[sectionKey] || [];
+      const sections = room.sections || {};
+      Object.keys(sections).forEach((sectionKey) => {
+        const cabinets = sections[sectionKey] || [];
         cabinets.forEach((cab: any) => {
-          const normalizedSku = cab.code.toUpperCase().replace(/\s/g, '');
+          if (!cab.code) return;
+
+          const normalizedSku = String(cab.code).toUpperCase().replace(/\s/g, '');
           const unitPrice = pricingMap.get(normalizedSku) || 0;
           
           bomItems.push({
             project_id: projectId,
             sku: cab.code,
-            qty: cab.qty,
+            qty: cab.qty || 1,
             unit_price: unitPrice,
-            line_total: unitPrice * cab.qty,
+            line_total: unitPrice * (cab.qty || 1),
             room: room.room_name,
             collection,
             door_style: doorStyle,
@@ -59,29 +70,33 @@ export async function generateBOMAction(projectId: string, manufacturerId: strin
       });
     });
 
+    if (bomItems.length === 0) {
+      throw new Error('No cabinet items found to price.');
+    }
+
     // 4. Clean up old BOM
     await supabase.from('quotation_bom').delete().eq('project_id', projectId);
 
-    // 5. Insert new BOM
-    if (bomItems.length > 0) {
-      const { error: insertError } = await supabase.from('quotation_bom').insert(bomItems);
-      if (insertError) throw insertError;
-    }
+    // 5. Insert new BOM in one batch
+    const { error: insertError } = await supabase.from('quotation_bom').insert(bomItems);
+    if (insertError) throw new Error(`BOM Insert error: ${insertError.message}`);
 
     // 6. Update project with final selection metadata
-    await supabase.from('quotation_projects').update({ 
+    const { error: updateError } = await supabase.from('quotation_projects').update({ 
       manufacturer_id: manufacturerId,
       selected_collection: collection,
       selected_door_style: doorStyle,
       status: 'Priced' 
     }).eq('id', projectId);
 
+    if (updateError) throw new Error(`Project update error: ${updateError.message}`);
+
     revalidatePath(`/quotation-ai/bom/${projectId}`);
     return { success: true };
 
   } catch (err: any) {
-    console.error('BOM Generation Error:', err);
-    return { success: false, error: err.message };
+    console.error('[BOM CRITICAL ERROR]:', err);
+    return { success: false, error: err.message || 'An unexpected error occurred during BOM generation' };
   }
 }
 
@@ -96,7 +111,7 @@ export async function updateProjectAction(id: string, data: any) {
     revalidatePath(`/quotation-ai/review/${id}`);
     return { success: true };
   } catch (err: any) {
-    console.error('Update Project Error:', err);
+    console.error('[Update Project Error]:', err);
     return { success: false, error: err.message };
   }
 }

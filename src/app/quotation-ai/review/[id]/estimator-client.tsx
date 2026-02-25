@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -48,14 +48,6 @@ interface Cabinet {
   type: string;
 }
 
-interface Room {
-  room_name: string;
-  room_type: string;
-  sections: {
-    [key: string]: Cabinet[];
-  };
-}
-
 interface EstimatorClientProps {
   project: any;
   manufacturers: any[];
@@ -64,8 +56,9 @@ interface EstimatorClientProps {
 export function EstimatorClient({ project, manufacturers }: EstimatorClientProps) {
   const router = useRouter();
   const { toast } = useToast();
+  const initialSyncRef = useRef(false);
   
-  // Workflow State: 'review' | 'manufacturer' | 'specifications'
+  // Workflow State
   const [step, setStep] = useState<'review' | 'manufacturer' | 'specifications'>('review');
   
   // Data State
@@ -75,48 +68,53 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   const [selection, setSelection] = useState({
     collection: project.selected_collection || '',
     doorStyle: project.selected_door_style || '',
-    finish: project.selected_finish || '',
-    hardware: project.selected_hardware || ''
   });
 
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
+  function classifyCabinet(code: string): string {
+    const c = String(code || '').toUpperCase();
+    if (c.startsWith('W')) return 'Wall Cabinets';
+    if (c.startsWith('B')) return 'Base Cabinets';
+    if (c.startsWith('T') || c.includes('FILLER')) return 'Tall Cabinets';
+    if (c.startsWith('V')) return 'Vanity Cabinets';
+    return 'Hardware';
+  }
+
   const fetchManConfig = useCallback(async (id: string) => {
     if (!id) return;
     
-    console.log(`[UI] Loading Configuration for Brand: ${id}`);
     setIsLoadingConfig(true);
-    
     try {
       const res = await fetch(`/api/manufacturer-config?id=${id}`);
-      if (!res.ok) throw new Error('Failed to reach configuration API');
-      
       const data = await res.json();
+      
       if (data.error) throw new Error(data.error);
       
-      console.log(`[UI] Loaded ${data.collections.length} collections.`);
       setManConfig({
         collections: data.collections || [],
         styles: data.styles || []
       });
     } catch (err: any) {
-      console.error(`[UI] Fetch Error:`, err);
+      console.error(`[Config Fetch Error]:`, err);
       toast({ 
         variant: 'destructive', 
-        title: 'Configuration Error', 
-        description: 'Failed to load brand collections. Ensure brand data is uploaded.' 
+        title: 'Data Error', 
+        description: 'Failed to load brand data. Ensure pricing is uploaded in Admin.' 
       });
     } finally {
       setIsLoadingConfig(false);
     }
   }, [toast]);
 
-  // Initialize rooms and fetch existing config on mount
+  // Initial Data Restructuring
   useEffect(() => {
+    if (initialSyncRef.current) return;
+
     if (project.extracted_data?.rooms) {
-      const initialRooms = project.extracted_data.rooms.map((r: any) => {
+      const structured = project.extracted_data.rooms.map((r: any) => {
         if (r.sections) return r;
         
         const sections: any = {
@@ -129,46 +127,57 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
         (r.cabinets || []).forEach((c: any) => {
           const type = classifyCabinet(c.code);
-          sections[type].push({ ...c, type, description: c.description || 'Extracted Item' });
+          sections[type].push({ 
+            code: c.code, 
+            qty: c.qty || 1, 
+            type, 
+            description: c.description || 'Extracted Item' 
+          });
         });
 
         return { ...r, sections };
       });
-      setRooms(initialRooms);
+      setRooms(structured);
+    } else {
+      setRooms([{
+        room_name: 'Main Room',
+        room_type: 'Kitchen',
+        sections: {
+          'Base Cabinets': [],
+          'Wall Cabinets': [],
+          'Tall Cabinets': [],
+          'Vanity Cabinets': [],
+          'Hardware': []
+        }
+      }]);
     }
 
-    // Auto-fetch if manufacturer is already selected
     if (project.manufacturer_id) {
       fetchManConfig(project.manufacturer_id);
     }
+    
+    initialSyncRef.current = true;
   }, [project, fetchManConfig]);
 
-  function classifyCabinet(code: string): string {
-    const c = code.toUpperCase();
-    if (c.startsWith('W')) return 'Wall Cabinets';
-    if (c.startsWith('B')) return 'Base Cabinets';
-    if (c.startsWith('T') || c.includes('FILLER')) return 'Tall Cabinets';
-    if (c.startsWith('V')) return 'Vanity Cabinets';
-    return 'Hardware';
-  }
-
-  const saveProject = useCallback(async (currentRooms: any[]) => {
-    setIsSaving(true);
-    const result = await updateProjectAction(project.id, {
-      extracted_data: { rooms: currentRooms }
-    });
-    if (!result.success) {
-      toast({ variant: 'destructive', title: 'Auto-save failed', description: result.error });
-    }
-    setIsSaving(false);
-  }, [project.id, toast]);
-
+  // Auto-Save Logic
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (rooms.length > 0) saveProject(rooms);
-    }, 1500);
+    if (!initialSyncRef.current || rooms.length === 0) return;
+
+    const timer = setTimeout(async () => {
+      setIsSaving(true);
+      try {
+        await updateProjectAction(project.id, {
+          extracted_data: { rooms }
+        });
+      } catch (e) {
+        console.error('Auto-save error:', e);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 2000);
+
     return () => clearTimeout(timer);
-  }, [rooms, saveProject]);
+  }, [rooms, project.id]);
 
   const handleUpdateCabinet = (roomIdx: number, sectionKey: string, cabIdx: number, updates: Partial<Cabinet>) => {
     const newRooms = [...rooms];
@@ -194,7 +203,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     newRooms[roomIdx].sections[sectionKey].push({
       code: '',
       qty: 1,
-      description: 'New Cabinet',
+      description: 'New Item',
       type: sectionKey
     });
     setRooms(newRooms);
@@ -216,21 +225,33 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   const handleSelectManufacturer = (id: string) => {
     setSelectedManId(id);
+    setSelection({ collection: '', doorStyle: '' });
     fetchManConfig(id);
   };
 
   const handleFinalize = async () => {
+    if (!selectedManId || !selection.collection || !selection.doorStyle) return;
+    
     setIsProcessing(true);
-    const result = await generateBOMAction(
-      project.id, 
-      selectedManId, 
-      selection.collection, 
-      selection.doorStyle
-    );
-    if (result.success) {
-      router.push(`/quotation-ai/bom/${project.id}`);
-    } else {
-      toast({ variant: 'destructive', title: 'Calculation Error', description: result.error });
+    try {
+      const result = await generateBOMAction(
+        project.id, 
+        selectedManId, 
+        selection.collection, 
+        selection.doorStyle
+      );
+      
+      if (result.success) {
+        router.push(`/quotation-ai/bom/${project.id}`);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (err: any) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Error', 
+        description: err.message || 'Failed to generate quotation' 
+      });
       setIsProcessing(false);
     }
   };
@@ -242,16 +263,16 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
           <div className="flex justify-between items-center">
              <div className="flex items-center gap-3">
                 <Layout className="w-5 h-5 text-sky-600" />
-                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Estimator Table</h2>
+                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Review Extraction</h2>
              </div>
              <Button onClick={handleAddRoom} variant="outline" className="rounded-xl border-sky-100 text-sky-600 hover:bg-sky-50">
                 <Plus className="w-4 h-4 mr-2" />
-                Add Room Group
+                Add Room
              </Button>
           </div>
 
           {rooms.map((room, rIdx) => (
-            <div key={rIdx} className="space-y-6 border border-slate-100 rounded-3xl p-8 bg-slate-50/30">
+            <div key={rIdx} className="space-y-6 border border-slate-100 rounded-3xl p-8 bg-slate-50/30 shadow-sm">
                <div className="flex justify-between items-center">
                   <div className="flex items-center gap-4">
                      <Input 
@@ -283,7 +304,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
                <div className="space-y-8">
                   {Object.keys(room.sections).map((sectionKey) => {
-                    const cabs = room.sections[sectionKey];
+                    const cabs = room.sections[sectionKey] || [];
                     return (
                       <div key={sectionKey} className="space-y-4">
                         <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-white border border-slate-100 w-fit">
@@ -295,7 +316,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                             <TableHeader className="bg-slate-50/50">
                               <TableRow className="hover:bg-transparent border-slate-100">
                                 <TableHead className="w-[120px] text-[10px] font-bold uppercase tracking-widest">Qty</TableHead>
-                                <TableHead className="w-[200px] text-[10px] font-bold uppercase tracking-widest">Cabinet Code</TableHead>
+                                <TableHead className="w-[200px] text-[10px] font-bold uppercase tracking-widest">Code</TableHead>
                                 <TableHead className="text-[10px] font-bold uppercase tracking-widest">Description</TableHead>
                                 <TableHead className="w-[80px] text-right"></TableHead>
                               </TableRow>
@@ -306,8 +327,8 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                   <TableCell>
                                     <div className="flex items-center gap-2">
                                       <button 
-                                        onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: Math.max(1, cab.qty - 1) })}
-                                        className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-50 hover:text-sky-600 transition-colors"
+                                        onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: Math.max(1, (cab.qty || 1) - 1) })}
+                                        className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-500"
                                       >
                                         <Minus className="w-3 h-3" />
                                       </button>
@@ -318,8 +339,8 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                         className="w-12 h-8 text-center bg-transparent border-none font-bold"
                                       />
                                       <button 
-                                        onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: cab.qty + 1 })}
-                                        className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-50 hover:text-sky-600 transition-colors"
+                                        onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: (cab.qty || 1) + 1 })}
+                                        className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-500"
                                       >
                                         <Plus className="w-3 h-3" />
                                       </button>
@@ -356,10 +377,10 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                 <TableCell colSpan={4}>
                                   <button 
                                     onClick={() => handleAddRow(rIdx, sectionKey)}
-                                    className="text-[10px] font-bold text-sky-500 uppercase tracking-widest flex items-center gap-1.5 hover:text-sky-700 transition-colors"
+                                    className="text-[10px] font-bold text-sky-500 uppercase tracking-widest flex items-center gap-1.5"
                                   >
                                     <Plus className="w-3 h-3" />
-                                    Add Item to {sectionKey}
+                                    Add Item
                                   </button>
                                 </TableCell>
                               </TableRow>
@@ -378,44 +399,19 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
           <Card className="sticky top-28 border-slate-100 shadow-xl rounded-3xl overflow-hidden">
             <CardHeader className="bg-slate-50/50 border-b border-slate-100">
                <CardTitle className="text-lg flex items-center justify-between">
-                  Project Summary
-                  {isSaving ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-sky-500" />
-                  ) : (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  )}
+                  Summary
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin text-sky-500" /> : <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                </CardTitle>
             </CardHeader>
             <CardContent className="p-6 space-y-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center text-sm">
-                   <span className="text-slate-500">Total Rooms</span>
-                   <span className="font-bold">{rooms.length}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                   <span className="text-slate-500">Total Items</span>
-                   <span className="font-bold">
-                    {rooms.reduce((acc, r) => 
-                      acc + Object.values(r.sections).reduce((sAcc, s: any) => sAcc + s.length, 0), 0
-                    )}
-                   </span>
-                </div>
+              <div className="space-y-2">
+                 <p className="text-xs text-slate-500">Rooms: <strong>{rooms.length}</strong></p>
+                 <p className="text-xs text-slate-500">Items: <strong>{rooms.reduce((acc, r) => acc + Object.values(r.sections).flat().length, 0)}</strong></p>
               </div>
-
-              <Button 
-                onClick={() => setStep('manufacturer')}
-                className="w-full h-14 gradient-button rounded-2xl text-lg group"
-              >
-                Next Step
-                <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+              <Button onClick={() => setStep('manufacturer')} className="w-full h-14 gradient-button rounded-2xl">
+                Select Manufacturer
+                <ChevronRight className="w-4 h-4 ml-2" />
               </Button>
-
-              <div className="p-4 rounded-2xl bg-sky-50/50 border border-sky-100">
-                 <p className="text-[10px] text-sky-600 font-bold uppercase tracking-widest mb-1 text-center">Estimator Note</p>
-                 <p className="text-[11px] text-slate-500 leading-relaxed text-center italic">
-                   All cabinet codes are automatically normalized for pricing matrix matching.
-                 </p>
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -425,58 +421,29 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   if (step === 'manufacturer') {
     return (
-      <div className="max-w-2xl mx-auto space-y-12 py-20 animate-in fade-in slide-in-from-bottom-4">
-        <div className="text-center space-y-4">
-           <div className="w-20 h-20 rounded-3xl bg-sky-50 flex items-center justify-center mx-auto mb-6">
-              <Factory className="w-10 h-10 text-sky-600" />
-           </div>
-           <h2 className="text-4xl font-black text-slate-900 tracking-tight">Select Manufacturer</h2>
-           <p className="text-slate-500">Choose the brand for this quotation to fetch its pricing matrix.</p>
-        </div>
-
+      <div className="max-w-xl mx-auto space-y-8 py-20 text-center">
+        <h2 className="text-3xl font-bold">Select Manufacturer</h2>
         <div className="grid grid-cols-1 gap-4">
-           {manufacturers.length === 0 ? (
-             <div className="p-12 text-center text-slate-400 border border-dashed rounded-3xl">
-                No active manufacturers found in system.
-             </div>
-           ) : (
-             manufacturers.map(m => (
-               <button 
-                 key={m.id}
-                 onClick={() => handleSelectManufacturer(m.id)}
-                 className={cn(
-                   "p-6 rounded-3xl border text-left transition-all duration-300 flex items-center justify-between group",
-                   selectedManId === m.id 
-                     ? "border-sky-500 bg-sky-50/50 ring-4 ring-sky-500/10" 
-                     : "border-slate-100 hover:border-sky-200 hover:bg-white bg-slate-50/30"
-                 )}
-               >
-                  <div className="flex items-center gap-4">
-                     <div className={cn(
-                       "w-12 h-12 rounded-2xl flex items-center justify-center transition-colors",
-                       selectedManId === m.id ? "bg-sky-600 text-white" : "bg-white text-slate-400 group-hover:text-sky-600"
-                     )}>
-                        <Factory className="w-6 h-6" />
-                     </div>
-                     <span className="text-xl font-bold text-slate-900">{m.name}</span>
-                  </div>
-                  {selectedManId === m.id && <CheckCircle2 className="w-6 h-6 text-sky-600" />}
-               </button>
-             ))
-           )}
+           {manufacturers.map(m => (
+             <button 
+               key={m.id}
+               onClick={() => handleSelectManufacturer(m.id)}
+               className={cn(
+                 "p-6 rounded-2xl border text-left flex items-center justify-between transition-all",
+                 selectedManId === m.id ? "border-sky-500 bg-sky-50 shadow-md" : "border-slate-100 hover:border-sky-200"
+               )}
+             >
+                <div className="flex items-center gap-4">
+                   <Factory className={cn("w-6 h-6", selectedManId === m.id ? "text-sky-600" : "text-slate-300")} />
+                   <span className="font-bold text-lg">{m.name}</span>
+                </div>
+                {selectedManId === m.id && <CheckCircle2 className="w-5 h-5 text-sky-600" />}
+             </button>
+           ))}
         </div>
-
         <div className="flex gap-4">
-           <Button variant="outline" className="h-14 flex-1 rounded-2xl border-slate-200" onClick={() => setStep('review')}>
-              Back
-           </Button>
-           <Button 
-             className="h-14 flex-1 rounded-2xl gradient-button" 
-             disabled={!selectedManId || isLoadingConfig}
-             onClick={() => setStep('specifications')}
-           >
-              {isLoadingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Continue'}
-           </Button>
+           <Button variant="outline" className="flex-1 h-12" onClick={() => setStep('review')}>Back</Button>
+           <Button className="flex-1 h-12 gradient-button" disabled={!selectedManId} onClick={() => setStep('specifications')}>Continue</Button>
         </div>
       </div>
     );
@@ -484,55 +451,47 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   if (step === 'specifications') {
     return (
-      <div className="max-w-2xl mx-auto space-y-12 py-20 animate-in fade-in slide-in-from-bottom-4">
-        <div className="text-center space-y-4">
-           <div className="w-20 h-20 rounded-3xl bg-emerald-50 flex items-center justify-center mx-auto mb-6">
-              <Calculator className="w-10 h-10 text-emerald-600" />
-           </div>
-           <h2 className="text-4xl font-black text-slate-900 tracking-tight">Configure Selection</h2>
-           <p className="text-slate-500">Refine the collection and style for accurate pricing matching.</p>
+      <div className="max-w-xl mx-auto space-y-8 py-20">
+        <div className="text-center space-y-2">
+           <h2 className="text-3xl font-bold">Configure Collection</h2>
+           <p className="text-slate-500">Select the door style and collection for accurate pricing.</p>
         </div>
 
-        <Card className="rounded-3xl border-slate-100 shadow-xl overflow-hidden p-8 space-y-6">
+        <Card className="p-8 space-y-6 rounded-3xl border-slate-100 shadow-xl">
            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Collection</label>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Collection</label>
               <Select 
                 onValueChange={(v) => setSelection(prev => ({ ...prev, collection: v }))} 
                 defaultValue={selection.collection}
-                disabled={isLoadingConfig}
               >
-                <SelectTrigger className="h-14 rounded-2xl border-slate-200 text-lg font-bold">
-                  <SelectValue placeholder={isLoadingConfig ? "Loading Collections..." : "Select Collection"} />
+                <SelectTrigger className="h-12 rounded-xl">
+                  <SelectValue placeholder={isLoadingConfig ? "Fetching collections..." : "Choose Collection"} />
                 </SelectTrigger>
-                <SelectContent className="rounded-2xl border-slate-200 bg-white">
+                <SelectContent className="bg-white">
                    {manConfig.collections.length === 0 ? (
-                     <div className="p-4 text-xs text-slate-400 text-center">No collections found.</div>
+                     <p className="p-4 text-xs text-slate-400 text-center">No collections found for this brand.</p>
                    ) : (
-                     manConfig.collections.map((c: string) => (
-                       <SelectItem key={c} value={c} className="rounded-xl py-3 font-medium">{c}</SelectItem>
-                     ))
+                     manConfig.collections.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)
                    )}
                 </SelectContent>
               </Select>
            </div>
 
            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Door Style</label>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Door Style</label>
               <Select 
                 onValueChange={(v) => setSelection(prev => ({ ...prev, doorStyle: v }))} 
                 defaultValue={selection.doorStyle}
-                disabled={isLoadingConfig || !selection.collection}
+                disabled={!selection.collection}
               >
-                <SelectTrigger className="h-14 rounded-2xl border-slate-200 text-lg font-bold">
-                  <SelectValue placeholder={isLoadingConfig ? "Loading Styles..." : "Select Style"} />
+                <SelectTrigger className="h-12 rounded-xl">
+                  <SelectValue placeholder="Choose Style" />
                 </SelectTrigger>
-                <SelectContent className="rounded-2xl border-slate-200 bg-white">
+                <SelectContent className="bg-white">
                    {manConfig.styles.length === 0 ? (
-                     <div className="p-4 text-xs text-slate-400 text-center">No styles found.</div>
+                     <p className="p-4 text-xs text-slate-400 text-center">No styles found.</p>
                    ) : (
-                     manConfig.styles.map((s: string) => (
-                       <SelectItem key={s} value={s} className="rounded-xl py-3 font-medium">{s}</SelectItem>
-                     ))
+                     manConfig.styles.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
                    )}
                 </SelectContent>
               </Select>
@@ -540,15 +499,14 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         </Card>
 
         <div className="flex gap-4">
-           <Button variant="outline" className="h-14 flex-1 rounded-2xl border-slate-200" onClick={() => setStep('manufacturer')}>
-              Back
-           </Button>
+           <Button variant="outline" className="flex-1 h-12" onClick={() => setStep('manufacturer')}>Back</Button>
            <Button 
-             className="h-14 flex-1 rounded-2xl gradient-button" 
-             disabled={!selection.collection || !selection.doorStyle || isProcessing}
+             className="flex-1 h-12 gradient-button" 
+             disabled={!selection.doorStyle || isProcessing} 
              onClick={handleFinalize}
            >
-              {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Finalize Quotation'}
+              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Finalize Quote
            </Button>
         </div>
       </div>
