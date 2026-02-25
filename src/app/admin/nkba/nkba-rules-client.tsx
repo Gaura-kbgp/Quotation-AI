@@ -9,19 +9,20 @@ import { Label } from '@/components/ui/label';
 import { 
   Upload, 
   Trash2, 
-  Calendar, 
   FileText, 
   History, 
   Loader2, 
   CheckCircle2,
   ExternalLink 
 } from 'lucide-react';
-import { uploadNkbaRuleAction, deleteNkbaRuleAction } from '../actions';
+import { deleteNkbaRuleAction } from '../actions';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 
 export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [rules, setRules] = useState(initialRules);
   const [isUploading, setIsUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -32,15 +33,6 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
   const handleUpload = async () => {
     if (!file || !version) return;
 
-    if (file.size > 50 * 1024 * 1024) {
-      toast({
-        variant: 'destructive',
-        title: 'File too large',
-        description: 'Maximum file size is 50MB'
-      });
-      return;
-    }
-
     setIsUploading(true);
 
     const formData = new FormData();
@@ -48,15 +40,23 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
     formData.append('version', version);
 
     try {
-      const res = await uploadNkbaRuleAction(formData);
-      if (res.success) {
+      const response = await fetch('/api/upload-nkba', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const res = await response.json();
+
+      if (response.ok && res.success) {
         toast({ title: 'NKBA Rule Uploaded' });
-        window.location.reload();
+        setFile(null);
+        setVersion('');
+        router.refresh();
       } else {
         toast({ variant: 'destructive', title: 'Upload Failed', description: res.error });
       }
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message });
+      toast({ variant: 'destructive', title: 'Error', description: 'API connection failed' });
     } finally {
       setIsUploading(false);
     }
@@ -67,8 +67,8 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
     try {
       const res = await deleteNkbaRuleAction(rule.id, rule.file_url);
       if (res.success) {
-        setRules(prev => prev.filter(r => r.id !== rule.id));
         toast({ title: 'Rule deleted' });
+        router.refresh();
       }
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error', description: err.message });
@@ -84,7 +84,7 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
                 <FileText className="w-5 h-5 text-sky-600" />
                 Upload New Standard
              </CardTitle>
-             <CardDescription>Upload the latest official NKBA PDF version.</CardDescription>
+             <CardDescription>Streaming API upload enabled for large PDFs.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -111,7 +111,7 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
                onClick={handleUpload}
              >
                {isUploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-               {isUploading ? 'Uploading...' : 'Publish New Rule Set'}
+               {isUploading ? 'Streaming...' : 'Publish New Rule Set'}
              </Button>
 
              {activeRule && (
@@ -170,22 +170,6 @@ export function NkbaRulesClient({ initialRules }: { initialRules: any[] }) {
                 ))
               )}
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="space-y-6">
-        <Card className="glass-card border-slate-200">
-          <CardHeader>
-             <CardTitle className="text-lg text-slate-900">System Insights</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-             <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-100">
-                <p className="text-sm text-emerald-700">Rules are used by the Design AI to verify safety and compliance.</p>
-             </div>
-             <div className="p-4 rounded-lg bg-sky-50 border border-sky-100">
-                <p className="text-sm text-sky-700">Uploading a new rule set immediately updates the AI's training context.</p>
-             </div>
           </CardContent>
         </Card>
       </div>

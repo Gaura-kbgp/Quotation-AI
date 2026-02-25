@@ -19,10 +19,10 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { uploadManufacturerFileAction, deleteManufacturerFileAction } from '../../actions';
+import { deleteManufacturerFileAction } from '../../actions';
+import { useRouter } from 'next/navigation';
 
 interface ManufacturerDetailClientProps {
   id: string;
@@ -33,6 +33,7 @@ interface ManufacturerDetailClientProps {
 
 export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initialSpecsSummary }: ManufacturerDetailClientProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const [files, setFiles] = useState(initialFiles);
   const [specsSummary] = useState(initialSpecsSummary);
   
@@ -44,50 +45,48 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
   const handleFileUpload = async () => {
     if (!uploadFile || !isAddingFile.type) return;
 
-    // Increased client-side check to 50MB to match next.config.ts
-    if (uploadFile.size > 50 * 1024 * 1024) {
-      toast({ 
-        variant: 'destructive', 
-        title: 'File too large', 
-        description: 'Maximum file size is 50MB' 
-      });
-      return;
-    }
-
     setIsUploading(true);
     
     const formData = new FormData();
     formData.append('file', uploadFile);
     formData.append('manufacturerId', id);
-    formData.append('fileType', isAddingFile.type);
+
+    const apiRoute = isAddingFile.type === 'pricing' ? '/api/upload-pricing' : '/api/upload-spec';
 
     try {
-      const result = await uploadManufacturerFileAction(formData);
+      const response = await fetch(apiRoute, {
+        method: 'POST',
+        body: formData,
+      });
 
-      if (!result.success) {
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
         toast({ 
           variant: 'destructive', 
           title: 'Upload Failed', 
-          description: result.error || 'An unexpected error occurred during upload.' 
+          description: result.error || 'The server returned an error during upload.' 
         });
       } else {
         toast({ 
-          title: 'File Uploaded Successfully', 
-          description: result.extractionSummary || 'The file has been saved to storage.' 
+          title: 'Success', 
+          description: result.count 
+            ? `Extracted ${result.count} specifications from ${result.fileName}` 
+            : `${result.fileName} uploaded successfully.` 
         });
-        window.location.reload(); 
+        setIsAddingFile({ open: false, type: null });
+        setUploadFile(null);
+        router.refresh();
       }
     } catch (err: any) {
-      console.error('Upload catch error:', err);
+      console.error('Upload Error:', err);
       toast({ 
         variant: 'destructive', 
-        title: 'System Error', 
-        description: err.message || 'The server connection was interrupted. The file might be too large or the network is unstable.' 
+        title: 'Network Error', 
+        description: 'Could not connect to the upload service.' 
       });
     } finally {
       setIsUploading(false);
-      setUploadFile(null);
-      setIsAddingFile({ open: false, type: null });
     }
   };
 
@@ -98,7 +97,7 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
       const result = await deleteManufacturerFileAction(file.id, file.file_url, id);
       if (result.success) {
         toast({ title: 'File deleted' });
-        setFiles(prev => prev.filter(f => f.id !== file.id));
+        router.refresh();
       } else {
         toast({ variant: 'destructive', title: 'Delete Failed', description: result.error });
       }
@@ -169,7 +168,7 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
                   <TableIcon className="w-5 h-5 text-emerald-600" />
                   Pricing Files (XLSX, XLSM, CSV)
                 </CardTitle>
-                <CardDescription>Automatic extraction enabled on upload.</CardDescription>
+                <CardDescription>Automatic extraction via production-safe Route Handler.</CardDescription>
               </div>
               <Button onClick={() => setIsAddingFile({ open: true, type: 'pricing' })} variant="outline" size="sm" className="rounded-xl border-emerald-100 text-emerald-600">
                 <Plus className="w-4 h-4 mr-2" />
@@ -210,7 +209,7 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Database className="w-5 h-5 text-sky-600" />
-                Parsed Specs Summary
+                Extraction Summary
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -225,10 +224,7 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
                 </div>
               </div>
               <div className="p-4 rounded-xl bg-sky-50 border border-sky-100">
-                <p className="text-sm text-sky-700 font-medium">{specsSummary?.count || 0} normalized rows stored in database.</p>
-              </div>
-              <div className="pt-4 border-t border-slate-100">
-                <p className="text-xs text-slate-400">System automatically scans for structured data upon spreadsheet upload.</p>
+                <p className="text-sm text-sky-700 font-medium">{specsSummary?.count || 0} normalized rows stored.</p>
               </div>
             </CardContent>
           </Card>
@@ -263,20 +259,20 @@ export function ManufacturerDetailClient({ id, manufacturer, initialFiles, initi
                   <>
                     <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
                     <p className="text-sm font-semibold text-emerald-700">{uploadFile.name}</p>
-                    <p className="text-xs text-slate-400 mt-1">Ready to upload ({(uploadFile.size / (1024 * 1024)).toFixed(1)}MB)</p>
+                    <p className="text-xs text-slate-400 mt-1">Ready for API upload ({(uploadFile.size / (1024 * 1024)).toFixed(1)}MB)</p>
                   </>
                 ) : (
                   <>
                     <UploadCloud className="w-10 h-10 text-slate-300 mb-2" />
                     <p className="text-sm font-medium">Drag & drop or <span className="text-sky-600">browse</span></p>
-                    <p className="text-xs text-slate-400 mt-1">{isAddingFile.type === 'pricing' ? 'Excel / CSV' : 'PDF'} up to 50MB</p>
+                    <p className="text-xs text-slate-400 mt-1">Uses streaming API Route</p>
                   </>
                 )}
               </label>
             </div>
             <Button onClick={handleFileUpload} className="w-full h-11 gradient-button" disabled={isUploading || !uploadFile}>
               {isUploading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
-              {isUploading ? 'Processing...' : 'Upload & Save'}
+              {isUploading ? 'Streaming Upload...' : 'Upload & Process'}
             </Button>
           </div>
         </DialogContent>
