@@ -6,70 +6,63 @@
       "description": "Details of a product manufacturer",
       "type": "object",
       "properties": {
+        "id": { "type": "string", "format": "uuid" },
         "name": { "type": "string" },
-        "status": { "type": "string", "enum": ["Active", "Pending", "Inactive"] },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "description": { "type": "string" }
+        "status": { "type": "string", "enum": ["Active", "Inactive"] },
+        "created_at": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "status"]
+      "required": ["name"]
     },
-    "PricingSheet": {
-      "title": "Pricing Sheet",
-      "description": "A spreadsheet containing pricing data",
+    "ManufacturerFile": {
+      "title": "Manufacturer File",
+      "description": "Technical or pricing document",
       "type": "object",
       "properties": {
-        "fileName": { "type": "string" },
-        "url": { "type": "string" },
-        "uploadedAt": { "type": "string", "format": "date-time" },
-        "type": { "type": "string", "enum": ["XLSX", "CSV", "GSheet"] }
-      },
-      "required": ["fileName", "url"]
+        "id": { "type": "string", "format": "uuid" },
+        "manufacturer_id": { "type": "string", "format": "uuid" },
+        "file_type": { "type": "string", "enum": ["spec", "pricing"] },
+        "file_name": { "type": "string" },
+        "file_url": { "type": "string" },
+        "file_format": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
     },
-    "SpecBook": {
-      "title": "Specification Book",
-      "description": "PDF catalog or technical specifications",
+    "ManufacturerSpecification": {
+      "title": "Manufacturer Specification",
+      "description": "Extracted cabinet specifications",
       "type": "object",
       "properties": {
-        "fileName": { "type": "string" },
-        "url": { "type": "string" },
-        "uploadedAt": { "type": "string", "format": "date-time" },
-        "version": { "type": "string" }
-      },
-      "required": ["fileName", "url"]
+        "id": { "type": "string", "format": "uuid" },
+        "manufacturer_id": { "type": "string", "format": "uuid" },
+        "collection_name": { "type": "string" },
+        "door_style": { "type": "string" },
+        "finish": { "type": "string" },
+        "category": { "type": "string" },
+        "raw_source_file_id": { "type": "string", "format": "uuid" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
     },
     "NkbaRule": {
-      "title": "NKBA Rule Document",
+      "title": "NKBA Rule",
       "description": "Official NKBA standards document",
       "type": "object",
       "properties": {
+        "id": { "type": "string", "format": "uuid" },
         "version": { "type": "string" },
-        "fileName": { "type": "string" },
-        "url": { "type": "string" },
-        "uploadedAt": { "type": "string", "format": "date-time" },
-        "isActive": { "type": "boolean" }
-      },
-      "required": ["version", "fileName", "url"]
+        "file_name": { "type": "string" },
+        "file_url": { "type": "string" },
+        "is_active": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
     "providers": ["password"]
   },
   "firestore": {
-    "/manufacturers/{manufacturerId}": {
-      "schema": "Manufacturer",
-      "description": "Collection of kitchen/bath manufacturers"
-    },
-    "/manufacturers/{manufacturerId}/pricingSheets/{sheetId}": {
-      "schema": "PricingSheet",
-      "description": "Pricing configuration sheets"
-    },
-    "/manufacturers/{manufacturerId}/specBooks/{bookId}": {
-      "schema": "SpecBook",
-      "description": "Specification PDF catalogs"
-    },
-    "/nkba_rules/{ruleId}": {
-      "schema": "NkbaRule",
-      "description": "Uploaded NKBA rule documents"
-    }
+    "/manufacturers/{id}": { "schema": "Manufacturer" },
+    "/manufacturer_files/{id}": { "schema": "ManufacturerFile" },
+    "/manufacturer_specifications/{id}": { "schema": "ManufacturerSpecification" },
+    "/nkba_rules/{id}": { "schema": "NkbaRule" }
   }
 }

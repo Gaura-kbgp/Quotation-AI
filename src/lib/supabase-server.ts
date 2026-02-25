@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 /**
@@ -16,7 +17,6 @@ export const createServerSupabase = () => {
   }
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    // Return a dummy client or throw a descriptive error that can be caught
     throw new Error('Database configuration incomplete. Please check server environment variables.');
   }
 

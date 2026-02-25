@@ -1,3 +1,4 @@
+
 import { createServerSupabase } from '@/lib/supabase-server';
 import { ManufacturerDetailClient } from './manufacturer-detail-client';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Factory, BookOpen, Database, Quote, RefreshCcw, AlertCircle } from 'lucide-react';
 import { createServerSupabase } from '@/lib/supabase-server';
