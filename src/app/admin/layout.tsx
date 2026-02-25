@@ -1,7 +1,8 @@
 import { AdminSidebar } from '@/components/admin/sidebar';
-import { ShieldCheck, User, LogOut } from 'lucide-react';
+import { ShieldCheck, User, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { logout } from './actions';
+import { Separator } from '@/components/ui/separator';
+import Link from 'next/link';
 
 export default function AdminLayout({
   children,
@@ -15,11 +16,22 @@ export default function AdminLayout({
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Top Bar */}
         <header className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between px-8 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-500">System Status:</span>
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-600">Live</span>
+          <div className="flex items-center gap-4">
+            <Link href="/">
+              <Button variant="ghost" size="sm" className="text-slate-500 hover:text-sky-600">
+                <Home className="w-4 h-4 mr-2" />
+                Home
+              </Button>
+            </Link>
+            
+            <Separator orientation="vertical" className="h-6" />
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-500">System Status:</span>
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-600">Live</span>
+              </div>
             </div>
           </div>
 
@@ -28,12 +40,6 @@ export default function AdminLayout({
               <User className="w-4 h-4 text-sky-600" />
               <span className="text-sm font-medium text-slate-700">Admin</span>
             </div>
-            <form action={logout}>
-              <Button variant="ghost" size="sm" className="text-slate-500 hover:text-red-600 hover:bg-red-50">
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </Button>
-            </form>
           </div>
         </header>
 

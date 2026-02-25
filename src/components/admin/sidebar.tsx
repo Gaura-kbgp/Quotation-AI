@@ -7,9 +7,10 @@ import {
   LayoutDashboard, 
   Factory, 
   BookOpen, 
-  Settings,
-  ChevronRight
+  ChevronRight,
+  LogOut
 } from 'lucide-react';
+import { logout } from '@/app/admin/actions';
 
 const menuItems = [
   { name: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard' },
@@ -59,13 +60,15 @@ export function AdminSidebar() {
       </nav>
 
       <div className="p-6 border-t border-slate-200">
-        <Link 
-          href="/admin/settings" 
-          className="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200"
-        >
-          <Settings className="w-5 h-5 text-slate-400" />
-          <span className="font-medium">Settings</span>
-        </Link>
+        <form action={logout}>
+          <button 
+            type="submit"
+            className="flex w-full items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all duration-200 font-medium"
+          >
+            <LogOut className="w-5 h-5 text-slate-400 group-hover:text-red-600" />
+            <span>Logout</span>
+          </button>
+        </form>
       </div>
     </aside>
   );
