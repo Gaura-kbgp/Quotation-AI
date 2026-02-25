@@ -25,6 +25,18 @@
       },
       "required": ["fileName", "url"]
     },
+    "SpecBook": {
+      "title": "Specification Book",
+      "description": "PDF catalog or technical specifications",
+      "type": "object",
+      "properties": {
+        "fileName": { "type": "string" },
+        "url": { "type": "string" },
+        "uploadedAt": { "type": "string", "format": "date-time" },
+        "version": { "type": "string" }
+      },
+      "required": ["fileName", "url"]
+    },
     "NkbaRule": {
       "title": "NKBA Rule Document",
       "description": "Official NKBA standards document",
@@ -50,6 +62,10 @@
     "/manufacturers/{manufacturerId}/pricingSheets/{sheetId}": {
       "schema": "PricingSheet",
       "description": "Pricing configuration sheets"
+    },
+    "/manufacturers/{manufacturerId}/specBooks/{bookId}": {
+      "schema": "SpecBook",
+      "description": "Specification PDF catalogs"
     },
     "/nkba_rules/{ruleId}": {
       "schema": "NkbaRule",

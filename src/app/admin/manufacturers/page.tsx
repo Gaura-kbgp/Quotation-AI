@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Factory, Plus, Search, MoreHorizontal, Edit, Trash2, Eye, Loader2 } from 'lucide-react';
+import { Factory, Plus, Search, MoreHorizontal, Edit, Trash2, Eye, Loader2, ChevronRight } from 'lucide-react';
 import { 
   Table, 
   TableBody, 
@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, deleteDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -31,6 +32,7 @@ import { Label } from '@/components/ui/label';
 
 export default function ManufacturersPage() {
   const { db } = useFirestore();
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [newManufacturerName, setNewManufacturerName] = useState('');
@@ -69,7 +71,8 @@ export default function ManufacturersPage() {
       });
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!db) return;
     const docRef = doc(db, 'manufacturers', id);
     deleteDoc(docRef).catch(async (e) => {
@@ -84,7 +87,7 @@ export default function ManufacturersPage() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Manufacturers</h1>
+          <h1 className="text-3xl font-bold text-slate-900 font-headline">Manufacturers</h1>
           <p className="text-slate-500 mt-1">Manage manufacturer data and specification files.</p>
         </div>
         
@@ -144,13 +147,17 @@ export default function ManufacturersPage() {
             </TableHeader>
             <TableBody>
               {filteredManufacturers?.map((m: any) => (
-                <TableRow key={m.id} className="border-slate-100 hover:bg-slate-50">
+                <TableRow 
+                  key={m.id} 
+                  className="border-slate-100 hover:bg-slate-50 cursor-pointer group"
+                  onClick={() => router.push(`/admin/manufacturers/${m.id}`)}
+                >
                   <TableCell className="font-medium text-slate-900">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center group-hover:bg-sky-100 transition-colors">
                         <Factory className="w-4 h-4 text-sky-600" />
                       </div>
-                      {m.name}
+                      <span className="group-hover:text-sky-600 transition-colors">{m.name}</span>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -165,25 +172,28 @@ export default function ManufacturersPage() {
                     {m.createdAt?.toDate ? m.createdAt.toDate().toLocaleDateString() : 'N/A'}
                   </TableCell>
                   <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-900">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-white border-slate-200 text-slate-700">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/admin/manufacturers/${m.id}`}>
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Details
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDelete(m.id)} className="text-red-600 hover:text-red-700 focus:text-red-700">
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex items-center justify-end gap-2">
+                       <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-900">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-white border-slate-200 text-slate-700">
+                          <DropdownMenuItem asChild>
+                            <Link href={`/admin/manufacturers/${m.id}`}>
+                              <Eye className="w-4 h-4 mr-2" />
+                              View Details
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => handleDelete(m.id, e)} className="text-red-600 hover:text-red-700 focus:text-red-700">
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-sky-500 transition-colors" />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
