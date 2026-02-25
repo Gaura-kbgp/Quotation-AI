@@ -2,7 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { supabaseServer } from '@/lib/supabase-server';
+import { createServerSupabase } from '@/lib/supabase-server';
 import * as XLSX from 'xlsx';
 
 export async function createSession(token: string) {
@@ -24,6 +24,8 @@ export async function logout() {
  * Parses an Excel/XLSM file and extracts cabinet specifications.
  */
 export async function extractSpecifications(fileId: string, manufacturerId: string, fileUrl: string) {
+  const supabase = createServerSupabase();
+  
   try {
     const response = await fetch(fileUrl);
     const arrayBuffer = await response.arrayBuffer();
@@ -35,9 +37,6 @@ export async function extractSpecifications(fileId: string, manufacturerId: stri
       const sheet = workbook.Sheets[sheetName];
       const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
       
-      // Basic extraction logic: 
-      // This expects a header row and then data. 
-      // In production, we'd add more complex heuristic detection for "Collections" and "Door Styles"
       if (data.length < 2) return;
 
       const headers = data[0];
@@ -45,8 +44,6 @@ export async function extractSpecifications(fileId: string, manufacturerId: stri
         const row = data[i];
         if (!row || row.length === 0) continue;
 
-        // Simple mapping (Assuming Col 0 is Collection, Col 1 is Style, Col 2 is Finish)
-        // This should be adjusted based on the actual manufacturer file layouts
         if (row[0] && row[1]) {
           specs.push({
             manufacturer_id: manufacturerId,
@@ -61,7 +58,7 @@ export async function extractSpecifications(fileId: string, manufacturerId: stri
     });
 
     if (specs.length > 0) {
-      const { error } = await supabaseServer
+      const { error } = await supabase
         .from('manufacturer_specifications')
         .insert(specs);
       

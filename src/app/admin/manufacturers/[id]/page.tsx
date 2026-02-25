@@ -19,7 +19,7 @@ import {
   Database
 } from 'lucide-react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase-client';
+import { supabaseClient } from '@/lib/supabase-client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -45,9 +45,9 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [mRes, fRes, sRes] = await Promise.all([
-      supabase.from('manufacturers').select('*').eq('id', id).single(),
-      supabase.from('manufacturer_files').select('*').eq('manufacturer_id', id).order('created_at', { ascending: false }),
-      supabase.from('manufacturer_specifications').select('collection_name, door_style').eq('manufacturer_id', id)
+      supabaseClient.from('manufacturers').select('*').eq('id', id).single(),
+      supabaseClient.from('manufacturer_files').select('*').eq('manufacturer_id', id).order('created_at', { ascending: false }),
+      supabaseClient.from('manufacturer_specifications').select('collection_name, door_style').eq('manufacturer_id', id)
     ]);
 
     if (mRes.error) {
@@ -56,7 +56,6 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
       setManufacturer(mRes.data);
       setFiles(fRes.data || []);
       
-      // Calculate summary
       if (sRes.data) {
         const collections = new Set(sRes.data.map(s => s.collection_name));
         const styles = new Set(sRes.data.map(s => s.door_style));
@@ -86,7 +85,7 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
     const fileExt = uploadFile.name.split('.').pop();
     const fileName = `${id}/${isAddingFile.type}s/${crypto.randomUUID()}.${fileExt}`;
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabaseClient.storage
       .from('manufacturer-docs')
       .upload(fileName, uploadFile, {
         cacheControl: '3600',
@@ -99,9 +98,9 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
       return;
     }
 
-    const { data: { publicUrl } } = supabase.storage.from('manufacturer-docs').getPublicUrl(fileName);
+    const { data: { publicUrl } } = supabaseClient.storage.from('manufacturer-docs').getPublicUrl(fileName);
 
-    const { data: dbData, error: dbError } = await supabase
+    const { data: dbData, error: dbError } = await supabaseClient
       .from('manufacturer_files')
       .insert([{
         manufacturer_id: id,
@@ -118,7 +117,6 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
     } else {
       toast({ title: 'File Uploaded Successfully' });
       
-      // If it's a pricing file, trigger specification extraction
       if (isAddingFile.type === 'pricing') {
         toast({ title: 'Extracting specifications...' });
         const extRes = await extractSpecifications(dbData.id, id, publicUrl);
@@ -137,14 +135,12 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
   };
 
   const handleDeleteFile = async (file: any) => {
-    // Delete from storage
     const path = file.file_url.split('/public/manufacturer-docs/')[1];
     if (path) {
-      await supabase.storage.from('manufacturer-docs').remove([path]);
+      await supabaseClient.storage.from('manufacturer-docs').remove([path]);
     }
     
-    // Delete from DB
-    await supabase.from('manufacturer_files').delete().eq('id', file.id);
+    await supabaseClient.from('manufacturer_files').delete().eq('id', file.id);
     fetchData();
     toast({ title: 'File deleted' });
   };
@@ -168,7 +164,6 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
-          {/* Specification Books */}
           <Card className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100">
               <div>
@@ -208,7 +203,6 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
             </CardContent>
           </Card>
 
-          {/* Pricing Files */}
           <Card className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100">
               <div>
@@ -252,7 +246,6 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
           </Card>
         </div>
 
-        {/* Specs Summary */}
         <div className="space-y-6">
           <Card className="glass-card sticky top-24">
             <CardHeader>
@@ -283,7 +276,6 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
         </div>
       </div>
 
-      {/* Upload Dialog */}
       <Dialog open={isAddingFile.open} onOpenChange={(open) => !open && setIsAddingFile({ open: false, type: null })}>
         <DialogContent className="bg-white max-w-md">
           <DialogHeader>

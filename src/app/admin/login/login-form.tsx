@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { supabase } from '@/lib/supabase-client';
+import { supabaseClient } from '@/lib/supabase-client';
 import { createSession } from '../actions';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,8 +43,7 @@ export function LoginForm() {
     setIsLoading(true);
     
     try {
-      // Connect specifically to Supabase Auth
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
         email: values.email,
         password: values.password,
       });
