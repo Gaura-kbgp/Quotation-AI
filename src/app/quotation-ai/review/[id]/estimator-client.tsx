@@ -86,23 +86,27 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   const fetchManConfig = useCallback(async (id: string) => {
     if (!id) return;
     
-    console.log(`[UI] Fetching config for brand ID: ${id}`);
+    console.log(`[UI] Loading Configuration for Brand: ${id}`);
     setIsLoadingConfig(true);
     
     try {
       const res = await fetch(`/api/manufacturer-config?id=${id}`);
-      const data = await res.json();
+      if (!res.ok) throw new Error('Failed to reach configuration API');
       
+      const data = await res.json();
       if (data.error) throw new Error(data.error);
       
-      console.log(`[UI] Received config:`, data);
-      setManConfig(data);
+      console.log(`[UI] Loaded ${data.collections.length} collections.`);
+      setManConfig({
+        collections: data.collections || [],
+        styles: data.styles || []
+      });
     } catch (err: any) {
       console.error(`[UI] Fetch Error:`, err);
       toast({ 
         variant: 'destructive', 
-        title: 'Config Error', 
-        description: 'Failed to load brand specifications.' 
+        title: 'Configuration Error', 
+        description: 'Failed to load brand collections. Ensure brand data is uploaded.' 
       });
     } finally {
       setIsLoadingConfig(false);
@@ -133,7 +137,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       setRooms(initialRooms);
     }
 
-    // Auto-fetch config if manufacturer is already selected
+    // Auto-fetch if manufacturer is already selected
     if (project.manufacturer_id) {
       fetchManConfig(project.manufacturer_id);
     }
@@ -501,7 +505,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                   <SelectValue placeholder={isLoadingConfig ? "Loading Collections..." : "Select Collection"} />
                 </SelectTrigger>
                 <SelectContent className="rounded-2xl border-slate-200 bg-white">
-                   {!isLoadingConfig && manConfig.collections.length === 0 ? (
+                   {manConfig.collections.length === 0 ? (
                      <div className="p-4 text-xs text-slate-400 text-center">No collections found.</div>
                    ) : (
                      manConfig.collections.map((c: string) => (
@@ -523,7 +527,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                   <SelectValue placeholder={isLoadingConfig ? "Loading Styles..." : "Select Style"} />
                 </SelectTrigger>
                 <SelectContent className="rounded-2xl border-slate-200 bg-white">
-                   {!isLoadingConfig && manConfig.styles.length === 0 ? (
+                   {manConfig.styles.length === 0 ? (
                      <div className="p-4 text-xs text-slate-400 text-center">No styles found.</div>
                    ) : (
                      manConfig.styles.map((s: string) => (
