@@ -30,7 +30,7 @@ export default function QuotationAiPage() {
     setIsProcessing(true);
     const formData = new FormData();
     formData.append('file', file);
-    // Use the file name as the project name by default since the input was removed
+    // Use the file name as the project name by default
     formData.append('projectName', file.name.replace(/\.[^/.]+$/, ""));
 
     try {
@@ -38,6 +38,14 @@ export default function QuotationAiPage() {
         method: 'POST',
         body: formData,
       });
+
+      // Handle non-JSON responses (like 504 Gateway Timeout HTML pages)
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error('Non-JSON Response:', text);
+        throw new Error(res.status === 504 ? 'The AI analysis timed out. Please try a smaller drawing or try again.' : 'Server returned an invalid response.');
+      }
 
       const result = await res.json();
 
@@ -48,7 +56,12 @@ export default function QuotationAiPage() {
         throw new Error(result.error || 'AI analysis failed');
       }
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Processing Error', description: err.message });
+      console.error('Upload Error:', err);
+      toast({ 
+        variant: 'destructive', 
+        title: 'Processing Error', 
+        description: err.message || 'An unexpected error occurred during AI analysis.'
+      });
       setIsProcessing(false);
     }
   };

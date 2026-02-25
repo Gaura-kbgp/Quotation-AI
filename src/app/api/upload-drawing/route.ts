@@ -2,7 +2,7 @@
 import { createServerSupabase } from '@/lib/supabase-server';
 import { analyzeDrawing } from '@/ai/flows/analyze-drawing-flow';
 
-export const maxDuration = 60; // Extend timeout for slow AI processing
+export const maxDuration = 120; // Extended timeout for heavy architectural AI analysis
 
 /**
  * API Route Handler for architectural PDF uploads and AI analysis.
