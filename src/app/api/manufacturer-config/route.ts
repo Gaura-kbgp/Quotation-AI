@@ -1,15 +1,15 @@
 
 import { createServerSupabase } from '@/lib/supabase-server';
 
+export const maxDuration = 30;
+
 /**
  * Fetches unique collections and door styles for a manufacturer.
- * Used to populate dropdowns in the quotation flow.
+ * Optimized for large datasets.
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
-
-  console.log(`[API] Configuration request for Brand ID: ${id}`);
 
   if (!id) return Response.json({ error: 'Missing Manufacturer ID' }, { status: 400 });
 
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     const supabase = createServerSupabase();
     
     // Fetch unique values from the specifications table
-    // We fetch raw columns to ensure we get exactly what's in the DB
+    // We only select the necessary columns to reduce payload size
     const { data: specs, error } = await supabase
       .from('manufacturer_specifications')
       .select('collection_name, door_style')
@@ -29,26 +29,23 @@ export async function GET(req: Request) {
     }
 
     if (!specs || specs.length === 0) {
-      console.warn(`[API] DATABASE EMPTY: No specification records found for ID: ${id}.`);
       return Response.json({ collections: [], styles: [] });
     }
 
-    console.log(`[API] Retrieved ${specs.length} raw specification records for processing.`);
+    // Use a Set to extract unique values efficiently
+    const collectionSet = new Set<string>();
+    const styleSet = new Set<string>();
 
-    // Extract unique values with cleaning
-    const collections = Array.from(new Set(specs.map(s => String(s.collection_name || '').trim())))
-      .filter(val => val.length > 0)
-      .sort();
-      
-    const styles = Array.from(new Set(specs.map(s => String(s.door_style || '').trim())))
-      .filter(val => val.length > 0)
-      .sort();
-
-    console.log(`[API] Found ${collections.length} unique Collections and ${styles.length} unique Styles.`);
+    specs.forEach(s => {
+      const c = String(s.collection_name || '').trim();
+      const st = String(s.door_style || '').trim();
+      if (c) collectionSet.add(c);
+      if (st) styleSet.add(st);
+    });
 
     return Response.json({ 
-      collections, 
-      styles,
+      collections: Array.from(collectionSet).sort(), 
+      styles: Array.from(styleSet).sort(),
       count: specs.length 
     });
 

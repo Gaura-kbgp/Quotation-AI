@@ -1,6 +1,9 @@
+
 import { createServerSupabase } from '@/lib/supabase-server';
 import { parseSpecifications } from '@/lib/specs-parser';
 import { revalidatePath } from 'next/cache';
+
+export const maxDuration = 60; // Extend timeout for large Excel parsing and DB batching
 
 /**
  * Route Handler for large pricing file uploads and extraction.

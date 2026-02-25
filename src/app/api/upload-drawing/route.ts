@@ -2,6 +2,8 @@
 import { createServerSupabase } from '@/lib/supabase-server';
 import { analyzeDrawing } from '@/ai/flows/analyze-drawing-flow';
 
+export const maxDuration = 60; // Extend timeout for slow AI processing
+
 /**
  * API Route Handler for architectural PDF uploads and AI analysis.
  * Bypasses 1MB Server Action limit.
@@ -42,7 +44,7 @@ export async function POST(req: Request) {
       .select('file_url')
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     // 3. Run AI Extraction Flow
     const aiResult = await analyzeDrawing({

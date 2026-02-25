@@ -4,6 +4,8 @@
 import { createServerSupabase } from '@/lib/supabase-server';
 import { revalidatePath } from 'next/cache';
 
+export const maxDuration = 60;
+
 /**
  * Normalizes cabinet codes and generates a priced BOM based on the room structure.
  */
