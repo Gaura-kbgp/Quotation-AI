@@ -8,10 +8,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 /**
- * Standard production Supabase client for client-side usage.
+ * Client-side Supabase client (Browser)
  * Uses the ANON key for public/authenticated access governed by RLS.
  */
-export const supabase = createClient(
+export const supabaseClient = createClient(
   supabaseUrl || '', 
   supabaseAnonKey || '',
   {
@@ -19,9 +19,6 @@ export const supabase = createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true
-    },
-    global: {
-      headers: { 'x-application-name': 'kabs-quotation-ai' }
     }
   }
 );

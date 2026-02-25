@@ -19,10 +19,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase-client';
+import { supabaseClient } from '@/lib/supabase-client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -41,20 +40,24 @@ export default function ManufacturersPage() {
   const fetchManufacturers = useCallback(async () => {
     setLoading(true);
     setError(null);
+    
     try {
-      const { data, error: supabaseError } = await supabase
+      const { data, error: supabaseError } = await supabaseClient
         .from('manufacturers')
         .select('*')
         .order('name');
       
-      if (supabaseError) throw supabaseError;
+      if (supabaseError) {
+        console.error('Supabase error detail:', supabaseError);
+        throw new Error(supabaseError.message);
+      }
+      
       setManufacturers(data || []);
     } catch (err: any) {
-      console.error('Fetch manufacturers failed:', err);
+      console.error('Fetch manufacturers failed:', err.message, err);
       let message = err.message || 'An unexpected error occurred';
       
-      // Heuristic for network timeouts/blockage
-      if (message.includes('Failed to fetch') || !err.status) {
+      if (message.includes('Failed to fetch') || message.includes('fetch')) {
         message = 'Connection Timeout: Unable to reach the Supabase server. Please verify that your Supabase project is active and your network allows outgoing requests.';
       }
       
@@ -74,19 +77,24 @@ export default function ManufacturersPage() {
 
   const handleAddManufacturer = async () => {
     if (!newManufacturerName.trim()) return;
+    
     try {
-      const { error: addError } = await supabase
+      const { error: addError } = await supabaseClient
         .from('manufacturers')
         .insert([{ name: newManufacturerName, status: 'Active' }]);
 
-      if (addError) throw addError;
+      if (addError) throw new Error(addError.message);
       
       setNewManufacturerName('');
       setIsAdding(false);
       fetchManufacturers();
       toast({ title: 'Manufacturer added successfully' });
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error adding manufacturer', description: err.message });
+      toast({ 
+        variant: 'destructive', 
+        title: 'Error adding manufacturer', 
+        description: err.message 
+      });
     }
   };
 
@@ -95,12 +103,21 @@ export default function ManufacturersPage() {
     if (!confirm('Are you sure you want to delete this manufacturer?')) return;
     
     try {
-      const { error: delError } = await supabase.from('manufacturers').delete().eq('id', id);
-      if (delError) throw delError;
+      const { error: delError } = await supabaseClient
+        .from('manufacturers')
+        .delete()
+        .eq('id', id);
+        
+      if (delError) throw new Error(delError.message);
+      
       fetchManufacturers();
       toast({ title: 'Manufacturer removed' });
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error deleting manufacturer', description: err.message });
+      toast({ 
+        variant: 'destructive', 
+        title: 'Error deleting manufacturer', 
+        description: err.message 
+      });
     }
   };
 

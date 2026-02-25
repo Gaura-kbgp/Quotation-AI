@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Factory, BookOpen, Database, Quote, Loader2, AlertCircle, RefreshCcw } from 'lucide-react';
-import { supabase } from '@/lib/supabase-client';
+import { supabaseClient } from '@/lib/supabase-client';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from '@/components/ui/button';
 
@@ -17,14 +17,14 @@ export default function AdminDashboardPage() {
     setError(null);
     try {
       const [mRes, sRes, fRes] = await Promise.all([
-        supabase.from('manufacturers').select('*', { count: 'exact', head: true }),
-        supabase.from('manufacturer_specifications').select('*', { count: 'exact', head: true }),
-        supabase.from('manufacturer_files').select('*', { count: 'exact', head: true }),
+        supabaseClient.from('manufacturers').select('*', { count: 'exact', head: true }),
+        supabaseClient.from('manufacturer_specifications').select('*', { count: 'exact', head: true }),
+        supabaseClient.from('manufacturer_files').select('*', { count: 'exact', head: true }),
       ]);
 
-      if (mRes.error) throw mRes.error;
-      if (sRes.error) throw sRes.error;
-      if (fRes.error) throw fRes.error;
+      if (mRes.error) throw new Error(mRes.error.message);
+      if (sRes.error) throw new Error(sRes.error.message);
+      if (fRes.error) throw new Error(fRes.error.message);
 
       setStats({
         manufacturers: mRes.count || 0,
@@ -33,11 +33,14 @@ export default function AdminDashboardPage() {
         status: 'Live'
       });
     } catch (err: any) {
-      console.error('Dashboard Stats Fetch Error:', err);
-      setError(err.message === 'Failed to fetch' 
-        ? 'Connection Timeout: The browser could not reach Supabase. Please verify your internet connection or check if the Supabase project is active.' 
-        : err.message
-      );
+      console.error('Dashboard Stats Fetch Error:', err.message, err);
+      let message = err.message || 'An unexpected error occurred';
+      
+      if (message.includes('Failed to fetch') || message.includes('fetch')) {
+        message = 'Connection Timeout: The browser could not reach Supabase. Please verify your internet connection or check if the Supabase project is active.';
+      }
+      
+      setError(message);
     } finally {
       setLoading(false);
     }
