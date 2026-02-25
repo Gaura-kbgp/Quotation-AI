@@ -1,21 +1,30 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Factory, BookOpen, Database, Quote, Loader2 } from 'lucide-react';
+import { Factory, BookOpen, Database, Quote, Loader2, AlertCircle, RefreshCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from '@/components/ui/button';
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
       const [mRes, sRes, fRes] = await Promise.all([
         supabase.from('manufacturers').select('*', { count: 'exact', head: true }),
         supabase.from('manufacturer_specifications').select('*', { count: 'exact', head: true }),
         supabase.from('manufacturer_files').select('*', { count: 'exact', head: true }),
       ]);
+
+      if (mRes.error) throw mRes.error;
+      if (sRes.error) throw sRes.error;
+      if (fRes.error) throw fRes.error;
 
       setStats({
         manufacturers: mRes.count || 0,
@@ -23,13 +32,45 @@ export default function AdminDashboardPage() {
         files: fRes.count || 0,
         status: 'Live'
       });
+    } catch (err: any) {
+      console.error('Dashboard Fetch Error:', err);
+      setError(err.message === 'Failed to fetch' 
+        ? 'Connection Timeout: Unable to reach Supabase. Please check if the project is paused or your internet connection is stable.' 
+        : err.message
+      );
+    } finally {
       setLoading(false);
-    };
-
-    fetchStats();
+    }
   }, []);
 
-  if (loading) return <div className="flex items-center justify-center p-20"><Loader2 className="animate-spin text-sky-500" /></div>;
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center p-20 space-y-4">
+      <Loader2 className="animate-spin text-sky-500 w-8 h-8" />
+      <p className="text-slate-500 font-medium">Connecting to Supabase...</p>
+    </div>
+  );
+
+  if (error) return (
+    <div className="p-8 max-w-2xl mx-auto space-y-6">
+      <Alert variant="destructive" className="bg-red-50 border-red-200">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle className="font-bold">Database Connection Error</AlertTitle>
+        <AlertDescription className="mt-2 text-red-700 leading-relaxed">
+          {error}
+        </AlertDescription>
+      </Alert>
+      <div className="flex justify-center">
+        <Button onClick={fetchStats} className="gradient-button px-8">
+          <RefreshCcw className="w-4 h-4 mr-2" />
+          Retry Connection
+        </Button>
+      </div>
+    </div>
+  );
 
   const cards = [
     { name: 'Active Manufacturers', value: stats.manufacturers, icon: Factory, color: 'text-sky-600', bg: 'bg-sky-50' },
@@ -40,9 +81,15 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 mt-1">Overview of the Production AI platform.</p>
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 mt-1">Overview of the Production AI platform.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={fetchStats} className="text-slate-500">
+          <RefreshCcw className="w-3.5 h-3.5 mr-2" />
+          Refresh Data
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
