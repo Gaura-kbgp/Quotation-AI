@@ -48,7 +48,7 @@ export default function ManufacturersPage() {
         .order('name');
       
       if (supabaseError) {
-        console.error('Supabase error detail:', supabaseError);
+        console.error('Supabase error detail:', JSON.stringify(supabaseError, null, 2));
         throw new Error(supabaseError.message);
       }
       
