@@ -1,7 +1,7 @@
 
 'use server';
 /**
- * @fileOverview AI flow for analyzing architectural PDF drawings.
+ * @fileOverview AI flow for analyzing architectural PDF drawings with strict title rules.
  *
  * - analyzeDrawing - Main function to process PDF and extract cabinet BOM.
  */
@@ -17,7 +17,7 @@ const CabinetSchema = z.object({
 });
 
 const RoomSchema = z.object({
-  room_name: z.string().describe('Name of the section or room, e.g., Kitchen, Master Bath.'),
+  room_name: z.string().describe('Name of the section or room, following strict header rules.'),
   room_type: z.string().describe('Type of room: Kitchen, Bathroom, Laundry, Pantry, Other.'),
   cabinets: z.array(CabinetSchema),
 });
@@ -31,11 +31,11 @@ const AnalyzeDrawingOutputSchema = z.object({
 // A FLATTENED schema for the AI output to avoid nesting depth errors in Gemini
 const FlatExtractionSchema = z.object({
   cabinet_list: z.array(z.object({
-    room_name: z.string().describe('Name of the room, e.g. Kitchen'),
-    room_type: z.string().describe('Type: Kitchen, Bath, Laundry, etc.'),
-    code: z.string().describe('Cabinet code, e.g. B24'),
+    room_name: z.string().describe('Full validated room title from Header Block.'),
+    room_type: z.string().describe('Kitchen, Bath, Laundry, etc.'),
+    code: z.string().describe('Cabinet code, normalized.'),
     qty: z.number().describe('Quantity'),
-    type: z.string().describe('Category: Base, Wall, Tall, Vanity, etc.')
+    type: z.string().describe('Base, Wall, Tall, Vanity, Hardware')
   })),
   nkba_flags: z.array(z.string()).describe('NKBA violations or anomalies'),
   summary: z.string().describe('Brief professional summary')
@@ -55,22 +55,36 @@ export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSc
 const prompt = ai.definePrompt({
   name: 'analyzeDrawingPrompt',
   input: { schema: AnalyzeDrawingInputSchema },
-  output: { schema: FlatExtractionSchema }, // Use the flat schema for AI generation
-  prompt: `You are an expert architectural plan analyst and cabinetry specialist.
+  output: { schema: FlatExtractionSchema },
+  prompt: `You are an expert architectural plan analyst specializing in cabinetry BOM extraction.
   
-Analyze the provided PDF drawing of a residential project. 
-Your task is to extract a Bill of Materials (BOM) for the cabinetry required.
+Analyze the provided PDF drawing. Your primary goal is to extract a Bill of Materials (BOM) for cabinetry, following these STRICT rules:
 
-INSTRUCTIONS:
-1. Identify all distinct rooms or sections (Kitchen, Bathrooms, etc.).
-2. For each section, list every cabinet code and its quantity.
-3. Normalize cabinet codes (e.g., if you see "B 24" make it "B24").
-4. If the drawing is unclear, use your best professional judgment based on standard architectural notation.
-5. Apply NKBA (National Kitchen & Bath Association) standard logic to identify potential issues:
-   - Check for clearance around appliances.
-   - Look for tight walkways.
-   - Identify vanity placement issues.
-6. Use the provided NKBA Context if available: {{{nkbaContext}}}
+### 1. ROOM TITLE EXTRACTION RULES
+- ONLY extract room titles from the MAIN HEADER BLOCK (usually top-left of each drawing page).
+- A valid room title MUST contain:
+  1. Builder Name (e.g., MI HOMES SARASOTA)
+  2. Project Name (e.g., 4031 MAGNOLIA)
+  3. Room Descriptor (e.g., STANDARD 42" KITCHEN, OWNERS BATH, BATH 2, OPT LAUNDRY)
+  4. Orientation (e.g., GARAGE RIGHT)
+- IGNORE footer shorthand/reference labels (e.g., "MIH 4031 MAGNOLIA STD 42 KITCHEN GR 1951").
+- DO NOT treat the following as room titles:
+  - HARDWARE, PERIMETER, BUMP, OPT CROWN, OPT LIGHT RAIL, TRIM LIST, INSTALLATION NOTE.
+- Pages labeled "Trim List" are continuation pages of the PREVIOUS room and MUST NOT create new room entries.
+
+### 2. ROOM CLASSIFICATION & LABELING
+- LAUNDRY pages MUST be labeled exactly: "OPT LAUNDRY – [ORIENTATION] – [MODEL]" (e.g., OPT LAUNDRY – GARAGE RIGHT – 1951).
+- HARDWARE items belong INSIDE the specific room they serve as a sub-section. 
+- NEVER classify standalone Hardware or Trim pages as new Kitchen/Bath rooms.
+
+### 3. CABINET EXTRACTION
+- Extract every cabinet code (normalized: remove spaces/hyphens) and its quantity.
+- Group items by the valid room title identified in Section 1.
+- Use professional judgment for standard architectural notation.
+
+### 4. NKBA VALIDATION
+- Apply NKBA (National Kitchen & Bath Association) logic to identify clearance or spacing issues.
+- Use provided NKBA Context if available: {{{nkbaContext}}}
 
 Drawing File: {{media url=pdfDataUri}}`,
 });
@@ -79,7 +93,7 @@ const analyzeDrawingFlow = ai.defineFlow(
   {
     name: 'analyzeDrawingFlow',
     inputSchema: AnalyzeDrawingInputSchema,
-    outputSchema: AnalyzeDrawingOutputSchema, // Returns the nested schema the UI expects
+    outputSchema: AnalyzeDrawingOutputSchema,
   },
   async (input) => {
     const { output } = await prompt(input);
