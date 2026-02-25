@@ -1,3 +1,4 @@
+
 "use server";
 
 import { cookies } from 'next/headers';
@@ -63,7 +64,7 @@ export async function deleteManufacturer(id: string) {
 }
 
 /**
- * Server-side file upload and record insertion to bypass browser connection issues.
+ * Server-side file upload for manufacturers.
  */
 export async function uploadManufacturerFileAction(formData: FormData) {
   const supabase = createServerSupabase();
@@ -83,8 +84,6 @@ export async function uploadManufacturerFileAction(formData: FormData) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Upload to Storage
-    // NOTE: Ensure the 'manufacturer-docs' bucket exists in your Supabase project with public access
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('manufacturer-docs')
       .upload(filePath, buffer, {
@@ -92,14 +91,10 @@ export async function uploadManufacturerFileAction(formData: FormData) {
         upsert: true
       });
 
-    if (uploadError) {
-      console.error('Storage Upload Error:', uploadError);
-      throw new Error(`Storage error: ${uploadError.message}`);
-    }
+    if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
 
     const { data: { publicUrl } } = supabase.storage.from('manufacturer-docs').getPublicUrl(filePath);
 
-    // Insert DB Record
     const { data: dbData, error: dbError } = await supabase
       .from('manufacturer_files')
       .insert([{
@@ -112,12 +107,8 @@ export async function uploadManufacturerFileAction(formData: FormData) {
       .select()
       .single();
 
-    if (dbError) {
-      console.error('Database Insertion Error:', dbError);
-      throw new Error(`Database error: ${dbError.message}`);
-    }
+    if (dbError) throw new Error(`Database error: ${dbError.message}`);
 
-    // Trigger Extraction for pricing files
     let extractionSummary = null;
     if (fileType === 'pricing') {
       const extRes = await extractSpecifications(dbData.id, manufacturerId, publicUrl);
@@ -129,34 +120,68 @@ export async function uploadManufacturerFileAction(formData: FormData) {
     revalidatePath(`/admin/manufacturers/${manufacturerId}`);
     return { success: true, data: dbData, extractionSummary };
   } catch (err: any) {
-    console.error('Upload Action Error:', err);
     return { success: false, error: err.message };
   }
 }
 
 /**
- * Deletes a file from storage and database.
+ * Upload NKBA rule PDF.
  */
-export async function deleteManufacturerFileAction(fileId: string, fileUrl: string, manufacturerId: string) {
+export async function uploadNkbaRuleAction(formData: FormData) {
   const supabase = createServerSupabase();
-  
+  const file = formData.get('file') as File;
+  const version = formData.get('version') as string || '1.0';
+
+  if (!file) return { success: false, error: 'No file provided' };
+
   try {
-    // Extract relative path from public URL
-    // Public URL format usually: .../storage/v1/object/public/manufacturer-docs/PATH
-    const pathParts = fileUrl.split('/public/manufacturer-docs/');
-    const path = pathParts.length > 1 ? pathParts[1] : null;
+    const fileName = `nkba-rules/${crypto.randomUUID()}.pdf`;
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    if (path) {
-      await supabase.storage.from('manufacturer-docs').remove([path]);
-    }
-    
-    const { error } = await supabase.from('manufacturer_files').delete().eq('id', fileId);
-    if (error) throw error;
+    const { error: uploadError } = await supabase.storage
+      .from('manufacturer-docs')
+      .upload(fileName, buffer, {
+        contentType: 'application/pdf',
+        upsert: true
+      });
 
-    revalidatePath(`/admin/manufacturers/${manufacturerId}`);
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage.from('manufacturer-docs').getPublicUrl(fileName);
+
+    const { error: dbError } = await supabase
+      .from('nkba_rules')
+      .insert([{
+        version,
+        file_name: file.name,
+        file_url: publicUrl,
+        is_active: true
+      }]);
+
+    if (dbError) throw dbError;
+
+    revalidatePath('/admin/nkba');
     return { success: true };
   } catch (err: any) {
-    console.error('Delete File Error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Deletes an NKBA rule.
+ */
+export async function deleteNkbaRuleAction(id: string, fileUrl: string) {
+  const supabase = createServerSupabase();
+  try {
+    const pathParts = fileUrl.split('/public/manufacturer-docs/');
+    const path = pathParts.length > 1 ? pathParts[1] : null;
+    if (path) await supabase.storage.from('manufacturer-docs').remove([path]);
+    
+    await supabase.from('nkba_rules').delete().eq('id', id);
+    revalidatePath('/admin/nkba');
+    return { success: true };
+  } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
@@ -166,25 +191,20 @@ export async function deleteManufacturerFileAction(fileId: string, fileUrl: stri
  */
 export async function extractSpecifications(fileId: string, manufacturerId: string, fileUrl: string) {
   const supabase = createServerSupabase();
-  
   try {
     const response = await fetch(fileUrl);
     const arrayBuffer = await response.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'buffer' });
-    
     const specs: any[] = [];
     
     workbook.SheetNames.forEach(sheetName => {
       const sheet = workbook.Sheets[sheetName];
       const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-      
       if (data.length < 2) return;
 
-      // Simple heuristic for cabinet specs: Row[0]=Collection, Row[1]=Style, Row[2]=Finish
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (!row || row.length < 2) continue;
-
         if (row[0] && row[1]) {
           specs.push({
             manufacturer_id: manufacturerId,
@@ -199,16 +219,24 @@ export async function extractSpecifications(fileId: string, manufacturerId: stri
     });
 
     if (specs.length > 0) {
-      const { error } = await supabase
-        .from('manufacturer_specifications')
-        .insert(specs);
-      
-      if (error) throw error;
+      await supabase.from('manufacturer_specifications').insert(specs);
     }
-
     return { success: true, count: specs.length };
   } catch (error: any) {
-    console.error('Extraction Error:', error);
     return { success: false, error: error.message };
+  }
+}
+
+export async function deleteManufacturerFileAction(fileId: string, fileUrl: string, manufacturerId: string) {
+  const supabase = createServerSupabase();
+  try {
+    const pathParts = fileUrl.split('/public/manufacturer-docs/');
+    const path = pathParts.length > 1 ? pathParts[1] : null;
+    if (path) await supabase.storage.from('manufacturer-docs').remove([path]);
+    await supabase.from('manufacturer_files').delete().eq('id', fileId);
+    revalidatePath(`/admin/manufacturers/${manufacturerId}`);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
   }
 }
