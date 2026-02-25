@@ -9,6 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 /**
  * Standard production Supabase client for client-side usage.
+ * Uses the ANON key for public/authenticated access governed by RLS.
  */
 export const supabase = createClient(
   supabaseUrl || '', 
