@@ -1,7 +1,7 @@
 'use server';
 /**
  * @fileOverview Production-Grade AI Flow for Architectural Cabinet Takeoff.
- * Resolved "maximum nesting depth" error by using manual JSON parsing.
+ * Resolved "maximum nesting depth" and "INVALID_ARGUMENT" errors.
  */
 
 import { ai } from '@/ai/genkit';
@@ -29,11 +29,12 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 /**
- * Prompt defined with string output to bypass GenerationConfig nesting limits.
+ * Prompt defined with a stable model ID.
+ * Model is specified at the top level to avoid GenerationConfig schema errors.
  */
 const prompt = ai.definePrompt({
   name: 'analyzeDrawingVisionPrompt',
-  model: 'googleai/gemini-2.5-flash',
+  model: 'googleai/gemini-1.5-flash',
   input: { schema: AnalyzeDrawingInputSchema },
   output: { schema: z.string() },
   prompt: `You are a professional architectural estimator specializing in cabinet takeoff. 
@@ -73,7 +74,7 @@ export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSc
   const { text } = await prompt(input);
   
   if (!text) {
-    throw new Error('AI failed to return extraction data.');
+    throw new Error('AI failed to return extraction data. The model may have blocked the content or timed out.');
   }
 
   // Manually parse the JSON to bypass nesting depth errors in API config
