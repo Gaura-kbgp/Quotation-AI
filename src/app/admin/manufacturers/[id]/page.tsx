@@ -1,25 +1,33 @@
 
 "use client";
 
-import { use, useState } from 'react';
+import { use, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Factory, FileText, Table as TableIcon, Upload, Trash2, ExternalLink, ArrowLeft, Loader2, Plus, X } from 'lucide-react';
+import { Factory, FileText, Table as TableIcon, Upload, Trash2, ExternalLink, ArrowLeft, Loader2, Plus, X, FileUp } from 'lucide-react';
 import Link from 'next/link';
-import { useDoc, useFirestore, useMemoFirebase, useCollection } from '@/firebase';
+import { useDoc, useFirestore, useMemoFirebase, useCollection, useStorage } from '@/firebase';
 import { doc, collection, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ManufacturerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { db } = useFirestore();
+  const { storage } = useStorage();
+  const { toast } = useToast();
 
   const [isAddingSheet, setIsAddingSheet] = useState(false);
   const [isAddingBook, setIsAddingBook] = useState(false);
   
   const [newFile, setNewFile] = useState({ name: '', url: '' });
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const manufacturerRef = useMemoFirebase(() => {
     if (!db || !id) return null;
@@ -41,27 +49,66 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
   const { data: pricingSheets, loading: loadingSheets } = useCollection(pricingSheetsQuery);
   const { data: specBooks, loading: loadingBooks } = useCollection(specBooksQuery);
 
-  const handleAddPricingSheet = async () => {
-    if (!db || !id || !newFile.name || !newFile.url) return;
-    await addDoc(collection(db, 'manufacturers', id, 'pricingSheets'), {
-      fileName: newFile.name,
-      url: newFile.url,
-      type: 'XLSX',
-      uploadedAt: serverTimestamp()
-    });
+  const resetForm = () => {
     setNewFile({ name: '', url: '' });
-    setIsAddingSheet(false);
+    setUploadFile(null);
+    setIsUploading(false);
+    setUploadProgress(0);
   };
 
-  const handleAddSpecBook = async () => {
-    if (!db || !id || !newFile.name || !newFile.url) return;
-    await addDoc(collection(db, 'manufacturers', id, 'specBooks'), {
-      fileName: newFile.name,
-      url: newFile.url,
-      uploadedAt: serverTimestamp()
-    });
-    setNewFile({ name: '', url: '' });
-    setIsAddingBook(false);
+  const handleFileUpload = async (type: 'specBooks' | 'pricingSheets') => {
+    if (!db || !id || !storage) return;
+
+    let finalUrl = newFile.url;
+    let finalName = newFile.name;
+
+    if (uploadFile) {
+      setIsUploading(true);
+      const storageRef = ref(storage, `manufacturers/${id}/${type}/${Date.now()}_${uploadFile.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, uploadFile);
+
+      return new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            setUploadProgress(progress);
+          },
+          (error) => {
+            toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
+            setIsUploading(false);
+            reject(error);
+          },
+          async () => {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            finalUrl = downloadURL;
+            if (!finalName) finalName = uploadFile.name;
+            
+            await addDoc(collection(db, 'manufacturers', id, type), {
+              fileName: finalName,
+              url: finalUrl,
+              type: type === 'pricingSheets' ? (uploadFile.name.endsWith('.csv') ? 'CSV' : 'XLSX') : 'PDF',
+              uploadedAt: serverTimestamp()
+            });
+            
+            resetForm();
+            type === 'specBooks' ? setIsAddingBook(false) : setIsAddingSheet(false);
+            resolve(true);
+          }
+        );
+      });
+    } else if (finalUrl && finalName) {
+      await addDoc(collection(db, 'manufacturers', id, type), {
+        fileName: finalName,
+        url: finalUrl,
+        type: type === 'pricingSheets' ? 'XLSX' : 'PDF',
+        uploadedAt: serverTimestamp()
+      });
+      resetForm();
+      type === 'specBooks' ? setIsAddingBook(false) : setIsAddingSheet(false);
+    } else {
+      toast({ variant: 'destructive', title: 'Missing Info', description: 'Please provide a file or a URL and name.' });
+    }
   };
 
   const handleDeleteItem = async (collectionName: string, itemId: string) => {
@@ -115,7 +162,7 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
                 </CardTitle>
                 <CardDescription className="text-slate-500">Technical documentation and PDF catalogs</CardDescription>
               </div>
-              <Dialog open={isAddingBook} onOpenChange={setIsAddingBook}>
+              <Dialog open={isAddingBook} onOpenChange={(open) => { setIsAddingBook(open); if(!open) resetForm(); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" variant="outline" className="border-sky-100 text-sky-600 hover:bg-sky-50">
                     <Plus className="w-4 h-4 mr-2" />
@@ -126,7 +173,22 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
                    <DialogHeader>
                       <DialogTitle>Add Specification Book</DialogTitle>
                    </DialogHeader>
-                   <div className="space-y-4 py-4">
+                   <div className="space-y-6 py-4">
+                      <div className="space-y-2">
+                         <Label>Upload PDF File</Label>
+                         <div className="flex items-center gap-3">
+                           <Input 
+                              type="file" 
+                              accept=".pdf"
+                              onChange={e => setUploadFile(e.target.files?.[0] || null)}
+                              className="cursor-pointer"
+                           />
+                         </div>
+                      </div>
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-100"></span></div>
+                        <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-slate-400">Or use URL</span></div>
+                      </div>
                       <div className="space-y-2">
                          <Label>File Name</Label>
                          <Input 
@@ -143,7 +205,19 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
                             onChange={e => setNewFile({...newFile, url: e.target.value})}
                          />
                       </div>
-                      <Button onClick={handleAddSpecBook} className="w-full gradient-button">Add to Manufacturer</Button>
+                      {isUploading && (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-xs font-medium">
+                            <span>Uploading...</span>
+                            <span>{Math.round(uploadProgress)}%</span>
+                          </div>
+                          <Progress value={uploadProgress} className="h-1.5" />
+                        </div>
+                      )}
+                      <Button onClick={() => handleFileUpload('specBooks')} className="w-full gradient-button" disabled={isUploading}>
+                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
+                        {uploadFile ? 'Upload and Add' : 'Add to Manufacturer'}
+                      </Button>
                    </div>
                 </DialogContent>
               </Dialog>
@@ -195,7 +269,7 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
                 </CardTitle>
                 <CardDescription className="text-slate-500">Excel or Google Sheet integration</CardDescription>
               </div>
-              <Dialog open={isAddingSheet} onOpenChange={setIsAddingSheet}>
+              <Dialog open={isAddingSheet} onOpenChange={(open) => { setIsAddingSheet(open); if(!open) resetForm(); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" variant="outline" className="border-emerald-100 text-emerald-600 hover:bg-emerald-50">
                     <Plus className="w-4 h-4 mr-2" />
@@ -206,7 +280,20 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
                    <DialogHeader>
                       <DialogTitle>Add Pricing Sheet</DialogTitle>
                    </DialogHeader>
-                   <div className="space-y-4 py-4">
+                   <div className="space-y-6 py-4">
+                      <div className="space-y-2">
+                         <Label>Upload Excel/CSV File</Label>
+                         <Input 
+                            type="file" 
+                            accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, .xlsm"
+                            onChange={e => setUploadFile(e.target.files?.[0] || null)}
+                            className="cursor-pointer"
+                         />
+                      </div>
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-100"></span></div>
+                        <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-slate-400">Or use URL</span></div>
+                      </div>
                       <div className="space-y-2">
                          <Label>Sheet Name</Label>
                          <Input 
@@ -223,7 +310,19 @@ export default function ManufacturerDetailPage({ params }: { params: Promise<{ i
                             onChange={e => setNewFile({...newFile, url: e.target.value})}
                          />
                       </div>
-                      <Button onClick={handleAddPricingSheet} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl">Add to Manufacturer</Button>
+                      {isUploading && (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-xs font-medium">
+                            <span>Uploading...</span>
+                            <span>{Math.round(uploadProgress)}%</span>
+                          </div>
+                          <Progress value={uploadProgress} className="h-1.5" />
+                        </div>
+                      )}
+                      <Button onClick={() => handleFileUpload('pricingSheets')} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl" disabled={isUploading}>
+                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
+                        {uploadFile ? 'Upload and Add' : 'Add to Manufacturer'}
+                      </Button>
                    </div>
                 </DialogContent>
               </Dialog>
