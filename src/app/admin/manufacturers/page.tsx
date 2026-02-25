@@ -42,18 +42,25 @@ export default function ManufacturersPage() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
+      const { data, error: supabaseError } = await supabase
         .from('manufacturers')
         .select('*')
         .order('name');
       
-      if (error) throw error;
+      if (supabaseError) throw supabaseError;
       setManufacturers(data || []);
     } catch (err: any) {
-      console.error('Supabase connection error:', err);
-      const message = err.message === 'Failed to fetch' 
-        ? 'Connection timed out. Please check if your Supabase project is active and reachable.' 
-        : err.message;
+      console.error('Supabase fetch error detail:', {
+        message: err.message,
+        stack: err.stack,
+        err
+      });
+
+      let message = err.message || 'An unknown error occurred';
+      if (message.includes('Failed to fetch')) {
+        message = 'Connection Timeout: The browser could not reach Supabase. Please check if your project is active and your internet allows connections to your Supabase URL.';
+      }
+      
       setError(message);
       toast({ 
         variant: 'destructive', 
@@ -77,10 +84,9 @@ export default function ManufacturersPage() {
     if (!newManufacturerName.trim()) return;
     
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('manufacturers')
-        .insert([{ name: newManufacturerName, status: 'Active' }])
-        .select();
+        .insert([{ name: newManufacturerName, status: 'Active' }]);
 
       if (error) throw error;
       
@@ -144,11 +150,11 @@ export default function ManufacturersPage() {
         <Alert variant="destructive" className="bg-red-50 border-red-200">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Network Error</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
-            <span>{error}</span>
-            <Button variant="outline" size="sm" onClick={fetchManufacturers} className="ml-4 border-red-200 text-red-700 hover:bg-red-100">
+          <AlertDescription className="flex flex-col gap-4">
+            <p className="text-red-700 leading-relaxed">{error}</p>
+            <Button variant="outline" size="sm" onClick={fetchManufacturers} className="w-fit border-red-200 text-red-700 hover:bg-red-100">
               <RefreshCcw className="w-4 h-4 mr-2" />
-              Retry
+              Retry Connection
             </Button>
           </AlertDescription>
         </Alert>
@@ -163,16 +169,17 @@ export default function ManufacturersPage() {
               className="pl-10 bg-white border-slate-200"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              disabled={!!error}
+              disabled={loading && manufacturers.length === 0}
             />
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center p-12">
+        {loading && manufacturers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 space-y-4">
             <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+            <p className="text-slate-400 text-sm">Querying Supabase...</p>
           </div>
-        ) : !error ? (
+        ) : !error || manufacturers.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-slate-200">
@@ -234,7 +241,7 @@ export default function ManufacturersPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {filteredManufacturers.length === 0 && (
+              {filteredManufacturers.length === 0 && !loading && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-12 text-slate-400">
                     No manufacturers found.
