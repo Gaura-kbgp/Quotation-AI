@@ -4,12 +4,10 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase environment variables are missing! Requests will fail.');
-} else {
-  console.log('Supabase client initialized for:', supabaseUrl);
+  console.error('CRITICAL: Supabase credentials missing. Check .env file.');
 }
 
-// We use a safe fallback to prevent crashes, but connections will fail until .env is correct
+// Production-ready Supabase client
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co', 
   supabaseAnonKey || 'placeholder',
@@ -17,10 +15,16 @@ export const supabase = createClient(
     auth: {
       persistSession: true,
       autoRefreshToken: true,
+      detectSessionInUrl: true
     },
     global: {
-      headers: { 'x-application-name': 'kabs-quotation-ai' },
-    },
-    // Adding custom fetch to handle timeouts or logging if needed
+      fetch: (url, options) => {
+        return fetch(url, {
+          ...options,
+          // Add a timeout signal to help diagnose ERR_CONNECTION_TIMED_OUT
+          signal: AbortSignal.timeout(10000) 
+        });
+      }
+    }
   }
 );

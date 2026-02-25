@@ -43,6 +43,7 @@ export function LoginForm() {
     setIsLoading(true);
     
     try {
+      // Connect specifically to Supabase Auth
       const { data, error } = await supabase.auth.signInWithPassword({
         email: values.email,
         password: values.password,
@@ -55,6 +56,7 @@ export function LoginForm() {
         router.push('/admin/dashboard');
       }
     } catch (error: any) {
+      console.error('Login Error:', error);
       toast({
         variant: 'destructive',
         title: 'Authentication Failed',
