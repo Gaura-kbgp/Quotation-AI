@@ -5,7 +5,7 @@ export const maxDuration = 60;
 
 /**
  * Aggressive SKU normalization for matching.
- * Strips all non-alphanumeric characters.
+ * Strips all non-alphanumeric characters to ensure high-precision matching.
  */
 function normalizeSku(sku: string): string {
   return String(sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -23,7 +23,7 @@ function getBaseSku(sku: string): string {
 
 /**
  * Smart Pricing Engine API.
- * Implements multi-level matching logic for architectural takeoffs.
+ * Implements multi-level matching logic for architectural takeoffs and persists to quotation_boms.
  */
 export async function POST(req: Request) {
   try {
@@ -50,16 +50,15 @@ export async function POST(req: Request) {
 
     if (pError || !project) {
       console.error('[BOM API] Project fetch error:', pError);
-      return Response.json({ success: false, error: 'Project not found.' }, { status: 404 });
+      return Response.json({ success: false, error: 'Project not found in database.' }, { status: 404 });
     }
 
     const rooms = project.extracted_data?.rooms || [];
     if (rooms.length === 0) {
-      return Response.json({ success: false, error: 'No takeoff data found in project. Please review the extraction.' }, { status: 400 });
+      return Response.json({ success: false, error: 'No takeoff data found. Please ensure rooms were extracted.' }, { status: 400 });
     }
 
     // 2. Load ALL Manufacturer Specifications for memory-cached matching
-    // We select all columns to be resilient to schema variations (price vs unit_price)
     const { data: allSpecs, error: sError } = await supabase
       .from('manufacturer_specifications')
       .select('*')
@@ -69,17 +68,17 @@ export async function POST(req: Request) {
       console.error('[BOM API] Database error during specifications fetch:', sError);
       return Response.json({ 
         success: false, 
-        error: `Database error during pricing fetch: ${sError.message}` 
+        error: `Failed to fetch manufacturer pricing: ${sError.message}` 
       }, { status: 500 });
     }
 
-    console.log(`[BOM API] Loaded ${(allSpecs || []).length} specification records.`);
+    console.log(`[BOM API] Loaded ${(allSpecs || []).length} specification records for matching.`);
 
     // Create lookup maps for different matching levels
-    const exactMap = new Map(); // Key: Collection|Style|SKU
-    const collectionMap = new Map(); // Key: Collection|SKU
-    const baseModelMap = new Map(); // Key: BaseSKU (best price found)
-    const globalSkuMap = new Map(); // Key: SKU (any collection)
+    const exactMap = new Map(); 
+    const collectionMap = new Map(); 
+    const baseModelMap = new Map(); 
+    const globalSkuMap = new Map(); 
 
     (allSpecs || []).forEach(spec => {
       const cleanSku = normalizeSku(spec.sku);
@@ -87,13 +86,11 @@ export async function POST(req: Request) {
       const collection = String(spec.collection_name || '').toUpperCase();
       const style = String(spec.door_style || '').toUpperCase();
       
-      // Handle schema variation for price/unit_price
       const price = spec.price !== undefined ? spec.price : (spec.unit_price || 0);
 
       exactMap.set(`${collection}|${style}|${cleanSku}`, price);
       collectionMap.set(`${collection}|${cleanSku}`, price);
       
-      // For base model, keep the lowest valid price
       const existingBase = baseModelMap.get(baseSku);
       if (!existingBase || price < existingBase) {
         baseModelMap.set(baseSku, price);
@@ -123,27 +120,27 @@ export async function POST(req: Request) {
           let price = 0;
           let source = 'NOT_FOUND';
 
-          // LEVEL 1: EXACT MATCH (Collection + Style + SKU)
+          // LEVEL 1: EXACT MATCH
           const exactPrice = exactMap.get(`${selectedColl}|${selectedStyle}|${cleanCode}`);
           if (exactPrice !== undefined) {
             price = exactPrice;
             source = 'EXACT_MATCH';
           } 
-          // LEVEL 2: PARTIAL MATCH (Collection + SKU)
+          // LEVEL 2: PARTIAL MATCH
           else {
             const partialPrice = collectionMap.get(`${selectedColl}|${cleanCode}`);
             if (partialPrice !== undefined) {
               price = partialPrice;
               source = 'PARTIAL_MATCH';
             } 
-            // LEVEL 3: BASE MODEL MATCH (Remove L/R suffixes)
+            // LEVEL 3: BASE MODEL MATCH
             else {
               const basePrice = baseModelMap.get(baseCode);
               if (basePrice !== undefined) {
                 price = basePrice;
                 source = 'BASE_MODEL_MATCH';
               }
-              // LEVEL 4: FALLBACK MATCH (Any collection with this SKU)
+              // LEVEL 4: FALLBACK MATCH
               else {
                 const fallbackPrice = globalSkuMap.get(cleanCode);
                 if (fallbackPrice !== undefined) {
@@ -170,18 +167,22 @@ export async function POST(req: Request) {
       });
     }
 
-    // 4. Persistence
-    const { error: deleteError } = await supabase.from('quotation_bom').delete().eq('project_id', projectId);
+    // 4. Persistence to 'quotation_boms' table
+    // We clear existing items for this project first
+    const { error: deleteError } = await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (deleteError) {
-      console.error('[BOM API] Error clearing existing BOM:', deleteError);
+      console.warn('[BOM API] Warning clearing existing BOM:', deleteError.message);
     }
 
-    const { error: insertError } = await supabase.from('quotation_bom').insert(bomItems);
-    if (insertError) {
-      console.error('[BOM API] Error inserting new BOM:', insertError);
-      throw new Error(`Failed to persist BOM items: ${insertError.message}`);
+    if (bomItems.length > 0) {
+      const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
+      if (insertError) {
+        console.error('[BOM API] Error inserting new BOM:', insertError);
+        throw new Error(`Failed to persist BOM items: ${insertError.message}`);
+      }
     }
 
+    // Update Project Status
     const { error: updateError } = await supabase.from('quotation_projects').update({ 
       manufacturer_id: manufacturerId,
       status: 'Priced' 

@@ -101,6 +101,6 @@
     "/manufacturer_specifications/{id}": { "schema": "ManufacturerSpecification" },
     "/nkba_files/{id}": { "schema": "NkbaRule" },
     "/quotation_projects/{id}": { "schema": "QuotationProject" },
-    "/quotation_bom/{id}": { "schema": "QuotationBom" }
+    "/quotation_boms/{id}": { "schema": "QuotationBom" }
   }
 }
