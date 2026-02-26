@@ -3,8 +3,11 @@ import * as XLSX from 'xlsx';
 import { normalizeSku } from './utils';
 
 /**
- * Advanced Excel Specification Parser (v7.0).
- * Implements Dynamic Header Search and Unified Normalization.
+ * Precision Grid-Matrix Parser (v8.0)
+ * Optimized for Cabinetry Price Books where:
+ * - Column A: SKUs
+ * - Row 3: Door Style Names
+ * - Columns B-G: Prices for those styles
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -14,58 +17,62 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     const sheet = workbook.Sheets[sheetName];
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
     
-    if (rawData.length === 0) continue;
+    if (rawData.length < 4) continue;
 
-    // STEP 1: Dynamic Column Detection
-    let headerRowIndex = -1;
-    let codeColIdx = -1;
-    let priceColIdx = -1;
+    // STEP 1: Identify SKU Column and Header Row
+    // Based on user image, SKU header is at A3.
+    let skuColIdx = -1;
+    let headerRowIdx = -1;
 
-    for (let i = 0; i < Math.min(rawData.length, 25); i++) {
-      const row = rawData[i];
-      const codeIdx = row.findIndex(cell => {
-        const val = String(cell).toLowerCase();
-        return val.includes("code") || val.includes("sku") || val.includes("model") || val.includes("item");
-      });
-      const priceIdx = row.findIndex(cell => {
-        const val = String(cell).toLowerCase();
-        return val.includes("price") || val.includes("msrp") || val.includes("list") || val.includes("cost");
-      });
-
-      if (codeIdx !== -1 && priceIdx !== -1) {
-        headerRowIndex = i;
-        codeColIdx = codeIdx;
-        priceColIdx = priceIdx;
+    for (let r = 0; r < 10; r++) {
+      const row = rawData[r];
+      const idx = row.findIndex(cell => String(cell).toUpperCase().trim() === "SKU");
+      if (idx !== -1) {
+        skuColIdx = idx;
+        headerRowIdx = r;
         break;
       }
     }
 
-    if (headerRowIndex === -1) continue;
+    if (skuColIdx === -1) continue;
 
-    const headers = rawData[headerRowIndex];
-    const dataRows = rawData.slice(headerRowIndex + 1);
+    const doorStyleHeaders = rawData[headerRowIdx];
+    const collectionHeaders = rawData[headerRowIdx - 2] || []; // ELITE CHERRY etc.
+    const dataRows = rawData.slice(headerRowIdx + 1);
 
+    // STEP 2: Process every data row
     for (const row of dataRows) {
-      const rawSku = row[codeColIdx];
-      if (!rawSku || String(rawSku).trim() === "") continue;
+      const rawSku = row[skuColIdx];
+      if (!rawSku || String(rawSku).trim() === "" || String(rawSku).toLowerCase().includes("sku")) continue;
 
-      const normSku = normalizeSku(rawSku);
-      const rawPrice = row[priceColIdx];
-      const cleanPrice = Number(String(rawPrice || "0").replace(/[^0-9.]/g, ""));
+      // Skip decorative separator rows like "WITH FULL HEIGHT DOOR"
+      if (String(rawSku).toUpperCase().includes("DOOR") && row.length < 3) continue;
 
-      if (cleanPrice > 0) {
-        pricing.push({
-          manufacturer_id: manufacturerId,
-          collection_name: sheetName,
-          door_style: String(headers[priceColIdx] || "Standard"),
-          sku: String(rawSku).trim(), // Store original for display, normalize during match
-          price: cleanPrice,
-          raw_source_file_id: fileId,
-          created_at: new Date().toISOString()
-        });
+      // STEP 3: Iterate through price columns (every column after SKU)
+      for (let c = skuColIdx + 1; c < row.length; c++) {
+        const doorStyle = String(doorStyleHeaders[c] || "").trim();
+        const collection = String(collectionHeaders[c] || collectionHeaders[c-1] || sheetName).trim();
+        const rawPrice = row[c];
+
+        // Clean price: handle "N/A", currency symbols, and spaces
+        const priceStr = String(rawPrice).replace(/[^0-9.]/g, "");
+        const price = parseFloat(priceStr);
+
+        if (!isNaN(price) && price > 0 && doorStyle !== "") {
+          pricing.push({
+            manufacturer_id: manufacturerId,
+            collection_name: collection || "Standard",
+            door_style: doorStyle,
+            sku: String(rawSku).trim(),
+            price: price,
+            raw_source_file_id: fileId,
+            created_at: new Date().toISOString()
+          });
+        }
       }
     }
   }
 
+  console.log(`[Specs Parser] Extracted ${pricing.length} grid-matrix records.`);
   return pricing;
 }

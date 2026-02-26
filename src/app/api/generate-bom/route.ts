@@ -1,14 +1,12 @@
+
 import { createServerSupabase } from '@/lib/supabase-server';
 import { normalizeSku } from '@/lib/utils';
 
 export const maxDuration = 60;
 
 /**
- * Precision Pricing Engine (v6.0).
- * strictly implements 3-Level Match Strategy:
- * LEVEL 1: EXACT
- * LEVEL 2: PARTIAL (Contains)
- * LEVEL 3: FUZZY (Prefix)
+ * Precision Pricing Engine (v7.0).
+ * Implements Multi-Matrix Grid Matching strategy.
  */
 export async function POST(req: Request) {
   try {
@@ -33,22 +31,20 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // Load ALL Manufacturer Pricing (The Single Source of Truth)
+    // Load ALL Manufacturer Pricing (Single Source of Truth)
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
       .eq('manufacturer_id', manufacturerId);
 
     if (sError) {
-      console.error('[Pricing Engine] DB Error:', sError);
       return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
-
-    console.log(`[Pricing Engine] Loaded ${allPricing?.length || 0} pricing records from manufacturer_pricing table.`);
 
     const bomItems: any[] = [];
     
     for (const room of rooms) {
+      const selectedDoorStyle = normalizeSku(room.door_style || "");
       const sections = room.sections || {};
 
       for (const [sectionName, items] of Object.entries(sections)) {
@@ -63,8 +59,13 @@ export async function POST(req: Request) {
           let precisionLevel = 'NOT_FOUND';
           let matchedSku = '';
 
-          // LEVEL 1: EXACT MATCH
-          matchedRow = (allPricing || []).find(p => normalizeSku(p.sku) === normTakeoff);
+          // LEVEL 1: EXACT MATCH (SKU + Door Style)
+          matchedRow = (allPricing || []).find(p => {
+            const pSku = normalizeSku(p.sku);
+            const pStyle = normalizeSku(p.door_style);
+            return pSku === normTakeoff && (selectedDoorStyle === "" || pStyle === selectedDoorStyle);
+          });
+
           if (matchedRow) {
             precisionLevel = 'EXACT';
           } 
@@ -72,46 +73,60 @@ export async function POST(req: Request) {
           // LEVEL 2: CONTAINS MATCH (If exact fails)
           if (!matchedRow) {
             matchedRow = (allPricing || []).find(p => {
-              const normPrice = normalizeSku(p.sku);
-              if (!normPrice) return false;
-              return normTakeoff.includes(normPrice) || normPrice.includes(normTakeoff);
+              const pSku = normalizeSku(p.sku);
+              const pStyle = normalizeSku(p.door_style);
+              const styleMatch = selectedDoorStyle === "" || pStyle === selectedDoorStyle;
+              return styleMatch && (normTakeoff.includes(pSku) || pSku.includes(normTakeoff));
             });
             if (matchedRow) precisionLevel = 'PARTIAL';
           }
 
-          // LEVEL 3: SIMILAR / FUZZY MATCH (Prefix 4 chars)
+          // LEVEL 3: FUZZY FALLBACK (Within Style)
           if (!matchedRow && normTakeoff.length >= 3) {
             const prefix = normTakeoff.substring(0, 4);
             matchedRow = (allPricing || []).find(p => {
-              const normPrice = normalizeSku(p.sku);
-              return normPrice.startsWith(prefix);
+              const pSku = normalizeSku(p.sku);
+              const pStyle = normalizeSku(p.door_style);
+              return (selectedDoorStyle === "" || pStyle === selectedDoorStyle) && pSku.startsWith(prefix);
             });
             if (matchedRow) precisionLevel = 'FUZZY';
           }
 
           if (matchedRow) {
             matchedSku = matchedRow.sku;
-            console.log(`[Pricing Engine] Matching SKU: ${rawTakeoff} -> Matched SKU: ${matchedSku} (${precisionLevel})`);
+            const price = Number(matchedRow.price) || 0;
+            
+            bomItems.push({
+              project_id: projectId,
+              sku: rawTakeoff,
+              matched_sku: matchedSku,
+              qty: Number(cab.qty) || 1,
+              unit_price: price,
+              line_total: price * (Number(cab.qty) || 1),
+              room: room.room_name,
+              collection: room.collection || matchedRow.collection_name,
+              door_style: room.door_style || matchedRow.door_style,
+              price_source: 'Admin Pricing Sheet',
+              precision_level: precisionLevel,
+              created_at: new Date().toISOString()
+            });
           } else {
-            console.log(`[Pricing Engine] Matching SKU: ${rawTakeoff} -> Matched SKU: NOT FOUND`);
+            // Push even if not found to show in BOM as $0
+            bomItems.push({
+              project_id: projectId,
+              sku: rawTakeoff,
+              matched_sku: 'NOT FOUND',
+              qty: Number(cab.qty) || 1,
+              unit_price: 0,
+              line_total: 0,
+              room: room.room_name,
+              collection: room.collection || 'N/A',
+              door_style: room.door_style || 'N/A',
+              price_source: 'Admin Pricing Sheet',
+              precision_level: 'NOT_FOUND',
+              created_at: new Date().toISOString()
+            });
           }
-
-          const price = matchedRow ? Number(matchedRow.price) : 0;
-
-          bomItems.push({
-            project_id: projectId,
-            sku: rawTakeoff,
-            matched_sku: matchedSku,
-            qty: Number(cab.qty) || 1,
-            unit_price: price,
-            line_total: price * (Number(cab.qty) || 1),
-            room: room.room_name,
-            collection: room.collection || 'Standard',
-            door_style: room.door_style || matchedRow?.door_style || 'Default',
-            price_source: 'Admin Pricing Sheet',
-            precision_level: precisionLevel,
-            created_at: new Date().toISOString()
-          });
         }
       }
     }
