@@ -5,10 +5,11 @@ import { revalidatePath } from 'next/cache';
 
 /**
  * Normalizes cabinet codes and generates a priced BOM based on the room structure.
+ * Supports per-room collection and door style configuration.
  */
-export async function generateBOMAction(projectId: string, manufacturerId: string, collection: string, doorStyle: string) {
+export async function generateBOMAction(projectId: string, manufacturerId: string) {
   try {
-    console.log(`[BOM] Starting generation for Project: ${projectId}, Brand: ${manufacturerId}`);
+    console.log(`[BOM] Starting generation for Project: ${projectId}`);
     const supabase = createServerSupabase();
 
     // 1. Fetch project data
@@ -23,28 +24,32 @@ export async function generateBOMAction(projectId: string, manufacturerId: strin
     const rooms = project.extracted_data?.rooms || [];
     if (rooms.length === 0) throw new Error('No room data found in project extraction');
     
-    // 2. Fetch Pricing Matrix
-    console.log(`[BOM] Fetching pricing for Collection: ${collection}, Style: ${doorStyle}`);
-    const { data: pricing, error: prError } = await supabase
-      .from('manufacturer_specifications')
-      .select('sku, price')
-      .eq('manufacturer_id', manufacturerId)
-      .eq('collection_name', collection)
-      .eq('door_style', doorStyle);
-
-    if (prError) throw new Error(`Pricing fetch error: ${prError.message}`);
-
-    // Create a map for fast lookup - normalize keys for matching
-    const pricingMap = new Map(
-      (pricing || []).map(p => [String(p.sku).toUpperCase().replace(/\s/g, ''), p.price])
-    );
-
-    console.log(`[BOM] Loaded ${pricingMap.size} pricing points for this configuration.`);
-
-    // 3. Process each room and its sections
+    // 2. Process each room and its sections
     const bomItems: any[] = [];
     
-    rooms.forEach((room: any) => {
+    for (const room of rooms) {
+      const collection = room.collection;
+      const doorStyle = room.door_style;
+
+      if (!collection || !doorStyle) {
+        console.warn(`[BOM] Skipping room ${room.room_name} - Missing collection or style`);
+        continue;
+      }
+
+      // Fetch Pricing for this specific room's configuration
+      const { data: pricing, error: prError } = await supabase
+        .from('manufacturer_specifications')
+        .select('sku, price')
+        .eq('manufacturer_id', manufacturerId)
+        .eq('collection_name', collection)
+        .eq('door_style', doorStyle);
+
+      if (prError) throw new Error(`Pricing fetch error for ${room.room_name}: ${prError.message}`);
+
+      const pricingMap = new Map(
+        (pricing || []).map(p => [String(p.sku).toUpperCase().replace(/\s/g, ''), p.price])
+      );
+
       const sections = room.sections || {};
       Object.keys(sections).forEach((sectionKey) => {
         const cabinets = sections[sectionKey] || [];
@@ -67,24 +72,22 @@ export async function generateBOMAction(projectId: string, manufacturerId: strin
           });
         });
       });
-    });
-
-    if (bomItems.length === 0) {
-      throw new Error('No cabinet items found to price.');
     }
 
-    // 4. Clean up old BOM
+    if (bomItems.length === 0) {
+      throw new Error('No priced items could be generated. Ensure all rooms have a collection and style selected.');
+    }
+
+    // 3. Clean up old BOM
     await supabase.from('quotation_bom').delete().eq('project_id', projectId);
 
-    // 5. Insert new BOM in one batch
+    // 4. Insert new BOM
     const { error: insertError } = await supabase.from('quotation_bom').insert(bomItems);
     if (insertError) throw new Error(`BOM Insert error: ${insertError.message}`);
 
-    // 6. Update project with final selection metadata
+    // 5. Update project status
     const { error: updateError } = await supabase.from('quotation_projects').update({ 
       manufacturer_id: manufacturerId,
-      selected_collection: collection,
-      selected_door_style: doorStyle,
       status: 'Priced' 
     }).eq('id', projectId);
 
