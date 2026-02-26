@@ -33,8 +33,6 @@ export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
   console.log('[AI Flow] Starting Multi-Page PDF Vision Analysis with Gemini 2.5 Flash...');
 
-  // Use ai.generate directly to bypass definePrompt's fragile schema validation layer
-  // This prevents the "(root): must be string" error when the model returns null/empty.
   const response = await ai.generate({
     model: 'googleai/gemini-2.5-flash',
     prompt: [
@@ -83,11 +81,10 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   const text = response.text;
   
   if (!text || text.trim() === '') {
-    console.warn('[AI Flow] Model returned empty response. Check safety filters or PDF readability.');
-    return getEmptyResult('AI analysis produced no results. Ensure the PDF contains readable drawings.');
+    console.warn('[AI Flow] Model returned empty response.');
+    return getEmptyResult('AI analysis produced no results.');
   }
 
-  // Manually parse the JSON to bypass potential formatting issues
   let items: any[] = [];
   try {
     const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -100,10 +97,9 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     }
   } catch (e) {
     console.error('[AI Parser] JSON Parse Error:', e);
-    return getEmptyResult('The AI returned data in an unexpected format. Please try again.');
+    return getEmptyResult('The AI returned data in an unexpected format.');
   }
 
-  // Aggregate the flat items into the room-wise structure
   const roomsMap = new Map<string, any>();
 
   items.forEach((item) => {
@@ -141,12 +137,12 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   const roomsList = Array.from(roomsMap.values());
 
   if (roomsList.length === 0) {
-    return getEmptyResult('No cabinets detected in the drawing.');
+    return getEmptyResult('No cabinets detected.');
   }
 
   return {
     rooms: roomsList,
-    summary: `Processed full document with Gemini 2.5 Flash. Extracted ${items.length} line items across ${roomsMap.size} rooms.`
+    summary: `Processed full document. Extracted ${items.length} line items across ${roomsMap.size} rooms.`
   };
 }
 
