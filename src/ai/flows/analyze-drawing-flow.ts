@@ -1,7 +1,7 @@
 'use server';
 /**
  * @fileOverview Production-Grade AI Flow for Architectural Cabinet Takeoff.
- * Optimized for Gemini 2.0 Flash to handle multi-page PDFs with visual reasoning.
+ * Optimized for Gemini 1.5 Flash to handle multi-page PDFs with visual reasoning.
  */
 
 import { ai } from '@/ai/genkit';
@@ -10,6 +10,7 @@ import { z } from 'genkit';
 const AnalyzeDrawingInputSchema = z.object({
   pdfDataUri: z.string().describe("PDF data URI containing the full architectural set."),
 });
+export type AnalyzeDrawingInput = z.infer<typeof AnalyzeDrawingInputSchema>;
 
 const AnalyzeDrawingOutputSchema = z.object({
   rooms: z.array(z.object({
@@ -28,28 +29,19 @@ const AnalyzeDrawingOutputSchema = z.object({
 
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
-/**
- * Prompt defined with Gemini 2.0 Flash.
- * Uses a flat string output schema to bypass 'maximum nesting depth' errors in GenerationConfig.
- */
-const prompt = ai.definePrompt({
-  name: 'analyzeDrawingVisionPrompt',
-  model: 'googleai/gemini-2.0-flash',
-  input: { schema: AnalyzeDrawingInputSchema },
-  output: { schema: z.string() },
-  config: {
-    safetySettings: [
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-    ],
-  },
-  prompt: `You are a professional architectural estimator specializing in cabinet takeoff. 
+export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
+  console.log('[AI Flow] Starting Multi-Page PDF Vision Analysis...');
+
+  // Using ai.generate directly for maximum control over vision parameters and error handling
+  const response = await ai.generate({
+    model: 'googleai/gemini-1.5-flash',
+    prompt: [
+      { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
+      { text: `You are a professional architectural estimator specializing in cabinet takeoff. 
   
   TASK:
   Analyze the provided PDF drawing. This is a MULTI-PAGE document.
-  You MUST process EVERY SINGLE PAGE provided. Do NOT stop after the first page.
+  You MUST process EVERY SINGLE PAGE provided.
   
   PROCESS:
   1. Iterate through EVERY page of the PDF.
@@ -73,31 +65,43 @@ const prompt = ai.definePrompt({
   - Normalize codes: "B 24" -> "B24".
   - Detect specific rooms: "Standard Kitchen", "Owners Bath", "Laundry", etc.
   
-  IMPORTANT: Return ONLY the raw JSON array. No markdown, no backticks.
-  
-  File: {{media url=pdfDataUri}}`,
-});
+  IMPORTANT: Return ONLY the raw JSON array. No markdown, no backticks.` }
+    ],
+    config: {
+      safetySettings: [
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      ],
+    },
+  });
 
-export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSchema>): Promise<AnalyzeDrawingOutput> {
-  const { text } = await prompt(input);
+  const text = response.text;
   
   if (!text || text.trim() === '') {
-    throw new Error('AI returned an empty response. This may be due to a processing timeout or safety filter. Please try again with a smaller file.');
+    throw new Error('AI analysis produced no results. This can happen if the PDF is not readable or if content filters were triggered. Please ensure the drawing is clear and try again.');
   }
 
-  // Manually parse the JSON to bypass nesting depth errors in API config
+  // Manually parse the JSON to bypass potential formatting issues
   let items: any[] = [];
   try {
-    // Clean potential markdown or whitespace
     const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    items = JSON.parse(cleanedText);
+    // Find the first [ and last ] to extract just the array
+    const firstBracket = cleanedText.indexOf('[');
+    const lastBracket = cleanedText.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1) {
+      items = JSON.parse(cleanedText.substring(firstBracket, lastBracket + 1));
+    } else {
+      items = JSON.parse(cleanedText);
+    }
   } catch (e) {
     console.error('[AI Parser] JSON Parse Error:', e);
     console.error('[AI Parser] Raw Text:', text);
-    throw new Error('AI returned invalid data format. Please try again.');
+    throw new Error('The AI returned data in an unexpected format. Please try again.');
   }
 
-  // Aggregate the flat items into the room-wise structure server-side
+  // Aggregate the flat items into the room-wise structure
   const roomsMap = new Map<string, any>();
 
   items.forEach((item) => {
@@ -120,7 +124,6 @@ export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSc
     const room = roomsMap.get(roomKey);
     const sectionKey = mapSectionToLabel(item.section);
     
-    // Check if code already exists in this section of this room to aggregate quantity
     const existing = room.sections[sectionKey].find((c: any) => c.code === item.code);
     if (existing) {
       existing.qty += (item.qty || 1);
@@ -135,7 +138,6 @@ export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSc
 
   const roomsList = Array.from(roomsMap.values());
 
-  // Fallback if no items found
   if (roomsList.length === 0) {
     roomsList.push({
       room_name: 'Standard Kitchen',
@@ -152,7 +154,7 @@ export async function analyzeDrawing(input: z.infer<typeof AnalyzeDrawingInputSc
 
   return {
     rooms: roomsList,
-    summary: `Processed multiple pages using Gemini 2.0 Flash. Extracted ${items.length} raw line items and aggregated into ${roomsMap.size} rooms.`
+    summary: `Processed multiple pages using Gemini AI. Extracted ${items.length} line items and aggregated into ${roomsMap.size} rooms.`
   };
 }
 
