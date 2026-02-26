@@ -194,7 +194,9 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   const totalSkus = rooms.reduce((acc, r) => {
     let count = 0;
     Object.values(r.sections).forEach((s: any) => {
-      s.forEach((c: any) => count += (c.qty || 1));
+      s.forEach((c: any) => {
+        count += (Number(c.qty) || 1);
+      });
     });
     return acc + count;
   }, 0);
@@ -287,85 +289,90 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                </div>
 
                <div className="grid grid-cols-1 gap-12">
-                  {Object.keys(room.sections).map((sectionKey) => (
-                    <div key={sectionKey} className="space-y-4">
-                      <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 w-fit">
-                         <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{sectionKey}</span>
-                         <span className="text-[10px] font-bold text-slate-400 ml-2">{room.sections[sectionKey].length} items</span>
-                      </div>
-                      
-                      <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden">
-                        <Table>
-                          <TableHeader className="bg-slate-50/30">
-                            <TableRow className="hover:bg-transparent border-slate-100">
-                              <TableHead className="w-[180px] text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 pl-8">Quantity</TableHead>
-                              <TableHead className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Cabinet SKU / Code</TableHead>
-                              <TableHead className="w-[80px] text-right pr-8"></TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {room.sections[sectionKey].map((cab: any, cIdx: number) => (
-                              <TableRow key={cIdx} className="border-slate-50 hover:bg-slate-50/20 group">
-                                <TableCell className="pl-8">
-                                  <div className="flex items-center gap-2">
+                  {Object.entries(room.sections)
+                    .filter(([_, items]) => (items as Cabinet[]).length > 0)
+                    .map(([sectionKey, items]) => {
+                      const cabinets = items as Cabinet[];
+                      return (
+                        <div key={sectionKey} className="space-y-4">
+                          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 w-fit">
+                             <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{sectionKey}</span>
+                             <span className="text-[10px] font-bold text-slate-400 ml-2">{cabinets.length} items</span>
+                          </div>
+                          
+                          <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden">
+                            <Table>
+                              <TableHeader className="bg-slate-50/30">
+                                <TableRow className="hover:bg-transparent border-slate-100">
+                                  <TableHead className="w-[180px] text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 pl-8">Quantity</TableHead>
+                                  <TableHead className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Cabinet SKU / Code</TableHead>
+                                  <TableHead className="w-[80px] text-right pr-8"></TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {cabinets.map((cab: Cabinet, cIdx: number) => (
+                                  <TableRow key={cIdx} className="border-slate-50 hover:bg-slate-50/20 group">
+                                    <TableCell className="pl-8">
+                                      <div className="flex items-center gap-2">
+                                        <button 
+                                          onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: Math.max(1, (Number(cab.qty) || 1) - 1) })}
+                                          className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
+                                        >
+                                          <Minus className="w-4 h-4" />
+                                        </button>
+                                        <Input 
+                                          type="number" 
+                                          value={cab.qty || 1} 
+                                          onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: parseInt(e.target.value) || 1 })}
+                                          className="w-16 h-10 text-center bg-white border border-slate-200 rounded-xl font-black text-slate-900 text-lg"
+                                        />
+                                        <button 
+                                          onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: (Number(cab.qty) || 1) + 1 })}
+                                          className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
+                                        >
+                                          <Plus className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Input 
+                                        value={cab.code} 
+                                        onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { code: e.target.value.toUpperCase() })}
+                                        className="h-12 font-black text-xl text-sky-600 bg-transparent border-none focus-visible:ring-2 focus-visible:ring-sky-100 rounded-xl"
+                                        placeholder="Enter Architectural SKU..."
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-right pr-8">
+                                      <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        onClick={() => handleRemoveCabinet(rIdx, sectionKey, cIdx)}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 h-10 w-10 transition-all rounded-full"
+                                      >
+                                        <Trash2 className="w-5 h-5" />
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                                <TableRow className="hover:bg-transparent border-none">
+                                  <TableCell colSpan={3} className="p-6 pl-8">
                                     <button 
-                                      onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: Math.max(1, (cab.qty || 1) - 1) })}
-                                      className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
+                                      onClick={() => handleAddRow(rIdx, sectionKey)}
+                                      className="text-xs font-black text-sky-500 uppercase tracking-[0.15em] flex items-center gap-2 hover:text-sky-600 transition-colors group"
                                     >
-                                      <Minus className="w-4 h-4" />
+                                      <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center group-hover:bg-sky-100 transition-colors">
+                                        <Plus className="w-4 h-4" />
+                                      </div>
+                                      Add Line Item
                                     </button>
-                                    <Input 
-                                      type="number" 
-                                      value={cab.qty} 
-                                      onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: parseInt(e.target.value) || 1 })}
-                                      className="w-16 h-10 text-center bg-white border border-slate-200 rounded-xl font-black text-slate-900 text-lg"
-                                    />
-                                    <button 
-                                      onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: (cab.qty || 1) + 1 })}
-                                      className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
-                                    >
-                                      <Plus className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <Input 
-                                    value={cab.code} 
-                                    onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { code: e.target.value.toUpperCase() })}
-                                    className="h-12 font-black text-xl text-sky-600 bg-transparent border-none focus-visible:ring-2 focus-visible:ring-sky-100 rounded-xl"
-                                    placeholder="Enter Architectural SKU..."
-                                  />
-                                </TableCell>
-                                <TableCell className="text-right pr-8">
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    onClick={() => handleRemoveCabinet(rIdx, sectionKey, cIdx)}
-                                    className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 h-10 w-10 transition-all rounded-full"
-                                  >
-                                    <Trash2 className="w-5 h-5" />
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                            <TableRow className="hover:bg-transparent border-none">
-                              <TableCell colSpan={3} className="p-6 pl-8">
-                                <button 
-                                  onClick={() => handleAddRow(rIdx, sectionKey)}
-                                  className="text-xs font-black text-sky-500 uppercase tracking-[0.15em] flex items-center gap-2 hover:text-sky-600 transition-colors group"
-                                >
-                                  <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center group-hover:bg-sky-100 transition-colors">
-                                    <Plus className="w-4 h-4" />
-                                  </div>
-                                  Add Line Item
-                                </button>
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </div>
-                  ))}
+                                  </TableCell>
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </div>
+                      );
+                    })}
                </div>
             </div>
           ))}
