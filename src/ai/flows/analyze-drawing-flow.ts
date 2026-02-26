@@ -2,6 +2,7 @@
 /**
  * @fileOverview High-Performance AI Flow for Architectural Cabinet Takeoff.
  * Uses Gemini 2.0 Flash for ultra-fast multi-page vision analysis.
+ * Includes automatic retry logic for rate-limit (429) errors.
  */
 
 import { ai } from '@/ai/genkit';
@@ -32,101 +33,126 @@ export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
   console.log('[AI Flow] Starting Gemini 2.0 Flash Multi-Page Vision Analysis...');
 
-  const response = await ai.generate({
-    model: 'googleai/gemini-2.0-flash',
-    prompt: [
-      { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator specializing in cabinetry takeoffs. 
-  
-  TASK:
-  Analyze the provided PDF. It contains multiple pages (Floor Plans, Cabinet Schedules, Elevations).
-  Iterate through EVERY page.
-  
-  EXTRACT:
-  - All cabinet codes EXACTLY as written on the drawing.
-  - DO NOT truncate codes. Include ALL suffixes and qualifiers (e.g., "W3042 BUTT", "B30 BUTT", "SB36 BUTT", "B15R", "W2442 BUTT").
-  - The word "BUTT" is a critical part of the SKU and MUST be included if present.
-  - Include items from Schedules, Floor Plans, and Detail/Interior Elevations.
-  - Group items by the ROOM identified on the drawing (e.g., "Standard Kitchen", "Master Bath").
-  
-  OUTPUT:
-  Return ONLY a raw JSON array of objects. 
-  Example: [ { "room": "Kitchen", "section": "wall", "code": "W3042 BUTT", "qty": 1 } ]
-  
-  Valid sections: wall, base, tall, vanity, hardware.` }
-    ],
-    config: {
-      safetySettings: [
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
-      ],
-    },
-  });
+  let attempts = 0;
+  const maxAttempts = 3;
+  let lastError = null;
 
-  const text = response.text;
-  
-  if (!text || text.trim() === '') {
-    return getEmptyResult('AI analysis produced no results.');
-  }
+  while (attempts < maxAttempts) {
+    try {
+      const response = await ai.generate({
+        model: 'googleai/gemini-2.0-flash',
+        prompt: [
+          { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
+          { text: `You are a professional architectural estimator specializing in cabinetry takeoffs. 
+      
+      TASK:
+      Analyze the provided PDF. It contains multiple pages (Floor Plans, Cabinet Schedules, Elevations).
+      Iterate through EVERY page to find every cabinet.
+      
+      CRITICAL EXTRACTION RULES:
+      - Extract cabinet codes EXACTLY as written.
+      - DO NOT truncate codes. 
+      - The suffix "BUTT" (e.g., "W3042 BUTT") is a CRITICAL part of the SKU. You MUST include it if present on the drawing.
+      - Capture all items from Cabinet Schedules, Floor Plans, and Detail/Interior Elevations.
+      - Group items by the ROOM identified on the drawing (e.g., "Kitchen", "Master Bath").
+      
+      OUTPUT:
+      Return ONLY a raw JSON array of objects. 
+      Format: [ { "room": "Kitchen", "section": "wall", "code": "W3042 BUTT", "qty": 1 } ]
+      
+      Valid sections: wall, base, tall, vanity, hardware.` }
+        ],
+        config: {
+          safetySettings: [
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+          ],
+        },
+      });
 
-  let items: any[] = [];
-  try {
-    const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    const firstBracket = cleanedText.indexOf('[');
-    const lastBracket = cleanedText.lastIndexOf(']');
-    if (firstBracket !== -1 && lastBracket !== -1) {
-      items = JSON.parse(cleanedText.substring(firstBracket, lastBracket + 1));
-    } else {
-      items = JSON.parse(cleanedText);
-    }
-  } catch (e) {
-    console.error('[AI Parser] JSON Parse Error:', e);
-    return getEmptyResult('Failed to parse AI response structure.');
-  }
+      const text = response.text;
+      
+      if (!text || text.trim() === '') {
+        return getEmptyResult('AI analysis produced no results.');
+      }
 
-  const roomsMap = new Map<string, any>();
+      let items: any[] = [];
+      try {
+        const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const firstBracket = cleanedText.indexOf('[');
+        const lastBracket = cleanedText.lastIndexOf(']');
+        if (firstBracket !== -1 && lastBracket !== -1) {
+          items = JSON.parse(cleanedText.substring(firstBracket, lastBracket + 1));
+        } else {
+          items = JSON.parse(cleanedText);
+        }
+      } catch (e) {
+        console.error('[AI Parser] JSON Parse Error:', e);
+        return getEmptyResult('Failed to parse AI response structure.');
+      }
 
-  items.forEach((item) => {
-    const roomKey = item.room || 'Project Area';
-    
-    if (!roomsMap.has(roomKey)) {
-      roomsMap.set(roomKey, {
-        room_name: roomKey,
-        room_type: classifyRoomType(roomKey),
-        sections: {
-          'Wall Cabinets': [],
-          'Base Cabinets': [],
-          'Tall Cabinets': [],
-          'Vanity Cabinets': [],
-          'Hardware': []
+      const roomsMap = new Map<string, any>();
+
+      items.forEach((item) => {
+        const roomKey = item.room || 'Project Area';
+        
+        if (!roomsMap.has(roomKey)) {
+          roomsMap.set(roomKey, {
+            room_name: roomKey,
+            room_type: classifyRoomType(roomKey),
+            sections: {
+              'Wall Cabinets': [],
+              'Base Cabinets': [],
+              'Tall Cabinets': [],
+              'Vanity Cabinets': [],
+              'Hardware': []
+            }
+          });
+        }
+
+        const room = roomsMap.get(roomKey);
+        const sectionLabel = mapSectionToLabel(item.section);
+        const normalizedCode = String(item.code).toUpperCase().trim();
+        
+        const existing = room.sections[sectionLabel].find((c: any) => c.code === normalizedCode);
+        if (existing) {
+          existing.qty += (Number(item.qty) || 1);
+        } else {
+          room.sections[sectionLabel].push({ 
+            code: normalizedCode, 
+            qty: (Number(item.qty) || 1), 
+            type: sectionLabel 
+          });
         }
       });
+
+      const roomsList = Array.from(roomsMap.values());
+
+      return {
+        rooms: roomsList.length > 0 ? roomsList : [getEmptyResult('No cabinets detected.').rooms[0]],
+        summary: `Extracted ${items.length} units across ${roomsMap.size} project areas using Gemini 2.0 Flash.`
+      };
+
+    } catch (err: any) {
+      console.error(`[AI Flow] Attempt ${attempts + 1} failed:`, err.message);
+      lastError = err;
+      if (err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED')) {
+        attempts++;
+        if (attempts < maxAttempts) {
+          const delay = Math.pow(2, attempts) * 1000;
+          console.log(`[AI Flow] Rate limit hit. Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+      throw err;
     }
+  }
 
-    const room = roomsMap.get(roomKey);
-    const sectionLabel = mapSectionToLabel(item.section);
-    
-    const existing = room.sections[sectionLabel].find((c: any) => c.code === item.code);
-    if (existing) {
-      existing.qty += (Number(item.qty) || 1);
-    } else {
-      room.sections[sectionLabel].push({ 
-        code: String(item.code).toUpperCase().trim(), 
-        qty: (Number(item.qty) || 1), 
-        type: sectionLabel 
-      });
-    }
-  });
-
-  const roomsList = Array.from(roomsMap.values());
-
-  return {
-    rooms: roomsList.length > 0 ? roomsList : [getEmptyResult('No cabinets detected.').rooms[0]],
-    summary: `Extracted ${items.length} units across ${roomsMap.size} project areas using Gemini 2.0 Flash.`
-  };
+  throw lastError || new Error('AI analysis failed after multiple retries.');
 }
 
 function getEmptyResult(message: string): AnalyzeDrawingOutput {

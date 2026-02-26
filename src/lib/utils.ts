@@ -11,29 +11,21 @@ export function cn(...inputs: ClassValue[]) {
  * 1. Convert to uppercase
  * 2. Remove text inside parentheses (e.g. "FL48 (VOIDS)" -> "FL48")
  * 3. Remove leading architectural quantity callouts (e.g. "1-QM8" -> "QM8")
- * 4. Remove common architectural noise (but PRESERVE "BUTT")
- * 5. Strip ALL special characters (dots, dashes, slashes, spaces)
+ * 4. Strip ALL special characters (dots, dashes, slashes, spaces)
+ * 5. PRESERVE "BUTT" - it is a critical alphanumeric pricing marker.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
   let s = sku.toString().toUpperCase();
   
-  // 1. Remove content within parentheses
+  // 1. Remove content within parentheses (notes/options)
   s = s.replace(/\([^)]*\)/g, '');
   
-  // 2. Remove leading "Number-" callouts (e.g. "1-QM8" -> "QM8", "4-BTK8" -> "BTK8")
+  // 2. Remove leading "Number-" callouts common in architectural sets (e.g. "1-QM8" -> "QM8")
   s = s.replace(/^\d+[\s\-]+/, '');
 
-  // 3. Remove common cabinetry takeoff noise markers
-  // "BUTT" is preserved here because it affects pricing and identity in 1951 line
-  const markers = ['LD', 'RD', 'BLD', 'REV', 'HNG', 'VOIDS'];
-  markers.forEach(m => {
-    const regex = new RegExp(m, 'g');
-    s = s.replace(regex, '');
-  });
-
-  // 4. Strip special characters and whitespace to get base alphanumeric string
-  // We keep letters and numbers. "BUTT" is alphanumeric so it survives.
+  // 3. Strip special characters and whitespace
+  // BUTT survives because it is A-Z.
   s = s.replace(/[^A-Z0-9]/g, '');
   
   return s.trim();
