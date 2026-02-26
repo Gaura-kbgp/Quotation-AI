@@ -1,18 +1,19 @@
 import { createServerSupabase } from '@/lib/supabase-server';
-import { normalizeSku, getBaseSku } from '@/lib/utils';
+import { normalizeSku } from '@/lib/utils';
 
 export const maxDuration = 60;
 
 /**
- * Smart Pricing Engine API for Architectural Cabinetry (v2.0).
- * Implements Step 2, 4, 6, and 7 of the production-level matching requirements.
+ * Smart Pricing Engine API (v3.0).
+ * Implements 2-Way Includes matching and Deep Logging.
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { projectId, manufacturerId } = body;
 
-    console.log(`[BOM Engine] STARTING: Project=${projectId}, Manufacturer=${manufacturerId}`);
+    console.log(`--- BOM GENERATION START ---`);
+    console.log(`Project: ${projectId}, Manufacturer: ${manufacturerId}`);
 
     if (!projectId || !manufacturerId) {
       return Response.json({ success: false, error: "Missing required parameters." }, { status: 400 });
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. Load ALL Manufacturer Specifications for memory-safe scan
+    // 2. Load ALL Manufacturer Specifications
     const { data: allSpecs, error: sError } = await supabase
       .from('manufacturer_specifications')
       .select('*')
@@ -44,34 +45,13 @@ export async function POST(req: Request) {
       return Response.json({ success: false, error: `Database error during pricing fetch.` }, { status: 500 });
     }
 
-    // STEP 6 - PRE-LOAD MAPS FOR PERFORMANCE
     const specCount = allSpecs?.length || 0;
-    console.log(`[BOM Engine] Loaded ${specCount} price records.`);
-
-    const exactMap = new Map(); // Key: Collection|NormalizedSku
-    const globalSkuMap = new Map(); // Key: NormalizedSku (Fallback)
-
-    (allSpecs || []).forEach(spec => {
-      const cleanSku = normalizeSku(spec.sku);
-      const collection = String(spec.collection_name || '').toUpperCase().trim();
-      const price = Number(spec.price) || 0;
-
-      if (price <= 0) return;
-
-      // Primary tier: Specific Collection Match
-      exactMap.set(`${collection}|${cleanSku}`, price);
-      
-      // Fallback tier: Global SKU lookup
-      if (!globalSkuMap.has(cleanSku)) {
-        globalSkuMap.set(cleanSku, price);
-      }
-    });
+    console.log(`Loaded ${specCount} price records from database.`);
 
     // 3. Process each takeoff item
     const bomItems: any[] = [];
     
     for (const room of rooms) {
-      const selectedColl = String(room.collection || '').toUpperCase().trim();
       const sections = room.sections || {};
 
       for (const [sectionName, items] of Object.entries(sections)) {
@@ -79,50 +59,57 @@ export async function POST(req: Request) {
         for (const cab of cabinetItems) {
           if (!cab.code) continue;
 
-          // STEP 2 - NORMALIZE FOR MATCHING
-          const rawCode = cab.code;
-          const cleanCode = normalizeSku(rawCode);
+          // STEP 3: STRONG NORMALIZATION
+          const takeoffCode = normalizeSku(cab.code);
+          console.log(`Searching for: ${cab.code} (Normalized: ${takeoffCode})`);
           
-          let price = 0;
-          let source = 'NOT_FOUND';
+          let matchedRow = null;
+          let matchSource = 'NOT_FOUND';
 
-          // STEP 4 - HIERARCHICAL MATCHING PIPELINE
-          const exactKey = `${selectedColl}|${cleanCode}`;
-
-          // Tier 1: Exact Collection Match
-          if (exactMap.has(exactKey)) {
-            price = exactMap.get(exactKey);
-            source = 'EXACT_MATCH';
-          } 
-          // Tier 2: Global Fallback Match (Step 4 logic)
-          else if (globalSkuMap.has(cleanCode)) {
-            price = globalSkuMap.get(cleanCode);
-            source = 'FALLBACK_COLLECTION_MATCH';
-          }
-          // Tier 3: Base Model Match (Heuristic)
-          else {
-            const baseCode = getBaseSku(rawCode);
-            if (globalSkuMap.has(baseCode)) {
-              price = globalSkuMap.get(baseCode);
-              source = 'BASE_MODEL_MATCH';
+          // STEP 4 & 5: 2-WAY INCLUDES MATCHING
+          // We search the in-memory array for performance
+          matchedRow = (allSpecs || []).find(spec => {
+            const dbSku = normalizeSku(spec.sku);
+            
+            // 1. Exact Match
+            if (dbSku === takeoffCode) {
+              matchSource = 'EXACT_MATCH';
+              return true;
             }
+            
+            // 2. Contains Match (Excel SKU contains Takeoff)
+            if (dbSku.includes(takeoffCode)) {
+              matchSource = 'PARTIAL_MATCH';
+              return true;
+            }
+
+            // 3. Reverse Match (Takeoff contains Excel SKU)
+            if (takeoffCode.includes(dbSku)) {
+              matchSource = 'BASE_MODEL_MATCH';
+              return true;
+            }
+
+            return false;
+          });
+
+          if (matchedRow) {
+            console.log(`FOUND Match: ${takeoffCode} -> ${matchedRow.sku} (${matchSource})`);
+          } else {
+            console.log(`NOT FOUND: ${takeoffCode}`);
           }
 
-          // STEP 7 - DEBUG LOGGING
-          if (source === 'NOT_FOUND') {
-            console.log(`[BOM Debug] NOT FOUND: ${rawCode} (Normalized: ${cleanCode})`);
-          }
+          const price = matchedRow ? Number(matchedRow.price) : 0;
 
           bomItems.push({
             project_id: projectId,
-            sku: rawCode,
+            sku: cab.code,
             qty: Number(cab.qty) || 1,
             unit_price: price,
             line_total: price * (Number(cab.qty) || 1),
             room: room.room_name,
-            collection: room.collection,
-            door_style: room.door_style,
-            price_source: source,
+            collection: room.collection || 'Standard',
+            door_style: room.door_style || matchedRow?.door_style || 'Default',
+            price_source: matchSource,
             created_at: new Date().toISOString()
           });
         }
@@ -135,6 +122,7 @@ export async function POST(req: Request) {
     if (bomItems.length > 0) {
       const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
       if (insertError) {
+        console.error("BOM Insert Error:", insertError);
         return Response.json({ success: false, error: 'Failed to persist BOM items.' }, { status: 500 });
       }
     }
@@ -144,6 +132,7 @@ export async function POST(req: Request) {
       status: 'Priced' 
     }).eq('id', projectId);
 
+    console.log(`--- BOM GENERATION END: ${bomItems.length} items processed ---`);
     return Response.json({ success: true, count: bomItems.length });
 
   } catch (err: any) {
