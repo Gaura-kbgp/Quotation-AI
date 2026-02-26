@@ -43,13 +43,15 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   Iterate through EVERY page.
   
   EXTRACT:
-  - All cabinet codes (e.g., W3042, B24, SB36, UF2490, VSB3634H).
+  - All cabinet codes EXACTLY as written on the drawing.
+  - DO NOT truncate codes. Include ALL suffixes and qualifiers (e.g., "W3042 BUTT", "B30 BUTT", "SB36 BUTT", "B15R", "W2442 BUTT").
+  - The word "BUTT" is a critical part of the SKU and MUST be included if present.
   - Include items from Schedules, Floor Plans, and Detail/Interior Elevations.
   - Group items by the ROOM identified on the drawing (e.g., "Standard Kitchen", "Master Bath").
   
   OUTPUT:
   Return ONLY a raw JSON array of objects. 
-  Example: [ { "room": "Kitchen", "section": "wall", "code": "W3042", "qty": 1 } ]
+  Example: [ { "room": "Kitchen", "section": "wall", "code": "W3042 BUTT", "qty": 1 } ]
   
   Valid sections: wall, base, tall, vanity, hardware.` }
     ],
