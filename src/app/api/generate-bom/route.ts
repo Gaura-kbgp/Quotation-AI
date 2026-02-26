@@ -30,6 +30,7 @@ export async function POST(req: Request) {
     const { projectId, manufacturerId } = body;
 
     console.log(`[BOM API] Initiating Smart Pricing for Project: ${projectId}`);
+    console.log(`[BOM API] Selected Manufacturer: ${manufacturerId}`);
     
     if (!projectId || !manufacturerId) {
       return Response.json({ 
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
 
     const supabase = createServerSupabase();
 
-    // 1. Fetch project and room data
+    // 1. Fetch project data
     const { data: project, error: pError } = await supabase
       .from('quotation_projects')
       .select('*')
@@ -48,21 +49,31 @@ export async function POST(req: Request) {
       .single();
 
     if (pError || !project) {
+      console.error('[BOM API] Project fetch error:', pError);
       return Response.json({ success: false, error: 'Project not found.' }, { status: 404 });
     }
 
     const rooms = project.extracted_data?.rooms || [];
     if (rooms.length === 0) {
-      return Response.json({ success: false, error: 'No takeoff data found.' }, { status: 400 });
+      return Response.json({ success: false, error: 'No takeoff data found in project.' }, { status: 400 });
     }
 
     // 2. Load ALL Manufacturer Specifications for memory-cached matching
+    // We explicitly select 'sku' to match backend.json and DB schema
     const { data: allSpecs, error: sError } = await supabase
       .from('manufacturer_specifications')
       .select('sku, price, collection_name, door_style')
       .eq('manufacturer_id', manufacturerId);
 
-    if (sError) throw sError;
+    if (sError) {
+      console.error('[BOM API] Database error during specifications fetch:', sError);
+      return Response.json({ 
+        success: false, 
+        error: `Database error during pricing fetch: ${sError.message}` 
+      }, { status: 500 });
+    }
+
+    console.log(`[BOM API] Loaded ${(allSpecs || []).length} specification records.`);
 
     // Create lookup maps for different matching levels
     const exactMap = new Map(); // Key: Collection|Style|SKU
@@ -157,20 +168,30 @@ export async function POST(req: Request) {
     }
 
     // 4. Persistence
-    await supabase.from('quotation_bom').delete().eq('project_id', projectId);
-    const { error: insertError } = await supabase.from('quotation_bom').insert(bomItems);
-    
-    if (insertError) throw insertError;
+    const { error: deleteError } = await supabase.from('quotation_bom').delete().eq('project_id', projectId);
+    if (deleteError) {
+      console.error('[BOM API] Error clearing existing BOM:', deleteError);
+    }
 
-    await supabase.from('quotation_projects').update({ 
+    const { error: insertError } = await supabase.from('quotation_bom').insert(bomItems);
+    if (insertError) {
+      console.error('[BOM API] Error inserting new BOM:', insertError);
+      throw insertError;
+    }
+
+    const { error: updateError } = await supabase.from('quotation_projects').update({ 
       manufacturer_id: manufacturerId,
       status: 'Priced' 
     }).eq('id', projectId);
+
+    if (updateError) {
+      console.error('[BOM API] Error updating project status:', updateError);
+    }
 
     return Response.json({ success: true, count: bomItems.length });
 
   } catch (err: any) {
     console.error('[BOM API CRITICAL ERROR]:', err);
-    return Response.json({ success: false, error: err.message }, { status: 500 });
+    return Response.json({ success: false, error: err.message || 'Internal processing error' }, { status: 500 });
   }
 }

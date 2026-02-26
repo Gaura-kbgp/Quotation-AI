@@ -93,7 +93,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       // Filter valid SKU codes
       if (rawSku.length < 2 || rawSku.length > 40) continue;
       
-      // Aggressive normalization
+      // Aggressive normalization - ensures match regardless of format
       const cleanSku = normalizeSku(rawSku);
       
       // Map valid SKU to each detected collection column
