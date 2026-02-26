@@ -1,8 +1,7 @@
-
 'use server';
 /**
  * @fileOverview High-Performance AI Flow for Architectural Cabinet Takeoff.
- * Uses Gemini 2.5 Flash for high-precision multi-page vision analysis.
+ * Uses Gemini 2.0 Flash for ultra-fast multi-page vision analysis.
  */
 
 import { ai } from '@/ai/genkit';
@@ -31,11 +30,10 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log('[AI Flow] Starting Gemini 2.5 Flash Multi-Page Vision Analysis...');
+  console.log('[AI Flow] Starting Gemini 2.0 Flash Multi-Page Vision Analysis...');
 
-  // Using direct generation to bypass nested schema limits and improve timeout resilience
   const response = await ai.generate({
-    model: 'googleai/gemini-2.5-flash',
+    model: 'googleai/gemini-2.0-flash',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
       { text: `You are a professional architectural estimator specializing in cabinetry takeoffs. 
@@ -48,11 +46,6 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   - All cabinet codes (e.g., W3042, B24, SB36, UF2490, VSB3634H).
   - Include items from Schedules, Floor Plans, and Detail/Interior Elevations.
   - Group items by the ROOM identified on the drawing (e.g., "Standard Kitchen", "Master Bath").
-  
-  IGNORE:
-  - Electrical fixtures (switches, lights).
-  - HVAC/Plumbing markers.
-  - Appliance model numbers.
   
   OUTPUT:
   Return ONLY a raw JSON array of objects. 
@@ -130,7 +123,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: roomsList.length > 0 ? roomsList : [getEmptyResult('No cabinets detected.').rooms[0]],
-    summary: `Extracted ${items.length} units across ${roomsMap.size} project areas using Gemini 2.5 Flash.`
+    summary: `Extracted ${items.length} units across ${roomsMap.size} project areas using Gemini 2.0 Flash.`
   };
 }
 

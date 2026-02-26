@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from 'react';
@@ -10,7 +9,8 @@ import {
   Loader2, 
   ArrowLeft, 
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  AlertCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -30,7 +30,6 @@ export default function QuotationAiPage() {
     setIsProcessing(true);
     const formData = new FormData();
     formData.append('file', file);
-    // Use the file name as the project name by default
     formData.append('projectName', file.name.replace(/\.[^/.]+$/, ""));
 
     try {
@@ -39,12 +38,17 @@ export default function QuotationAiPage() {
         body: formData,
       });
 
-      // Handle non-JSON responses (like 504 Gateway Timeout HTML pages)
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         const text = await res.text();
         console.error('Non-JSON Response:', text);
-        throw new Error(res.status === 504 ? 'The AI analysis timed out. Please try a smaller drawing or try again.' : 'Server returned an invalid response.');
+        
+        // Handle 504 and general gateway errors gracefully
+        if (res.status === 504 || text.includes('Error reaching server')) {
+          throw new Error('The AI analysis connection timed out. For very large architectural sets, please try uploading again or contact support.');
+        }
+        
+        throw new Error('The server returned an invalid response. Please try again.');
       }
 
       const result = await res.json();
@@ -80,7 +84,7 @@ export default function QuotationAiPage() {
           </Link>
           <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-50 border border-sky-100">
             <Sparkles className="w-4 h-4 text-sky-600" />
-            <span className="text-xs font-bold uppercase tracking-widest text-sky-600">Gemini 2.5 AI</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-sky-600">Gemini 2.0 AI</span>
           </div>
         </div>
 
@@ -149,6 +153,16 @@ export default function QuotationAiPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {isProcessing && (
+          <div className="p-4 rounded-2xl bg-sky-50 border border-sky-100 flex items-start gap-4 animate-in fade-in duration-1000">
+             <AlertCircle className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
+             <div className="text-xs text-sky-700 leading-relaxed">
+                <p className="font-bold mb-1">Deep Vision Extraction in Progress</p>
+                <p>Gemini 2.0 is currently analyzing floor plans, elevations, and schedules across the entire document. This process may take up to 2 minutes for complex sets.</p>
+             </div>
+          </div>
+        )}
       </div>
     </main>
   );

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -36,7 +35,8 @@ import {
   ArrowLeft,
   ChevronRight,
   FileSearch,
-  BookOpen
+  BookOpen,
+  ClipboardList
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { updateProjectAction } from '../../actions';
@@ -209,8 +209,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   };
 
   const handleGenerateQuote = async () => {
-    console.log('[Estimator] Initiating BOM generation via API...');
-    
     const missingSelections = rooms.some(r => !r.collection || !r.door_style);
     if (missingSelections) {
       toast({ 
@@ -422,7 +420,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-32 animate-in fade-in duration-700">
-      {/* Step Header Summary */}
+      {/* Project Summary Dashboard - Top Side */}
       <Card className="rounded-[2.5rem] border-slate-100 shadow-xl bg-white overflow-hidden p-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-10">
           <div className="flex items-center gap-16">
@@ -484,10 +482,9 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
              <div className="grid grid-cols-1 gap-8">
                 {Object.entries(room.sections)
+                  .filter(([_, items]) => items.length > 0) // Only render if items exist
                   .map(([sectionKey, items]) => {
                     const cabinets = items as Cabinet[];
-                    if (cabinets.length === 0) return null;
-
                     return (
                       <Card key={sectionKey} className="rounded-[2rem] border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-all">
                         <div className="bg-slate-50/50 px-8 py-4 border-b border-slate-100 flex items-center justify-between">
