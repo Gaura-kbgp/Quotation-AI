@@ -20,7 +20,8 @@ import {
   AlertCircle,
   HelpCircle,
   FileText,
-  BadgePercent
+  BadgePercent,
+  Factory
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -31,27 +32,40 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
   const supabase = createServerSupabase();
 
   let project = null;
+  let manufacturerName = 'Standard Production';
   let bom: any[] = [];
   let error: string | null = null;
 
   try {
-    // We await params and then fetch to ensure the ID is available for the database query
+    // Step 1: Fetch Project and BOM items separately to avoid brittle join errors
     const [pRes, bRes] = await Promise.all([
-      supabase.from('quotation_projects').select('*, manufacturers(name)').eq('id', id).single(),
+      supabase.from('quotation_projects').select('*').eq('id', id).single(),
       supabase.from('quotation_boms').select('*').eq('project_id', id).order('room')
     ]);
 
-    if (pRes.error) throw new Error(`Project record retrieval failed: ${pRes.error.message}`);
-    if (bRes.error) throw new Error(`Pricing line items retrieval failed: ${bRes.error.message}`);
+    if (pRes.error) throw new Error(`Project retrieval failed: ${pRes.error.message}`);
+    if (bRes.error) throw new Error(`BOM line items retrieval failed: ${bRes.error.message}`);
 
     project = pRes.data;
     bom = bRes.data || [];
+
+    // Step 2: Fetch manufacturer name if ID exists (more robust than nested select)
+    if (project.manufacturer_id) {
+      const { data: mData } = await supabase
+        .from('manufacturers')
+        .select('name')
+        .eq('id', project.manufacturer_id)
+        .single();
+      
+      if (mData) {
+        manufacturerName = mData.name;
+      }
+    }
   } catch (err: any) {
-    console.error('[BOM Page Diagnostic]:', err.message);
+    console.error('[BOM Page Error]:', err.message);
     error = err.message;
   }
 
-  // Instead of redirecting to the upload page, we show a professional error state to allow diagnosis
   if (error || !project) {
     return (
       <main className="min-h-screen bg-slate-50 flex items-center justify-center p-8">
@@ -75,7 +89,7 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
   const subtotal = bom.reduce((acc, curr) => acc + (Number(curr.line_total) || 0), 0);
   const taxRate = 0.0825; // 8.25% Tax
   const taxAmount = subtotal * taxRate;
-  const deliveryCharge = subtotal > 0 ? 250 : 0; // Standardized logistics charge
+  const deliveryCharge = subtotal > 0 ? 250 : 0;
   const total = subtotal + taxAmount + deliveryCharge;
 
   const getSourceColor = (source: string) => {
@@ -109,7 +123,7 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
               <h1 className="text-xl font-bold tracking-tight text-slate-900">{project.project_name}</h1>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-2">
                 <span className="px-1.5 py-0.5 bg-sky-50 text-sky-600 rounded">Analysis Complete</span>
-                • {project.manufacturers?.name}
+                • {manufacturerName}
               </p>
             </div>
          </div>
@@ -127,7 +141,6 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
 
       <div className="max-w-7xl mx-auto mt-12 px-6 space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
-           {/* Detailed Cabinet Schedule */}
            <div className="lg:col-span-3 space-y-12">
               {rooms.length === 0 ? (
                 <div className="bg-white p-24 rounded-[3rem] text-center border border-slate-100 shadow-xl">
@@ -183,7 +196,6 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
               )}
            </div>
 
-           {/* High-Impact Investment Summary Sidebar */}
            <div className="space-y-8">
               <Card className="rounded-[3rem] border-slate-200 shadow-2xl overflow-hidden sticky top-28 bg-white transition-all hover:shadow-sky-500/10">
                  <CardHeader className="bg-slate-900 text-white p-10">
@@ -229,7 +241,10 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
                     <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 space-y-5">
                        <div>
                           <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5">Manufacturer Partner</p>
-                          <p className="text-base font-black text-slate-900">{project.manufacturers?.name || 'Standard Production'}</p>
+                          <div className="flex items-center gap-2">
+                             <Factory className="w-4 h-4 text-sky-600" />
+                             <p className="text-base font-black text-slate-900">{manufacturerName}</p>
+                          </div>
                        </div>
                        <div className="grid grid-cols-1 gap-4">
                           <div className="flex justify-between items-center">
