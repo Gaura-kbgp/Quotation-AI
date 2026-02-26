@@ -27,15 +27,17 @@ export async function GET(req: Request) {
     const styleSet = new Set<string>();
 
     pricing.forEach(s => {
+      // Clean data to ensure no lingering combined strings or whitespace issues
       const c = String(s.collection_name || '').trim();
       const st = String(s.door_style || '').trim();
-      if (c) collectionSet.add(c);
-      if (st) styleSet.add(st);
+      
+      if (c && c.length > 1) collectionSet.add(c);
+      if (st && st.length > 1) styleSet.add(st);
     });
 
     return Response.json({ 
-      collections: Array.from(collectionSet).sort(), 
-      styles: Array.from(styleSet).sort(),
+      collections: Array.from(collectionSet).sort((a, b) => a.localeCompare(b)), 
+      styles: Array.from(styleSet).sort((a, b) => a.localeCompare(b)),
       count: pricing.length 
     });
 
