@@ -209,6 +209,8 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   };
 
   const handleGenerateQuote = async () => {
+    console.log('[Estimator] Initiating BOM generation via API...');
+    
     const missingSelections = rooms.some(r => !r.collection || !r.door_style);
     if (missingSelections) {
       toast({ 
@@ -247,7 +249,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       toast({ 
         variant: 'destructive', 
         title: 'BOM Error', 
-        description: err.message || 'An unexpected error occurred.' 
+        description: err.message || 'An unexpected error occurred during final pricing.' 
       });
       setIsProcessing(false);
     }

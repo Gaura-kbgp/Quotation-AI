@@ -9,7 +9,8 @@ export const maxDuration = 60;
  */
 export async function POST(req: Request) {
   try {
-    const { projectId, manufacturerId } = await req.json();
+    const body = await req.json();
+    const { projectId, manufacturerId } = body;
 
     console.log(`[BOM API] Initiating generation for Project: ${projectId}`);
     console.log(`[BOM API] Selected Manufacturer: ${manufacturerId}`);
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
 
     const supabase = createServerSupabase();
 
-    // 1. Fetch project data
+    // 1. Fetch project data to get latest extractions
     const { data: project, error: pError } = await supabase
       .from('quotation_projects')
       .select('*')
@@ -51,10 +52,14 @@ export async function POST(req: Request) {
 
       if (!collection || !doorStyle) {
         console.warn(`[BOM API] Skipping room ${room.room_name} - Missing collection or style`);
-        continue;
+        return Response.json({ 
+          success: false, 
+          error: `Room "${room.room_name}" is missing configuration. Please select a collection and style.` 
+        }, { status: 400 });
       }
 
       // Fetch Pricing for this specific room's configuration
+      // We look up the exact SKU/Price mapping from the matrix
       const { data: pricing, error: prError } = await supabase
         .from('manufacturer_specifications')
         .select('sku, price')
@@ -98,21 +103,21 @@ export async function POST(req: Request) {
     if (bomItems.length === 0) {
       return Response.json({ 
         success: false, 
-        error: 'No priced items could be generated. Ensure all rooms have a collection and style selected.' 
+        error: 'No priced items could be generated. Ensure your takeoff codes match the manufacturer price matrix.' 
       }, { status: 400 });
     }
 
-    // 3. Clean up old BOM
+    // 3. Clean up old BOM for this project
     await supabase.from('quotation_bom').delete().eq('project_id', projectId);
 
-    // 4. Insert new BOM
+    // 4. Insert new BOM line items
     const { error: insertError } = await supabase.from('quotation_bom').insert(bomItems);
     if (insertError) {
       console.error('[BOM API] BOM Insert error:', insertError);
       return Response.json({ success: false, error: 'Failed to persist generated BOM items.' }, { status: 500 });
     }
 
-    // 5. Update project status
+    // 5. Update project status to Priced
     const { error: updateError } = await supabase.from('quotation_projects').update({ 
       manufacturer_id: manufacturerId,
       status: 'Priced' 
