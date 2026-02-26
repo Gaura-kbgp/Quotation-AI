@@ -29,7 +29,7 @@ export function AdminSidebar() {
   }, []);
 
   return (
-    <aside className="w-72 admin-sidebar flex flex-col h-full shrink-0">
+    <aside className="w-72 admin-sidebar flex flex-col h-full shrink-0" suppressHydrationWarning>
       <div className="p-8">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
