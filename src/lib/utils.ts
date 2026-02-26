@@ -1,4 +1,3 @@
-
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -11,29 +10,29 @@ export function cn(...inputs: ClassValue[]) {
  * strictly following estimator rules:
  * 1. Convert to uppercase
  * 2. Remove text inside parentheses (e.g. "FL48 (VOIDS)" -> "FL48")
- * 3. Remove spaces, periods, dashes, slashes, quotes
- * 4. Remove leading quantity callouts (e.g. "1-QM8" -> "QM8")
- * 5. Remove common suffixes like "BUTT" to allow base matching
- * 6. Trim extra characters
+ * 3. Remove architectural quantity callouts (e.g. "1-QM8" -> "QM8")
+ * 4. Remove cabinetry suffixes (BUTT, LD, RD, BLD)
+ * 5. Strip all spaces, dots, dashes, slashes, and quotes
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
   let s = sku.toString().toUpperCase();
   
-  // Remove content within parentheses
+  // 1. Remove content within parentheses
   s = s.replace(/\([^)]*\)/g, '');
   
-  // Specific architectural fix: Remove leading "Number-" callouts common in drawings
-  // e.g. "1-QM8" -> "QM8", "4 - LIGHT RAIL" -> "LIGHT RAIL"
+  // 2. Remove leading "Number-" callouts (e.g. "1-QM8" -> "QM8")
   s = s.replace(/^\d+[\s\-]+/, '');
 
-  // Remove common cabinetry takeoff markers that shouldn't affect base pricing
-  s = s.replace(/BUTT/g, '');
-  s = s.replace(/LD/g, '');
-  s = s.replace(/RD/g, '');
+  // 3. Remove common cabinetry takeoff markers
+  const markers = ['BUTT', 'LD', 'RD', 'BLD', 'REV', 'HNG', 'VOIDS'];
+  markers.forEach(m => {
+    const regex = new RegExp(m, 'g');
+    s = s.replace(regex, '');
+  });
 
-  // Remove spaces, dots, dashes, slashes, quotes
-  s = s.replace(/[\s.\-\/\"]/g, '');
+  // 4. Strip all special characters and whitespace
+  s = s.replace(/[^A-Z0-9]/g, '');
   
   return s.trim();
 }

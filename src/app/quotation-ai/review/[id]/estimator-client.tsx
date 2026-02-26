@@ -28,21 +28,15 @@ import {
   Factory,
   Loader2,
   Package,
-  ArrowRight,
-  DollarSign,
-  Info,
-  Settings2,
-  ArrowLeft,
   ChevronRight,
+  ArrowLeft,
   FileSearch,
-  BookOpen,
-  ClipboardList
+  SearchCode
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { updateProjectAction } from '../../actions';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { MANUFACTURER_CONFIG } from '@/lib/manufacturer-config';
 
 interface Cabinet {
   code: string;
@@ -88,8 +82,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   const fetchManConfig = useCallback(async (id: string) => {
     if (!id) return;
-    const man = manufacturers.find(m => m.id === id);
-    if (!man || man.name === "1951 Cabinetry") return;
     
     setIsLoadingConfig(true);
     try {
@@ -108,7 +100,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     } finally {
       setIsLoadingConfig(false);
     }
-  }, [manufacturers]);
+  }, []);
 
   useEffect(() => {
     if (initialSyncRef.current) return;
@@ -135,7 +127,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     initialSyncRef.current = true;
   }, [project, fetchManConfig]);
 
-  // Auto-save logic
   useEffect(() => {
     if (!initialSyncRef.current || rooms.length === 0) return;
     const timer = setTimeout(async () => {
@@ -254,17 +245,10 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   };
 
   const getCollectionsForRoom = () => {
-    if (selectedManufacturer?.name === "1951 Cabinetry") {
-      return MANUFACTURER_CONFIG["1951 Cabinetry"].collections.map(c => c.name);
-    }
     return dbConfigs[selectedManId]?.collections || [];
   };
 
   const getStylesForRoom = (room: Room) => {
-    if (!room.collection) return [];
-    if (selectedManufacturer?.name === "1951 Cabinetry") {
-      return MANUFACTURER_CONFIG["1951 Cabinetry"].collections.find(c => c.name === room.collection)?.styles || [];
-    }
     return dbConfigs[selectedManId]?.styles || [];
   };
 
@@ -277,8 +261,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     });
     return acc + count;
   }, 0);
-
-  // --- RENDERING LOGIC ---
 
   if (step === 'manufacturer') {
     return (
@@ -304,7 +286,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                    </div>
                    <div>
                      <span className="font-black text-xl text-slate-900 block">{m.name}</span>
-                     <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Active Matrix v1.0</span>
+                     <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Active Matrix v2.0</span>
                    </div>
                 </div>
                 {selectedManId === m.id && <CheckCircle2 className="w-8 h-8 text-sky-600 animate-in zoom-in" />}
@@ -339,7 +321,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
         <div className="grid grid-cols-1 gap-6">
           {rooms.map((room, rIdx) => (
-            <Card key={rIdx} className="rounded-[2rem] border-slate-100 shadow-sm overflow-hidden group hover:shadow-md transition-all">
+            <Card key(rIdx) className="rounded-[2rem] border-slate-100 shadow-sm overflow-hidden group hover:shadow-md transition-all">
               <div className="p-8 flex flex-col md:flex-row items-center justify-between gap-8">
                 <div className="flex items-center gap-5">
                   <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-2xl">
@@ -420,7 +402,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-32 animate-in fade-in duration-700">
-      {/* Project Summary Dashboard - Top Side */}
       <Card className="rounded-[2.5rem] border-slate-100 shadow-xl bg-white overflow-hidden p-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-10">
           <div className="flex items-center gap-16">
@@ -450,7 +431,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         </div>
       </Card>
 
-      {/* Takeoff Review Sections */}
       <div className="space-y-16 mt-12">
         {rooms.map((room, rIdx) => (
           <div key={rIdx} className="space-y-6">
@@ -482,7 +462,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
              <div className="grid grid-cols-1 gap-8">
                 {Object.entries(room.sections)
-                  .filter(([_, items]) => items.length > 0) // Only render if items exist
+                  .filter(([_, items]) => items.length > 0)
                   .map(([sectionKey, items]) => {
                     const cabinets = items as Cabinet[];
                     return (
