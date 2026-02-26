@@ -1,23 +1,5 @@
 import * as XLSX from 'xlsx';
-
-/**
- * PRODUCTION-GRADE SKU NORMALIZATION
- * Strips common cabinetry suffixes and estimator notes to find the core part number.
- */
-function normalizeSku(sku: string): string {
-  if (!sku) return '';
-  return String(sku)
-    .toUpperCase()
-    // 1. Remove anything in {}, [], () which are often estimator notes
-    .replace(/\{.*?\}/g, '')
-    .replace(/\(.*?\)/g, '')
-    .replace(/\[.*?\]/g, '')
-    // 2. Remove common cabinetry suffixes preceded by space
-    .replace(/\s+(BUTT|LEFT|RIGHT|DOOR|HINGE|REVERSE|REV|BLD|LD|RD|L|R)\b/g, '')
-    // 3. Final alphanumeric strip for matching
-    .replace(/[^A-Z0-9]/g, '')
-    .trim();
-}
+import { normalizeSku } from './utils';
 
 /**
  * Advanced cabinetry specification parser.
@@ -39,13 +21,13 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     const collections: { name: string, colIndex: number }[] = [];
     const doorStyles: { [colIndex: number]: string } = {};
 
-    // 1. Find SKU Column
-    for (let r = 0; r < Math.min(data.length, 50); r++) {
+    // 1. Find SKU Column - Scan first 100 rows for common headers
+    for (let r = 0; r < Math.min(data.length, 100); r++) {
       const row = data[r];
       if (!row) continue;
       for (let c = 0; c < row.length; c++) {
         const val = String(row[c] || '').trim().toUpperCase();
-        if (['SKU', 'CODE', 'MODEL', 'ITEM', 'CATALOG #', 'PART', 'PRODUCT', 'NAME'].includes(val)) {
+        if (['SKU', 'CODE', 'MODEL', 'ITEM', 'CATALOG #', 'PART', 'PRODUCT', 'NAME', 'CABINET', 'UNIT'].includes(val)) {
           skuCol = c;
           break;
         }
@@ -53,7 +35,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       if (skuCol !== -1) break;
     }
 
-    // Fallback SKU detection
+    // Fallback SKU detection by scanning for patterns
     if (skuCol === -1) {
       for (let c = 0; c < 5; c++) {
         for (let r = 0; r < Math.min(data.length, 50); r++) {
@@ -70,13 +52,13 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     if (skuCol === -1) skuCol = 0;
 
     // 2. Identify Collection Columns
-    for (let r = 0; r < Math.min(data.length, 30); r++) {
+    for (let r = 0; r < Math.min(data.length, 50); r++) {
       const row = data[r];
       if (!row) continue;
       for (let c = skuCol + 1; c < row.length; c++) {
         const val = String(row[c] || '').trim();
         const upperVal = val.toUpperCase();
-        if (val.length > 1 && !['PRICE', 'QTY', 'UOM', 'DESC', 'SKU', 'CODE', 'NOTE'].includes(upperVal)) {
+        if (val.length > 2 && !['PRICE', 'QTY', 'UOM', 'DESC', 'SKU', 'CODE', 'NOTE', 'EXT', 'UNIT', 'MSRP'].includes(upperVal)) {
           if (!collections.some(coll => coll.colIndex === c)) {
             collections.push({ name: val, colIndex: c });
             doorStyles[c] = val;
@@ -85,23 +67,24 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       }
     }
 
-    // 3. Extraction
+    // 3. Find Start Row
     let startRow = 0;
-    const cabinetMarkers = ['B', 'W', 'S', 'V', 'T', 'U', 'F', 'R', 'L', 'A', 'P', 'C', 'O'];
-    for (let r = 0; r < Math.min(data.length, 100); r++) {
+    const cabinetMarkers = ['B', 'W', 'S', 'V', 'T', 'U', 'F', 'R', 'L', 'A', 'P', 'C', 'O', 'M', 'K'];
+    for (let r = 0; r < Math.min(data.length, 200); r++) {
       const cell = String(data[r]?.[skuCol] || '').toUpperCase().trim();
-      if (cabinetMarkers.some(m => cell.startsWith(m)) && /\d+/.test(cell)) {
+      if (cabinetMarkers.some(m => cell.startsWith(m))) {
         startRow = r;
         break;
       }
     }
 
-    // Determine target columns (fallback to first numeric col if no collection headers)
+    // Determine target columns (fallback if no collection headers found)
     let targets = collections;
     if (targets.length === 0) {
-      for (let c = skuCol + 1; c < (data[startRow]?.length || 10); c++) {
+      // Look for the first column with numeric data after the SKU column
+      for (let c = skuCol + 1; c < (data[startRow]?.length || 20); c++) {
         const val = data[startRow]?.[c];
-        if (typeof val === 'number') {
+        if (typeof val === 'number' || (typeof val === 'string' && /^\$?[0-9,.]+$/.test(val))) {
           targets = [{ name: 'Standard', colIndex: c }];
           break;
         }
@@ -138,6 +121,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   });
 
-  console.log(`[Parser] Successfully extracted ${specs.length} records.`);
+  console.log(`[Parser] Successfully extracted ${specs.length} records from all sheets.`);
   return specs;
 }

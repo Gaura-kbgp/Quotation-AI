@@ -1,37 +1,11 @@
 import { createServerSupabase } from '@/lib/supabase-server';
+import { normalizeSku, getBaseSku } from '@/lib/utils';
 
 export const maxDuration = 60;
 
 /**
- * PRODUCTION-GRADE SKU NORMALIZATION
- * Must match the parser logic perfectly.
- */
-function normalizeSku(sku: string): string {
-  if (!sku) return '';
-  return String(sku)
-    .toUpperCase()
-    // 1. Remove anything in {}, [], ()
-    .replace(/\{.*?\}/g, '')
-    .replace(/\(.*?\)/g, '')
-    .replace(/\[.*?\]/g, '')
-    // 2. Remove common cabinetry suffixes preceded by space
-    .replace(/\s+(BUTT|LEFT|RIGHT|DOOR|HINGE|REVERSE|REV|BLD|LD|RD|L|R)\b/g, '')
-    // 3. Final alphanumeric strip
-    .replace(/[^A-Z0-9]/g, '')
-    .trim();
-}
-
-/**
- * Intelligent Base SKU identification for fallback matching.
- */
-function getBaseSku(sku: string): string {
-  const normalized = normalizeSku(sku);
-  // Strip trailing hinging/note markers commonly used in takeoffs but not price books
-  return normalized.replace(/(LD|RD|REV|L|R|BLD|BUTT)$/, '');
-}
-
-/**
- * Smart Pricing Engine API.
+ * Smart Pricing Engine API for Architectural Cabinetry.
+ * Implements multi-tier matching heuristics for high-precision takeoff verification.
  */
 export async function POST(req: Request) {
   try {
@@ -60,7 +34,7 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. Load ALL Manufacturer Specifications
+    // 2. Load ALL Manufacturer Specifications into high-speed memory maps
     const { data: allSpecs, error: sError } = await supabase
       .from('manufacturer_specifications')
       .select('*')
@@ -71,40 +45,48 @@ export async function POST(req: Request) {
       return Response.json({ success: false, error: `Failed to fetch pricing guide from database.` }, { status: 500 });
     }
 
-    console.log(`[BOM Engine] Loaded ${allSpecs?.length || 0} price book entries.`);
+    const specCount = allSpecs?.length || 0;
+    console.log(`[BOM Engine] Loaded ${specCount} price book entries.`);
 
-    // Pre-process specs into high-speed lookup maps
+    if (specCount === 0) {
+      console.warn(`[BOM Engine] WARNING: No pricing guide found in database for manufacturer: ${manufacturerId}`);
+    }
+
     const exactMap = new Map();
     const collectionMap = new Map();
     const baseModelMap = new Map();
     const globalSkuMap = new Map();
 
     (allSpecs || []).forEach(spec => {
-      const cleanSku = spec.sku; // Already normalized by parser
+      // SKUs are already normalized during ingestion by specs-parser
+      const cleanSku = spec.sku; 
       const collection = String(spec.collection_name || '').toUpperCase().trim();
       const style = String(spec.door_style || '').toUpperCase().trim();
       const price = Number(spec.price) || 0;
 
       if (price <= 0) return;
 
+      // Tier 1: Exact Collection + Door Style Match
       exactMap.set(`${collection}|${style}|${cleanSku}`, price);
       
+      // Tier 2: Collection-Level Fallback
       if (!collectionMap.has(`${collection}|${cleanSku}`)) {
         collectionMap.set(`${collection}|${cleanSku}`, price);
       }
 
+      // Tier 3: Base Model Identification
       const baseSku = getBaseSku(cleanSku);
-      const existingBase = baseModelMap.get(baseSku);
-      if (!existingBase || price < existingBase) {
+      if (!baseModelMap.has(baseSku) || price < baseModelMap.get(baseSku)) {
         baseModelMap.set(baseSku, price);
       }
 
+      // Tier 4: Global SKU lookup (Any collection)
       if (!globalSkuMap.has(cleanSku)) {
         globalSkuMap.set(cleanSku, price);
       }
     });
 
-    // 3. Match each extracted unit
+    // 3. Process each takeoff item
     const bomItems: any[] = [];
     
     for (const room of rooms) {
@@ -124,7 +106,7 @@ export async function POST(req: Request) {
           let price = 0;
           let source = 'NOT_FOUND';
 
-          // Match Pipeline
+          // HEURISTIC MATCHING PIPELINE
           const exactKey = `${selectedColl}|${selectedStyle}|${cleanCode}`;
           const collKey = `${selectedColl}|${cleanCode}`;
 
@@ -140,10 +122,6 @@ export async function POST(req: Request) {
           } else if (globalSkuMap.has(cleanCode)) {
             price = globalSkuMap.get(cleanCode);
             source = 'FALLBACK_COLLECTION_MATCH';
-          }
-
-          if (source === 'NOT_FOUND') {
-            console.warn(`[BOM Engine] Match Failure: ${rawCode} (Clean: ${cleanCode})`);
           }
 
           bomItems.push({
@@ -163,12 +141,16 @@ export async function POST(req: Request) {
     }
 
     // 4. Persistence
-    await supabase.from('quotation_boms').delete().eq('project_id', projectId);
+    const { error: deleteError } = await supabase.from('quotation_boms').delete().eq('project_id', projectId);
+    if (deleteError) {
+      console.error('[BOM Engine] Failed to clear existing items:', deleteError);
+    }
+
     if (bomItems.length > 0) {
       const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
       if (insertError) {
         console.error('[BOM Engine] Persistence error:', insertError);
-        return Response.json({ success: false, error: 'Failed to save BOM line items.' }, { status: 500 });
+        return Response.json({ success: false, error: 'Failed to persist BOM items. Please ensure database tables are created.' }, { status: 500 });
       }
     }
 
