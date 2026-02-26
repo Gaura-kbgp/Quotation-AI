@@ -2,108 +2,124 @@ import * as XLSX from 'xlsx';
 import { normalizeSku } from './utils';
 
 /**
- * Advanced cabinetry specification parser (v2.0).
- * Implements Step 1, 3, and 5 of the requested pricing logic.
- * Scans all sheets and dynamically detects SKU/Price columns.
+ * Advanced cabinetry specification parser (v3.0).
+ * Supports multi-column price grids (one SKU row, multiple door style prices).
+ * Scans all sheets and dynamically detects SKU and multiple Price columns.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const specs: any[] = [];
   
-  // STEP 1 - READ COMPLETE EXCEL FILE (ALL SHEETS)
-  workbook.SheetNames.forEach(sheetName => {
+  for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
-    // Use header: 1 to get raw rows for manual column detection
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+    // Use header: 1 to get raw rows for manual structural analysis
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
     
-    if (rows.length < 2) return;
+    if (rows.length < 1) continue;
 
-    console.log(`[Parser] Processing sheet: ${sheetName} (${rows.length} rows)`);
+    console.log(`[Parser] Analyzing sheet: ${sheetName} (${rows.length} rows)`);
 
-    let skuCol = -1;
-    let priceCol = -1;
-    let doorStyleCol = -1;
-    let headerRowIndex = -1;
+    let headerRowIdx = -1;
+    let skuColIdx = -1;
+    let priceColumns: { idx: number, name: string }[] = [];
 
-    // STEP 3 - DYNAMIC COLUMN DETECTION
-    // Scan the first 100 rows to find headers
-    for (let r = 0; r < Math.min(rows.length, 100); r++) {
+    // 1. DYNAMIC STRUCTURE DETECTION
+    // Scan the first 50 rows to find the primary SKU header and price grid start
+    for (let r = 0; r < Math.min(rows.length, 50); r++) {
       const row = rows[r];
-      if (!row) continue;
+      if (!row || row.length === 0) continue;
       
+      let tempSkuIdx = -1;
+      
+      // Identify the SKU/Code column
       for (let c = 0; c < row.length; c++) {
         const val = String(row[c] || '').trim().toUpperCase();
-        
-        // SKU Column Keywords
-        if (skuCol === -1 && ['SKU', 'CODE', 'MODEL', 'ITEM', 'CATALOG', 'PART', 'PRODUCT'].some(k => val.includes(k))) {
-          skuCol = c;
-        }
-        
-        // Price Column Keywords
-        if (priceCol === -1 && ['PRICE', 'LIST', 'MSRP', 'COST', 'AMOUNT', 'NET'].some(k => val.includes(k))) {
-          priceCol = c;
-        }
-
-        // Door Style Keywords
-        if (doorStyleCol === -1 && ['DOOR', 'STYLE', 'FINISH'].some(k => val.includes(k))) {
-          doorStyleCol = c;
+        if (['SKU', 'CODE', 'MODEL', 'ITEM', 'CATALOG', 'PART', 'PRODUCT'].some(k => val === k || val.includes(k))) {
+          tempSkuIdx = c;
+          break;
         }
       }
 
-      if (skuCol !== -1 && priceCol !== -1) {
-        headerRowIndex = r;
-        console.log(`[Parser] Headers found at row ${r}: SKU[Col ${skuCol}], Price[Col ${priceCol}]`);
-        break;
+      if (tempSkuIdx !== -1) {
+        headerRowIdx = r;
+        skuColIdx = tempSkuIdx;
+        
+        // Now identify all columns in this header row that likely contain prices
+        // We verify by checking if the columns below contain numeric data
+        for (let c = 0; c < row.length; c++) {
+          if (c === skuColIdx) continue;
+          
+          let numericScore = 0;
+          const sampleSize = 15;
+          for (let checkR = r + 1; checkR < Math.min(rows.length, r + 1 + sampleSize); checkR++) {
+            const cell = rows[checkR][c];
+            if (typeof cell === 'number' || (typeof cell === 'string' && !isNaN(parseFloat(cell.replace(/[^0-9.]/g, ''))))) {
+              numericScore++;
+            }
+          }
+
+          // If more than 30% of sample rows are numeric, treat as a Price Column (Door Style)
+          if (numericScore > (sampleSize * 0.3)) {
+            const styleName = String(row[c] || `Style ${c}`).trim();
+            priceColumns.push({ idx: c, name: styleName });
+          }
+        }
+        
+        if (priceColumns.length > 0) {
+          console.log(`[Parser] Found structure at row ${r}: SKU[Col ${skuColIdx}], Prices[${priceColumns.length} styles]`);
+          break;
+        }
       }
     }
 
-    // Fallback detection if no headers matched
-    if (skuCol === -1) skuCol = 0; 
-    if (priceCol === -1) {
-      // Find first numeric column after SKU
-      const sampleRow = rows[Math.min(rows.length - 1, (headerRowIndex === -1 ? 0 : headerRowIndex) + 5)];
-      for (let j = skuCol + 1; j < (sampleRow?.length || 0); j++) {
-        if (typeof sampleRow[j] === 'number') { priceCol = j; break; }
+    // 2. FALLBACK DETECTION
+    // If no clear headers found, assume first column is SKU and try to find any numeric column
+    if (skuColIdx === -1 || priceColumns.length === 0) {
+      skuColIdx = 0;
+      headerRowIdx = 0;
+      for (let c = 1; c < (rows[0]?.length || 0); c++) {
+        priceColumns.push({ idx: c, name: `Column ${c}` });
       }
     }
 
-    if (priceCol === -1) priceCol = skuCol + 1;
-
-    // STEP 2 & 6 - NORMALIZE AND PREPARE OBJECTS
-    const startRow = (headerRowIndex === -1 ? 0 : headerRowIndex + 1);
+    // 3. DATA EXTRACTION
+    const startRow = headerRowIdx + 1;
     for (let r = startRow; r < rows.length; r++) {
       const row = rows[r];
-      if (!row || !row[skuCol]) continue;
+      if (!row || !row[skuColIdx]) continue;
 
-      const rawSku = String(row[skuCol]).trim();
-      const cleanSku = normalizeSku(rawSku);
+      const rawSku = String(row[skuColIdx]).trim();
+      if (rawSku.length < 2 || rawSku.toUpperCase() === 'SKU' || rawSku.toUpperCase() === 'MODEL') continue;
       
+      const cleanSku = normalizeSku(rawSku);
       if (cleanSku.length < 2) continue;
 
-      const rawPrice = row[priceCol];
-      let price = 0;
-      if (typeof rawPrice === 'number') {
-        price = rawPrice;
-      } else if (typeof rawPrice === 'string') {
-        price = parseFloat(rawPrice.replace(/[^0-9.]/g, ''));
-      }
+      // Extract one specification record per detected price column
+      for (const col of priceColumns) {
+        const rawPrice = row[col.idx];
+        let price = 0;
+        
+        if (typeof rawPrice === 'number') {
+          price = rawPrice;
+        } else if (typeof rawPrice === 'string') {
+          price = parseFloat(rawPrice.replace(/[^0-9.]/g, ''));
+        }
 
-      const doorStyle = doorStyleCol !== -1 ? String(row[doorStyleCol] || '').trim() : 'Standard';
-
-      if (price > 0) {
-        specs.push({
-          manufacturer_id: manufacturerId,
-          collection_name: sheetName, // Use Sheet Name as Collection as per Step 1 logic
-          door_style: doorStyle,
-          sku: cleanSku,
-          price: price,
-          raw_source_file_id: fileId,
-          created_at: new Date().toISOString()
-        });
+        if (price > 0) {
+          specs.push({
+            manufacturer_id: manufacturerId,
+            collection_name: sheetName, // Use sheet name as collection (standard cabinetry practice)
+            door_style: col.name,
+            sku: cleanSku,
+            price: price,
+            raw_source_file_id: fileId,
+            created_at: new Date().toISOString()
+          });
+        }
       }
     }
-  });
+  }
 
-  console.log(`[Parser] Extracted ${specs.length} specifications across all sheets.`);
+  console.log(`[Parser] SUCCESS: Extracted ${specs.length} specifications for manufacturer ${manufacturerId}`);
   return specs;
 }
