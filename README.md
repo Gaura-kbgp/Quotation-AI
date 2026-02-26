@@ -5,7 +5,7 @@ This is a NextJS starter in Firebase Studio, optimized for high-performance arch
 
 ## Supabase Database Setup
 
-To resolve "Table not found" errors, run the following SQL in your Supabase SQL Editor:
+To resolve "Table not found" or "Column not found" errors, run the following SQL in your Supabase SQL Editor:
 
 ```sql
 -- 1. Manufacturers Table
