@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -38,7 +39,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { updateProjectAction, generateBOMAction } from '../../actions';
+import { updateProjectAction } from '../../actions';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { MANUFACTURER_CONFIG } from '@/lib/manufacturer-config';
@@ -220,14 +221,34 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
     setIsProcessing(true);
     try {
-      const result = await generateBOMAction(project.id, selectedManId);
+      const response = await fetch('/api/generate-bom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: project.id,
+          manufacturerId: selectedManId
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'The server failed to generate the BOM.');
+      }
+
       if (result.success) {
+        toast({ title: 'Quote Generated', description: 'Matching SKUs to price matrix...' });
         router.push(`/quotation-ai/bom/${project.id}`);
       } else {
-        throw new Error(result.error);
+        throw new Error(result.error || 'Failed to process line items.');
       }
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message });
+      console.error('[Estimator] BOM Fetch Error:', err);
+      toast({ 
+        variant: 'destructive', 
+        title: 'BOM Error', 
+        description: err.message || 'An unexpected error occurred.' 
+      });
       setIsProcessing(false);
     }
   };
@@ -463,7 +484,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                 {Object.entries(room.sections)
                   .map(([sectionKey, items]) => {
                     const cabinets = items as Cabinet[];
-                    // Conditionally render only if there are items (as requested)
                     if (cabinets.length === 0) return null;
 
                     return (
