@@ -1,8 +1,8 @@
 
 'use server';
 /**
- * @fileOverview Production-Grade AI Flow for Architectural Cabinet Takeoff.
- * Optimized for Gemini 2.5 Flash to handle multi-page PDFs with visual reasoning.
+ * @fileOverview High-Performance AI Flow for Architectural Cabinet Takeoff.
+ * Uses Gemini 2.0 Flash for native multi-page vision analysis.
  */
 
 import { ai } from '@/ai/genkit';
@@ -31,41 +31,34 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log('[AI Flow] Starting Multi-Page PDF Vision Analysis with Gemini 2.5 Flash...');
+  console.log('[AI Flow] Starting Gemini 2.0 Flash Vision Analysis...');
 
+  // Using direct generation to bypass nested schema limits and improve timeout resilience
   const response = await ai.generate({
-    model: 'googleai/gemini-2.5-flash',
+    model: 'googleai/gemini-2.0-flash',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator specializing in cabinet takeoff. 
+      { text: `You are a professional architectural estimator. 
   
   TASK:
-  Analyze the provided PDF drawing. This is a MULTI-PAGE document.
-  You MUST process EVERY SINGLE PAGE provided.
+  Analyze the provided PDF. It contains multiple pages (Floor Plans, Cabinet Schedules, Elevations).
+  Iterate through EVERY page.
   
-  PROCESS:
-  1. Iterate through EVERY page of the PDF.
-  2. IDENTIFY: Identify all cabinet codes (SKUs) in Floor Plans, Interior Elevations, and Cabinet Schedules.
-  3. CLASSIFY: Assign a section to each code:
-     - Starts with W -> wall
-     - Starts with B or SB -> base
-     - Starts with UF -> tall
-     - Starts with VSB -> vanity
-     - Fillers/Moldings/Trim -> hardware
-  4. IGNORE: Do NOT extract electrical, lighting, HVAC, or plumbing fixtures.
-  5. OUTPUT: Return a raw JSON array of objects.
+  EXTRACT:
+  - All cabinet codes (e.g., W3042, B24, SB36, UF2490, VSB3634H).
+  - Include items from Schedules, Floor Plans, and Detail/Interior Elevations.
+  - Group items by the ROOM identified on the drawing (e.g., "Standard Kitchen", "Master Bath").
   
-  Format:
-  [
-    { "page": 1, "room": "Standard Kitchen", "section": "wall", "code": "W3042", "qty": 1 },
-    ...
-  ]
-
-  Rules for extraction:
-  - Normalize codes: "B 24" -> "B24".
-  - Detect specific rooms: "Standard Kitchen", "Owners Bath", "Laundry", "Mudroom", etc.
+  IGNORE:
+  - Electrical fixtures (switches, lights).
+  - HVAC/Plumbing markers.
+  - Appliance model numbers.
   
-  IMPORTANT: Return ONLY the raw JSON array. No markdown, no backticks.` }
+  OUTPUT:
+  Return ONLY a raw JSON array of objects. 
+  Example: [ { "room": "Kitchen", "section": "wall", "code": "W3042", "qty": 1 } ]
+  
+  Valid sections: wall, base, tall, vanity, hardware.` }
     ],
     config: {
       safetySettings: [
@@ -81,7 +74,6 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   const text = response.text;
   
   if (!text || text.trim() === '') {
-    console.warn('[AI Flow] Model returned empty response.');
     return getEmptyResult('AI analysis produced no results.');
   }
 
@@ -97,13 +89,13 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     }
   } catch (e) {
     console.error('[AI Parser] JSON Parse Error:', e);
-    return getEmptyResult('The AI returned data in an unexpected format.');
+    return getEmptyResult('Failed to parse AI response structure.');
   }
 
   const roomsMap = new Map<string, any>();
 
   items.forEach((item) => {
-    const roomKey = item.room || 'Other';
+    const roomKey = item.room || 'Project Area';
     
     if (!roomsMap.has(roomKey)) {
       roomsMap.set(roomKey, {
@@ -120,37 +112,33 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     }
 
     const room = roomsMap.get(roomKey);
-    const sectionKey = mapSectionToLabel(item.section);
+    const sectionLabel = mapSectionToLabel(item.section);
     
-    const existing = room.sections[sectionKey].find((c: any) => c.code === item.code);
+    const existing = room.sections[sectionLabel].find((c: any) => c.code === item.code);
     if (existing) {
-      existing.qty += (item.qty || 1);
+      existing.qty += (Number(item.qty) || 1);
     } else {
-      room.sections[sectionKey].push({ 
-        code: item.code, 
-        qty: (item.qty || 1), 
-        type: sectionKey 
+      room.sections[sectionLabel].push({ 
+        code: String(item.code).toUpperCase().trim(), 
+        qty: (Number(item.qty) || 1), 
+        type: sectionLabel 
       });
     }
   });
 
   const roomsList = Array.from(roomsMap.values());
 
-  if (roomsList.length === 0) {
-    return getEmptyResult('No cabinets detected.');
-  }
-
   return {
-    rooms: roomsList,
-    summary: `Processed full document. Extracted ${items.length} line items across ${roomsMap.size} rooms.`
+    rooms: roomsList.length > 0 ? roomsList : [getEmptyResult('No cabinets detected.').rooms[0]],
+    summary: `Extracted ${items.length} units across ${roomsMap.size} project areas.`
   };
 }
 
 function getEmptyResult(message: string): AnalyzeDrawingOutput {
   return {
     rooms: [{
-      room_name: 'Main Room',
-      room_type: 'Kitchen',
+      room_name: 'Main Area',
+      room_type: 'Other',
       sections: {
         'Wall Cabinets': [],
         'Base Cabinets': [],
@@ -164,7 +152,7 @@ function getEmptyResult(message: string): AnalyzeDrawingOutput {
 }
 
 function mapSectionToLabel(section: string): string {
-  const s = String(section).toLowerCase();
+  const s = String(section || '').toLowerCase();
   if (s.includes('wall')) return 'Wall Cabinets';
   if (s.includes('base')) return 'Base Cabinets';
   if (s.includes('tall')) return 'Tall Cabinets';
