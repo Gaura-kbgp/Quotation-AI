@@ -20,7 +20,7 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
     const [mRes, fRes, sRes] = await Promise.all([
       supabase.from('manufacturers').select('*').eq('id', id).single(),
       supabase.from('manufacturer_files').select('*').eq('manufacturer_id', id).order('created_at', { ascending: false }),
-      supabase.from('manufacturer_specifications').select('collection_name, door_style, sku').eq('manufacturer_id', id)
+      supabase.from('manufacturer_pricing').select('collection_name, door_style, sku').eq('manufacturer_id', id)
     ]);
 
     if (mRes.error) throw new Error(mRes.error.message);
@@ -61,14 +61,6 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
             The server encountered an error while loading this manufacturer: {error}
           </AlertDescription>
         </Alert>
-        <div className="flex justify-center pt-4">
-          <Link href={`/admin/manufacturers/${id}`}>
-            <Button className="gradient-button px-8">
-              <RefreshCcw className="w-4 h-4 mr-2" />
-              Try Again
-            </Button>
-          </Link>
-        </div>
       </div>
     );
   }
@@ -77,7 +69,6 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
     return (
       <div className="p-20 text-center">
         <h2 className="text-2xl font-bold text-slate-900">Manufacturer not found</h2>
-        <p className="text-slate-500 mt-2">The requested ID does not exist in our database.</p>
         <Link href="/admin/manufacturers">
            <Button variant="outline" className="mt-6">Return to List</Button>
         </Link>

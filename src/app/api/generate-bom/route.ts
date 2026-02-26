@@ -1,19 +1,17 @@
+
 import { createServerSupabase } from '@/lib/supabase-server';
 import { normalizeSku } from '@/lib/utils';
 
 export const maxDuration = 60;
 
 /**
- * Precision Pricing Engine (v4.0).
- * Implements Unified Normalization and Cross-Collection Deep Search.
+ * Precision Pricing Engine (v5.0).
+ * Implements Unified Normalization and 3-Tier Match Strategy.
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { projectId, manufacturerId } = body;
-
-    console.log(`--- PRICING ENGINE START ---`);
-    console.log(`Project: ${projectId}, Manufacturer: ${manufacturerId}`);
 
     if (!projectId || !manufacturerId) {
       return Response.json({ success: false, error: "Missing required parameters." }, { status: 400 });
@@ -21,7 +19,6 @@ export async function POST(req: Request) {
 
     const supabase = createServerSupabase();
 
-    // 1. Fetch project data
     const { data: project, error: pError } = await supabase
       .from('quotation_projects')
       .select('*')
@@ -34,9 +31,9 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. Load ALL Manufacturer Specifications (The Price Book)
-    const { data: allSpecs, error: sError } = await supabase
-      .from('manufacturer_specifications')
+    // Load ALL Manufacturer Pricing (The Single Source of Truth)
+    const { data: allPricing, error: sError } = await supabase
+      .from('manufacturer_pricing')
       .select('*')
       .eq('manufacturer_id', manufacturerId);
 
@@ -45,9 +42,8 @@ export async function POST(req: Request) {
       return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
 
-    console.log(`Loaded ${allSpecs?.length || 0} price book records.`);
+    console.log(`[Pricing Engine] Loaded ${allPricing?.length || 0} pricing records.`);
 
-    // 3. Process each takeoff item
     const bomItems: any[] = [];
     
     for (const room of rooms) {
@@ -58,70 +54,68 @@ export async function POST(req: Request) {
         for (const cab of cabinetItems) {
           if (!cab.code) continue;
 
-          // STEP 3: STRONG NORMALIZATION
-          const takeoffCode = normalizeSku(cab.code);
-          console.log(`Searching for takeoff code: ${cab.code} -> Normalized: ${takeoffCode}`);
+          const rawTakeoff = cab.code;
+          const normTakeoff = normalizeSku(rawTakeoff);
           
           let matchedRow = null;
-          let matchSource = 'NOT_FOUND';
+          let precisionLevel = 'NOT_FOUND';
+          let matchedSku = '';
 
-          // STEP 4: FUZZY MULTI-TIER MATCHING
-          // allSpecs.sku is already normalized from the parser
-          matchedRow = (allSpecs || []).find(spec => {
-            const dbSku = spec.sku; // Assumed normalized from DB
-            
-            // 1. Exact Match
-            if (dbSku === takeoffCode) {
-              matchSource = 'EXACT_MATCH';
-              return true;
-            }
-            
-            // 2. Takeoff contains DB entry (e.g., Takeoff "B24BUTT" contains DB "B24")
-            if (takeoffCode.includes(dbSku) && dbSku.length > 2) {
-              matchSource = 'BASE_MODEL_MATCH';
-              return true;
-            }
+          // LEVEL 1: EXACT MATCH
+          matchedRow = (allPricing || []).find(p => normalizeSku(p.sku) === normTakeoff);
+          if (matchedRow) {
+            precisionLevel = 'EXACT';
+          } 
+          
+          // LEVEL 2: CONTAINS MATCH
+          if (!matchedRow) {
+            matchedRow = (allPricing || []).find(p => {
+              const normPrice = normalizeSku(p.sku);
+              return normTakeoff.includes(normPrice) || normPrice.includes(normTakeoff);
+            });
+            if (matchedRow) precisionLevel = 'PARTIAL';
+          }
 
-            // 3. DB entry contains Takeoff (e.g., DB "W2442-12" contains Takeoff "W2442")
-            if (dbSku.includes(takeoffCode) && takeoffCode.length > 2) {
-              matchSource = 'PARTIAL_MATCH';
-              return true;
-            }
-
-            return false;
-          });
+          // LEVEL 3: SIMILAR / FUZZY MATCH (First 4 characters)
+          if (!matchedRow && normTakeoff.length >= 3) {
+            const prefix = normTakeoff.substring(0, 4);
+            matchedRow = (allPricing || []).find(p => normalizeSku(p.sku).startsWith(prefix));
+            if (matchedRow) precisionLevel = 'FUZZY';
+          }
 
           if (matchedRow) {
-            console.log(`MATCH SUCCESS: ${takeoffCode} -> ${matchedRow.sku} (${matchSource}) at $${matchedRow.price}`);
+            matchedSku = matchedRow.sku;
+            console.log(`[Pricing Engine] MATCH SUCCESS: ${rawTakeoff} -> ${matchedSku} (${precisionLevel})`);
+          } else {
+            console.log(`[Pricing Engine] MATCH FAILED: ${rawTakeoff}`);
           }
 
           const price = matchedRow ? Number(matchedRow.price) : 0;
 
           bomItems.push({
             project_id: projectId,
-            sku: cab.code,
+            sku: rawTakeoff,
+            matched_sku: matchedSku,
             qty: Number(cab.qty) || 1,
             unit_price: price,
             line_total: price * (Number(cab.qty) || 1),
             room: room.room_name,
             collection: room.collection || 'Standard',
             door_style: room.door_style || matchedRow?.door_style || 'Default',
-            price_source: matchSource,
+            price_source: 'Admin Pricing Sheet',
+            precision_level: precisionLevel,
             created_at: new Date().toISOString()
           });
         }
       }
     }
 
-    // 4. Persistence
+    // Persist results
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
 
     if (bomItems.length > 0) {
       const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
-      if (insertError) {
-        console.error("BOM Persistence Failure:", insertError);
-        return Response.json({ success: false, error: 'Failed to save quotation line items.' }, { status: 500 });
-      }
+      if (insertError) throw new Error(`BOM Save Failed: ${insertError.message}`);
     }
 
     await supabase.from('quotation_projects').update({ 
@@ -129,7 +123,6 @@ export async function POST(req: Request) {
       status: 'Priced' 
     }).eq('id', projectId);
 
-    console.log(`--- PRICING ENGINE COMPLETE: ${bomItems.length} items processed ---`);
     return Response.json({ success: true, count: bomItems.length });
 
   } catch (err: any) {

@@ -3,10 +3,6 @@ import { createServerSupabase } from '@/lib/supabase-server';
 
 export const maxDuration = 30;
 
-/**
- * Fetches unique collections and door styles for a manufacturer.
- * Optimized for large datasets.
- */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
@@ -16,27 +12,21 @@ export async function GET(req: Request) {
   try {
     const supabase = createServerSupabase();
     
-    // Fetch unique values from the specifications table
-    // We only select the necessary columns to reduce payload size
-    const { data: specs, error } = await supabase
-      .from('manufacturer_specifications')
+    const { data: pricing, error } = await supabase
+      .from('manufacturer_pricing')
       .select('collection_name, door_style')
       .eq('manufacturer_id', id);
 
-    if (error) {
-      console.error('[API] Supabase Query Error:', error);
-      return Response.json({ error: error.message }, { status: 500 });
-    }
+    if (error) throw error;
 
-    if (!specs || specs.length === 0) {
+    if (!pricing || pricing.length === 0) {
       return Response.json({ collections: [], styles: [] });
     }
 
-    // Use a Set to extract unique values efficiently
     const collectionSet = new Set<string>();
     const styleSet = new Set<string>();
 
-    specs.forEach(s => {
+    pricing.forEach(s => {
       const c = String(s.collection_name || '').trim();
       const st = String(s.door_style || '').trim();
       if (c) collectionSet.add(c);
@@ -46,11 +36,11 @@ export async function GET(req: Request) {
     return Response.json({ 
       collections: Array.from(collectionSet).sort(), 
       styles: Array.from(styleSet).sort(),
-      count: specs.length 
+      count: pricing.length 
     });
 
   } catch (err: any) {
-    console.error('[API] Critical Error:', err.message);
+    console.error('[API] Config Error:', err.message);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }

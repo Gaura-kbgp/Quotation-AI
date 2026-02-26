@@ -1,3 +1,4 @@
+
 # KABS Quotation AI
 
 This is a NextJS starter in Firebase Studio, optimized for high-performance architectural cabinetry takeoffs.
@@ -17,7 +18,7 @@ CREATE TABLE IF NOT EXISTS manufacturers (
 
 -- 2. Manufacturer Files
 CREATE TABLE IF NOT EXISTS manufacturer_files (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id PRIMARY KEY DEFAULT gen_random_uuid(),
   manufacturer_id UUID REFERENCES manufacturers(id) ON DELETE CASCADE,
   file_type TEXT,
   file_name TEXT,
@@ -26,8 +27,8 @@ CREATE TABLE IF NOT EXISTS manufacturer_files (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. Manufacturer Specifications
-CREATE TABLE IF NOT EXISTS manufacturer_specifications (
+-- 3. Manufacturer Pricing (SINGLE SOURCE OF TRUTH)
+CREATE TABLE IF NOT EXISTS manufacturer_pricing (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   manufacturer_id UUID REFERENCES manufacturers(id) ON DELETE CASCADE,
   collection_name TEXT,
@@ -68,6 +69,7 @@ CREATE TABLE IF NOT EXISTS quotation_boms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID REFERENCES quotation_projects(id) ON DELETE CASCADE,
   sku TEXT,
+  matched_sku TEXT,
   qty INTEGER DEFAULT 1,
   unit_price DECIMAL,
   line_total DECIMAL,
@@ -75,6 +77,7 @@ CREATE TABLE IF NOT EXISTS quotation_boms (
   collection TEXT,
   door_style TEXT,
   price_source TEXT,
+  precision_level TEXT, -- EXACT, PARTIAL, FUZZY, NOT_FOUND
   created_at TIMESTAMPTZ DEFAULT now()
 );
 ```

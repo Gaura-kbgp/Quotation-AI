@@ -1,3 +1,4 @@
+
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -6,19 +7,23 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * STRONG NORMALIZATION (v4.0)
- * Strips EVERYTHING except letters and numbers.
- * Essential for matching architectural takeoffs to price books.
- * Example: "HOOD CKT.30" -> "HOODCKT30"
- * Example: "V S B - 5434 H {R}" -> "VSB5434H"
+ * UNIFIED SKU NORMALIZATION (v5.0)
+ * 1. Convert to uppercase
+ * 2. Remove text inside parentheses (e.g. "FL48 (VOIDS)" -> "FL48")
+ * 3. Remove spaces, periods, dashes, slashes
+ * 4. Trim extra characters
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  return sku
-    ?.toString()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "") // Strips spaces, dots, dashes, and special characters
-    .trim();
+  let s = sku.toString().toUpperCase();
+  
+  // Remove content within parentheses
+  s = s.replace(/\([^)]*\)/g, '');
+  
+  // Remove spaces, dots, dashes, slashes
+  s = s.replace(/[\s.\-\/]/g, '');
+  
+  return s.trim();
 }
 
 /**

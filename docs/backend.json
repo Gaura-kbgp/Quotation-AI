@@ -27,9 +27,9 @@
         "created_at": { "type": "string", "format": "date-time" }
       }
     },
-    "ManufacturerSpecification": {
-      "title": "Manufacturer Specification",
-      "description": "Extracted cabinet specifications including SKUs and pricing",
+    "ManufacturerPricing": {
+      "title": "Manufacturer Pricing",
+      "description": "Normalized pricing records from Admin uploads",
       "type": "object",
       "properties": {
         "id": { "type": "string", "format": "uuid" },
@@ -81,13 +81,15 @@
         "id": { "type": "string", "format": "uuid" },
         "project_id": { "type": "string", "format": "uuid" },
         "sku": { "type": "string" },
+        "matched_sku": { "type": "string" },
         "qty": { "type": "number" },
         "unit_price": { "type": "number" },
         "line_total": { "type": "number" },
         "room": { "type": "string" },
         "collection": { "type": "string" },
         "door_style": { "type": "string" },
-        "price_source": { "type": "string", "enum": ["EXACT_MATCH", "PARTIAL_MATCH", "BASE_MODEL_MATCH", "FALLBACK_COLLECTION_MATCH", "NOT_FOUND"] },
+        "price_source": { "type": "string" },
+        "precision_level": { "type": "string", "enum": ["EXACT", "PARTIAL", "FUZZY", "NOT_FOUND"] },
         "created_at": { "type": "string", "format": "date-time" }
       }
     }
@@ -98,7 +100,7 @@
   "firestore": {
     "/manufacturers/{id}": { "schema": "Manufacturer" },
     "/manufacturer_files/{id}": { "schema": "ManufacturerFile" },
-    "/manufacturer_specifications/{id}": { "schema": "ManufacturerSpecification" },
+    "/manufacturer_pricing/{id}": { "schema": "ManufacturerPricing" },
     "/nkba_files/{id}": { "schema": "NkbaRule" },
     "/quotation_projects/{id}": { "schema": "QuotationProject" },
     "/quotation_boms/{id}": { "schema": "QuotationBom" }
