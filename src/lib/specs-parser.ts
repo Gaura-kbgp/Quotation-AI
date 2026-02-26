@@ -1,12 +1,19 @@
-
 import * as XLSX from 'xlsx';
 
 /**
  * Aggressive SKU normalization to ensure drawing codes match price matrix.
- * Removes spaces, dashes, dots, and other separators.
+ * Removes spaces, dashes, dots, and common cabinetry suffix delimiters like {}, (), [].
  */
 function normalizeSku(sku: string): string {
-  return String(sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!sku) return '';
+  // Convert to string, uppercase, remove anything in brackets/braces/parens, then strip non-alphanumeric
+  return String(sku)
+    .toUpperCase()
+    .replace(/\{.*?\}/g, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/\[.*?\]/g, '')
+    .replace(/[^A-Z0-9]/g, '')
+    .trim();
 }
 
 /**
@@ -19,95 +26,79 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
   
   workbook.SheetNames.forEach(sheetName => {
     const sheet = workbook.Sheets[sheetName];
-    // Use header: 1 to get a raw array of arrays
+    // Use header: 1 to get a raw array of arrays for structural analysis
     const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
     
-    // Ignore small or empty sheets
     if (data.length < 5) return;
 
     console.log(`[Parser] Processing sheet: ${sheetName} with ${data.length} rows.`);
 
-    // STEP 1 & 2: Detect Collection Headers and Door Styles
+    // 1. Structural Analysis: Find columns that likely contain SKUs and Prices
+    let skuCol = 0;
     const collections: { name: string, colIndex: number }[] = [];
     const doorStyles: { [colIndex: number]: string } = {};
 
-    // Scan top 10 rows for Collection Labels
-    for (let r = 0; r <= 10; r++) {
+    // Scan top rows for markers
+    for (let r = 0; r < Math.min(data.length, 20); r++) {
       const row = data[r];
       if (!row) continue;
-      for (let c = 1; c < row.length; c++) {
+
+      for (let c = 0; c < row.length; c++) {
         const val = String(row[c] || '').trim();
-        // Skip common UI/utility labels
-        if (val && val.length > 1 && !['SKU', 'CODE', 'PRICE', 'QTY', 'MODEL'].includes(val.toUpperCase())) {
+        const upperVal = val.toUpperCase();
+
+        // Detect SKU column
+        if (['SKU', 'CODE', 'MODEL', 'ITEM', 'CATALOG #'].includes(upperVal)) {
+          skuCol = c;
+        }
+
+        // Detect potential Collection/Price columns
+        // Typically these are headers like "Elite", "Premium", or actual Door Style names
+        if (c > skuCol && val.length > 1 && !['PRICE', 'QTY', 'UOM', 'DESC'].includes(upperVal)) {
           if (!collections.some(coll => coll.colIndex === c)) {
             collections.push({ name: val, colIndex: c });
+            doorStyles[c] = val; // Default door style to the column name
           }
         }
       }
     }
 
-    // Scan for Door Styles (search rows 1-15 for the row with most labels)
-    let maxStyles = 0;
-    let styleRowIdx = -1;
-    for (let r = 1; r < 15; r++) {
-      const row = data[r];
-      if (!row) continue;
-      const count = row.filter(cell => String(cell || '').trim().length > 1).length;
-      if (count > maxStyles) {
-        maxStyles = count;
-        styleRowIdx = r;
-      }
-    }
-
-    if (styleRowIdx !== -1) {
-      const styleRow = data[styleRowIdx];
-      for (let c = 1; c < styleRow.length; c++) {
-        const val = String(styleRow[c] || '').trim();
-        if (val && val.length > 1) doorStyles[c] = val;
-      }
-    }
-
-    // STEP 3: Detect SKU Data Starting Point
-    let skuStartRow = -1;
-    const markers = ['STANDARD WALL', 'SKU', 'CODE', 'MODEL', 'CABINET', 'B24', 'W30'];
-    for (let i = 0; i < Math.min(data.length, 50); i++) {
-      const firstCell = String(data[i][0] || '').toUpperCase();
-      if (markers.some(m => firstCell.includes(m))) {
-        skuStartRow = i + 1;
+    // 2. Data Extraction
+    // Determine where actual SKU data starts (look for B24, W30, etc.)
+    let startRow = 0;
+    for (let r = 0; r < Math.min(data.length, 100); r++) {
+      const cell = String(data[r][skuCol] || '').toUpperCase();
+      if (cell.startsWith('B') || cell.startsWith('W') || cell.startsWith('S') || cell.startsWith('V')) {
+        startRow = r;
         break;
       }
     }
 
-    // Fallback if marker not found
-    if (skuStartRow === -1) skuStartRow = 5;
+    for (let r = startRow; r < data.length; r++) {
+      const row = data[r];
+      if (!row || !row[skuCol]) continue;
 
-    console.log(`[Parser] Detected ${collections.length} collections. Data starts at row ${skuStartRow}`);
-
-    // STEP 4: Extract SKU x Collection Matrix
-    for (let i = skuStartRow; i < data.length; i++) {
-      const row = data[i];
-      if (!row || !row[0]) continue;
-
-      const rawSku = String(row[0]).trim();
-      
-      // Filter valid SKU codes
-      if (rawSku.length < 2 || rawSku.length > 40) continue;
-      
-      // Aggressive normalization - ensures match regardless of format
+      const rawSku = String(row[skuCol]).trim();
       const cleanSku = normalizeSku(rawSku);
-      
-      // Map valid SKU to each detected collection column
+
+      if (cleanSku.length < 2) continue;
+
       collections.forEach(coll => {
         const rawPrice = row[coll.colIndex];
-        const price = typeof rawPrice === 'number' ? rawPrice : parseFloat(String(rawPrice || '').replace(/[^0-9.]/g, ''));
-        
-        // Only save if pricing data exists
-        if (!isNaN(price) && price > 0) {
+        let price = 0;
+
+        if (typeof rawPrice === 'number') {
+          price = rawPrice;
+        } else if (typeof rawPrice === 'string') {
+          price = parseFloat(rawPrice.replace(/[^0-9.]/g, ''));
+        }
+
+        if (price > 0) {
           specs.push({
             manufacturer_id: manufacturerId,
             collection_name: coll.name,
             door_style: doorStyles[coll.colIndex] || 'Standard',
-            sku: cleanSku,
+            sku: cleanSku, // Store normalized SKU for matching
             price: price,
             raw_source_file_id: fileId,
             created_at: new Date().toISOString()
@@ -117,6 +108,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   });
 
-  console.log(`[Parser] Successfully extracted ${specs.length} line items for Manufacturer: ${manufacturerId}`);
+  console.log(`[Parser] Successfully extracted ${specs.length} records.`);
   return specs;
 }

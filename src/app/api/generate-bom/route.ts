@@ -1,42 +1,48 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 
 export const maxDuration = 60;
 
 /**
- * Aggressive SKU normalization for matching.
- * Strips all non-alphanumeric characters to ensure high-precision matching.
+ * Aggressive SKU normalization for high-precision matching.
+ * Handles suffixes, special chars, and cabinetry-specific notations.
  */
 function normalizeSku(sku: string): string {
-  return String(sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!sku) return '';
+  return String(sku)
+    .toUpperCase()
+    // Remove anything in {}, [], () which are often estimator notes like {R}
+    .replace(/\{.*?\}/g, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/\[.*?\]/g, '')
+    // Remove specific cabinetry keywords that are often in takeoffs but not price books
+    .replace(/\s(BUTT|LEFT|RIGHT|DOOR|HINGE)\b/g, '')
+    // Finally strip all non-alphanumeric
+    .replace(/[^A-Z0-9]/g, '')
+    .trim();
 }
 
 /**
- * Strips cabinet suffixes to find base models.
- * Example: B24L -> B24, W3042RD -> W3042
+ * Intelligent Base SKU identification.
+ * Strips common suffixes used in takeoffs to find the core cabinet model.
  */
 function getBaseSku(sku: string): string {
   const normalized = normalizeSku(sku);
-  // Common cabinet suffixes: L (Left), R (Right), RD (Right Door), LD (Left Door)
-  return normalized.replace(/(LD|RD|L|R)$/, '');
+  // Common cabinet suffixes: L (Left), R (Right), RD (Right Door), LD (Left Door), REV (Reverse)
+  // We remove these from the END of the string
+  return normalized.replace(/(LD|RD|REV|L|R)$/, '');
 }
 
 /**
  * Smart Pricing Engine API.
- * Implements multi-level matching logic for architectural takeoffs and persists to quotation_boms.
+ * Uses multi-layered heuristic matching to find prices in messy architectural takeoffs.
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { projectId, manufacturerId } = body;
 
-    console.log(`[BOM API] Initiating Smart Pricing for Project: ${projectId}`);
-    
     if (!projectId || !manufacturerId) {
-      return Response.json({ 
-        success: false, 
-        error: "Missing required project or manufacturer parameters." 
-      }, { status: 400 });
+      return Response.json({ success: false, error: "Missing required parameters." }, { status: 400 });
     }
 
     const supabase = createServerSupabase();
@@ -49,69 +55,68 @@ export async function POST(req: Request) {
       .single();
 
     if (pError || !project) {
-      console.error('[BOM API] Project fetch error:', pError);
-      return Response.json({ success: false, error: 'Project not found in database.' }, { status: 404 });
+      return Response.json({ success: false, error: 'Project not found.' }, { status: 404 });
     }
 
     const rooms = project.extracted_data?.rooms || [];
-    if (rooms.length === 0) {
-      return Response.json({ success: false, error: 'No takeoff data found. Please ensure rooms were extracted.' }, { status: 400 });
-    }
-
-    // 2. Load ALL Manufacturer Specifications for memory-cached matching
+    
+    // 2. Load ALL Manufacturer Specifications for ultra-fast memory-cached matching
     const { data: allSpecs, error: sError } = await supabase
       .from('manufacturer_specifications')
       .select('*')
       .eq('manufacturer_id', manufacturerId);
 
     if (sError) {
-      console.error('[BOM API] Database error during specifications fetch:', sError);
-      return Response.json({ 
-        success: false, 
-        error: `Failed to fetch manufacturer pricing: ${sError.message}` 
-      }, { status: 500 });
+      return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
 
-    console.log(`[BOM API] Loaded ${(allSpecs || []).length} specification records for matching.`);
-
-    // Create lookup maps for different matching levels
-    const exactMap = new Map(); 
-    const collectionMap = new Map(); 
-    const baseModelMap = new Map(); 
-    const globalSkuMap = new Map(); 
+    // Pre-process specs into lookup maps for Level 1-4 matching
+    const exactMap = new Map(); // collection|style|sku
+    const collectionMap = new Map(); // collection|sku
+    const baseModelMap = new Map(); // sku (cheapest)
+    const globalSkuMap = new Map(); // sku (fallback)
 
     (allSpecs || []).forEach(spec => {
-      const cleanSku = normalizeSku(spec.sku);
-      const baseSku = getBaseSku(spec.sku);
+      const cleanSku = spec.sku; // Already normalized by parser
+      const baseSku = getBaseSku(cleanSku);
       const collection = String(spec.collection_name || '').toUpperCase();
       const style = String(spec.door_style || '').toUpperCase();
-      
-      const price = spec.price !== undefined ? spec.price : (spec.unit_price || 0);
+      const price = Number(spec.price) || 0;
+
+      if (price <= 0) return;
 
       exactMap.set(`${collection}|${style}|${cleanSku}`, price);
-      collectionMap.set(`${collection}|${cleanSku}`, price);
       
+      // For collection map, if multiple styles have different prices, we take the average or first? 
+      // We'll store an array and take the first for now.
+      if (!collectionMap.has(`${collection}|${cleanSku}`)) {
+        collectionMap.set(`${collection}|${cleanSku}`, price);
+      }
+
+      // Base model: track the minimum price for this base SKU
       const existingBase = baseModelMap.get(baseSku);
       if (!existingBase || price < existingBase) {
         baseModelMap.set(baseSku, price);
       }
 
-      globalSkuMap.set(cleanSku, price);
+      // Global: first price found for this SKU
+      if (!globalSkuMap.has(cleanSku)) {
+        globalSkuMap.set(cleanSku, price);
+      }
     });
 
-    // 3. Process each room and match SKUs using the Smart Pipeline
+    // 3. Match each extracted unit
     const bomItems: any[] = [];
     
     for (const room of rooms) {
       const selectedColl = String(room.collection || '').toUpperCase();
       const selectedStyle = String(room.door_style || '').toUpperCase();
 
-      if (!selectedColl) continue;
-
       const sections = room.sections || {};
-      Object.entries(sections).forEach(([sectionName, items]: [string, any]) => {
-        (items || []).forEach((cab: any) => {
-          if (!cab.code) return;
+      for (const [sectionName, items] of Object.entries(sections)) {
+        const cabinetItems = items as any[];
+        for (const cab of cabinetItems) {
+          if (!cab.code) continue;
 
           const rawCode = cab.code;
           const cleanCode = normalizeSku(rawCode);
@@ -120,35 +125,26 @@ export async function POST(req: Request) {
           let price = 0;
           let source = 'NOT_FOUND';
 
-          // LEVEL 1: EXACT MATCH
-          const exactPrice = exactMap.get(`${selectedColl}|${selectedStyle}|${cleanCode}`);
-          if (exactPrice !== undefined) {
-            price = exactPrice;
+          // LAYER 1: EXACT MATCH (Collection + Style + SKU)
+          const exactKey = `${selectedColl}|${selectedStyle}|${cleanCode}`;
+          if (exactMap.has(exactKey)) {
+            price = exactMap.get(exactKey);
             source = 'EXACT_MATCH';
           } 
-          // LEVEL 2: PARTIAL MATCH
-          else {
-            const partialPrice = collectionMap.get(`${selectedColl}|${cleanCode}`);
-            if (partialPrice !== undefined) {
-              price = partialPrice;
-              source = 'PARTIAL_MATCH';
-            } 
-            // LEVEL 3: BASE MODEL MATCH
-            else {
-              const basePrice = baseModelMap.get(baseCode);
-              if (basePrice !== undefined) {
-                price = basePrice;
-                source = 'BASE_MODEL_MATCH';
-              }
-              // LEVEL 4: FALLBACK MATCH
-              else {
-                const fallbackPrice = globalSkuMap.get(cleanCode);
-                if (fallbackPrice !== undefined) {
-                  price = fallbackPrice;
-                  source = 'FALLBACK_COLLECTION_MATCH';
-                }
-              }
-            }
+          // LAYER 2: COLLECTION MATCH (Collection + SKU)
+          else if (collectionMap.has(`${selectedColl}|${cleanCode}`)) {
+            price = collectionMap.get(`${selectedColl}|${cleanCode}`);
+            source = 'PARTIAL_MATCH';
+          }
+          // LAYER 3: BASE SKU MATCH (Strips L/R/RD/LD)
+          else if (baseModelMap.has(baseCode)) {
+            price = baseModelMap.get(baseCode);
+            source = 'BASE_MODEL_MATCH';
+          }
+          // LAYER 4: GLOBAL SEARCH (Find SKU in any other collection)
+          else if (globalSkuMap.has(cleanCode)) {
+            price = globalSkuMap.get(cleanCode);
+            source = 'FALLBACK_COLLECTION_MATCH';
           }
 
           bomItems.push({
@@ -163,39 +159,26 @@ export async function POST(req: Request) {
             price_source: source,
             created_at: new Date().toISOString()
           });
-        });
-      });
-    }
-
-    // 4. Persistence to 'quotation_boms' table
-    // We clear existing items for this project first
-    const { error: deleteError } = await supabase.from('quotation_boms').delete().eq('project_id', projectId);
-    if (deleteError) {
-      console.warn('[BOM API] Warning clearing existing BOM:', deleteError.message);
-    }
-
-    if (bomItems.length > 0) {
-      const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
-      if (insertError) {
-        console.error('[BOM API] Error inserting new BOM:', insertError);
-        throw new Error(`Failed to persist BOM items: ${insertError.message}`);
+        }
       }
     }
 
-    // Update Project Status
-    const { error: updateError } = await supabase.from('quotation_projects').update({ 
+    // 4. Persistence
+    await supabase.from('quotation_boms').delete().eq('project_id', projectId);
+    if (bomItems.length > 0) {
+      const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
+      if (insertError) throw insertError;
+    }
+
+    await supabase.from('quotation_projects').update({ 
       manufacturer_id: manufacturerId,
       status: 'Priced' 
     }).eq('id', projectId);
 
-    if (updateError) {
-      console.error('[BOM API] Error updating project status:', updateError);
-    }
-
     return Response.json({ success: true, count: bomItems.length });
 
   } catch (err: any) {
-    console.error('[BOM API CRITICAL ERROR]:', err);
-    return Response.json({ success: false, error: err.message || 'Internal processing error during BOM generation.' }, { status: 500 });
+    console.error('[BOM Engine Error]:', err);
+    return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
