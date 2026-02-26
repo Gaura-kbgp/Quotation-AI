@@ -5,8 +5,8 @@ import { normalizeSku } from '@/lib/utils';
 export const maxDuration = 60;
 
 /**
- * Precision Pricing Engine (v9.5).
- * Optimized for Multi-Tier Heuristic Matching (EXACT -> PARTIAL -> FUZZY).
+ * Precision Pricing Engine (v10.0).
+ * Optimized for Multi-Tier Heuristic Matching with deep logging.
  */
 export async function POST(req: Request) {
   try {
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // Load ALL Manufacturer Pricing (Single Source of Truth)
+    // Load ALL Manufacturer Pricing
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
@@ -41,15 +41,13 @@ export async function POST(req: Request) {
       return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
 
-    console.log(`[Pricing Engine] Loaded ${allPricing?.length || 0} pricing records for manufacturer ${manufacturerId}`);
+    console.log(`[Pricing Engine] Total database records: ${allPricing?.length || 0}`);
 
     const bomItems: any[] = [];
     
     for (const room of rooms) {
-      const selectedDoorStyle = normalizeSku(room.door_style || "");
+      const roomSelectedStyle = normalizeSku(room.door_style || "");
       const sections = room.sections || {};
-
-      console.log(`[Pricing Engine] Processing Room: ${room.room_name} (Selected Style: ${selectedDoorStyle})`);
 
       for (const [sectionName, items] of Object.entries(sections)) {
         const cabinetItems = items as any[];
@@ -63,37 +61,32 @@ export async function POST(req: Request) {
           let precisionLevel = 'NOT_FOUND';
           let matchedSku = '';
 
-          // LEVEL 1: EXACT MATCH (Cleaned SKU + Selected Style)
-          matchedRow = (allPricing || []).find(p => {
-            const pSku = normalizeSku(p.sku);
-            const pStyle = normalizeSku(p.door_style);
-            return pSku === normTakeoff && (selectedDoorStyle === "" || pStyle === selectedDoorStyle);
+          // Filter pricing by normalized door style first to optimize search
+          const styleFilteredPricing = (allPricing || []).filter(p => {
+            if (!roomSelectedStyle) return true;
+            return normalizeSku(p.door_style) === roomSelectedStyle;
           });
+
+          // LEVEL 1: EXACT MATCH
+          matchedRow = styleFilteredPricing.find(p => normalizeSku(p.sku) === normTakeoff);
 
           if (matchedRow) {
             precisionLevel = 'EXACT';
           } 
           
-          // LEVEL 2: PARTIAL/CONTAINS MATCH (If exact fails)
+          // LEVEL 2: PARTIAL MATCH (Contains logic)
           if (!matchedRow) {
-            matchedRow = (allPricing || []).find(p => {
+            matchedRow = styleFilteredPricing.find(p => {
               const pSku = normalizeSku(p.sku);
-              const pStyle = normalizeSku(p.door_style);
-              const styleMatch = selectedDoorStyle === "" || pStyle === selectedDoorStyle;
-              // 2-way containment search to handle B24 matching B24BUTT or vice versa
-              return styleMatch && (normTakeoff.includes(pSku) || pSku.includes(normTakeoff));
+              return normTakeoff.includes(pSku) || pSku.includes(normTakeoff);
             });
             if (matchedRow) precisionLevel = 'PARTIAL';
           }
 
-          // LEVEL 3: FUZZY FALLBACK (Match on first 4 characters for similar models)
+          // LEVEL 3: FUZZY FALLBACK (Prefix match)
           if (!matchedRow && normTakeoff.length >= 3) {
             const prefix = normTakeoff.substring(0, 4);
-            matchedRow = (allPricing || []).find(p => {
-              const pSku = normalizeSku(p.sku);
-              const pStyle = normalizeSku(p.door_style);
-              return (selectedDoorStyle === "" || pStyle === selectedDoorStyle) && pSku.startsWith(prefix);
-            });
+            matchedRow = styleFilteredPricing.find(p => normalizeSku(p.sku).startsWith(prefix));
             if (matchedRow) precisionLevel = 'FUZZY';
           }
 
@@ -117,7 +110,7 @@ export async function POST(req: Request) {
               created_at: new Date().toISOString()
             });
           } else {
-            console.log(`[Pricing Engine] NOT FOUND: ${rawTakeoff} (Normalized: ${normTakeoff})`);
+            console.log(`[Pricing Engine] NOT FOUND: ${rawTakeoff} (Room Style: ${roomSelectedStyle})`);
             bomItems.push({
               project_id: projectId,
               sku: rawTakeoff,
