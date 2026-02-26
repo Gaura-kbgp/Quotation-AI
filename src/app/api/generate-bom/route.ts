@@ -3,31 +3,31 @@ import { createServerSupabase } from '@/lib/supabase-server';
 export const maxDuration = 60;
 
 /**
- * Aggressive SKU normalization for high-precision matching.
+ * PRODUCTION-GRADE SKU NORMALIZATION
+ * Must match the parser logic perfectly.
  */
 function normalizeSku(sku: string): string {
   if (!sku) return '';
   return String(sku)
     .toUpperCase()
-    // Remove anything in {}, [], () which are often estimator notes
+    // 1. Remove anything in {}, [], ()
     .replace(/\{.*?\}/g, '')
     .replace(/\(.*?\)/g, '')
     .replace(/\[.*?\]/g, '')
-    // Remove specific cabinetry keywords and common suffixes used in takeoffs
-    .replace(/\s(BUTT|LEFT|RIGHT|DOOR|HINGE|REVERSE|REV)\b/g, '')
-    // Strip all non-alphanumeric for final matching
+    // 2. Remove common cabinetry suffixes preceded by space
+    .replace(/\s+(BUTT|LEFT|RIGHT|DOOR|HINGE|REVERSE|REV|BLD|LD|RD|L|R)\b/g, '')
+    // 3. Final alphanumeric strip
     .replace(/[^A-Z0-9]/g, '')
     .trim();
 }
 
 /**
- * Intelligent Base SKU identification.
+ * Intelligent Base SKU identification for fallback matching.
  */
 function getBaseSku(sku: string): string {
   const normalized = normalizeSku(sku);
-  // Common cabinet suffixes: L (Left), R (Right), RD (Right Door), LD (Left Door), REV (Reverse), REV (Reverse)
-  // These are often added in drawings but NOT in price books
-  return normalized.replace(/(LD|RD|REV|L|R)$/, '');
+  // Strip trailing hinging/note markers commonly used in takeoffs but not price books
+  return normalized.replace(/(LD|RD|REV|L|R|BLD|BUTT)$/, '');
 }
 
 /**
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { projectId, manufacturerId } = body;
 
-    console.log(`[BOM Engine] Initiating pricing for Project: ${projectId}, Manufacturer: ${manufacturerId}`);
+    console.log(`[BOM Engine] STARTING: Project=${projectId}, Manufacturer=${manufacturerId}`);
 
     if (!projectId || !manufacturerId) {
       return Response.json({ success: false, error: "Missing required parameters." }, { status: 400 });
@@ -54,6 +54,7 @@ export async function POST(req: Request) {
       .single();
 
     if (pError || !project) {
+      console.error('[BOM Engine] Project Fetch Error:', pError);
       return Response.json({ success: false, error: 'Project record retrieval failed.' }, { status: 404 });
     }
 
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
 
     console.log(`[BOM Engine] Loaded ${allSpecs?.length || 0} price book entries.`);
 
-    // Pre-process specs into lookup maps
+    // Pre-process specs into high-speed lookup maps
     const exactMap = new Map();
     const collectionMap = new Map();
     const baseModelMap = new Map();
@@ -141,6 +142,10 @@ export async function POST(req: Request) {
             source = 'FALLBACK_COLLECTION_MATCH';
           }
 
+          if (source === 'NOT_FOUND') {
+            console.warn(`[BOM Engine] Match Failure: ${rawCode} (Clean: ${cleanCode})`);
+          }
+
           bomItems.push({
             project_id: projectId,
             sku: rawCode,
@@ -172,11 +177,11 @@ export async function POST(req: Request) {
       status: 'Priced' 
     }).eq('id', projectId);
 
-    console.log(`[BOM Engine] Success: Generated ${bomItems.length} line items.`);
+    console.log(`[BOM Engine] SUCCESS: Generated ${bomItems.length} line items.`);
     return Response.json({ success: true, count: bomItems.length });
 
   } catch (err: any) {
-    console.error('[BOM Engine] Critical Failure:', err);
+    console.error('[BOM Engine] CRITICAL FAILURE:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
