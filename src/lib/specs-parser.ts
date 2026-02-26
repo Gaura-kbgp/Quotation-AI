@@ -2,6 +2,14 @@
 import * as XLSX from 'xlsx';
 
 /**
+ * Aggressive SKU normalization to ensure drawing codes match price matrix.
+ * Removes spaces, dashes, dots, and other separators.
+ */
+function normalizeSku(sku: string): string {
+  return String(sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/**
  * Advanced cabinetry specification parser.
  * Detects collection headers, door styles, and maps them to SKUs and pricing.
  */
@@ -9,9 +17,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const specs: any[] = [];
   
-  // Regex for SKU validation: Alpha-numeric codes
-  const skuRegex = /^[A-Z0-9 -.]+$/i;
-
   workbook.SheetNames.forEach(sheetName => {
     const sheet = workbook.Sheets[sheetName];
     // Use header: 1 to get a raw array of arrays
@@ -26,7 +31,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     const collections: { name: string, colIndex: number }[] = [];
     const doorStyles: { [colIndex: number]: string } = {};
 
-    // Scan top 10 rows for Collection Labels (be more aggressive)
+    // Scan top 10 rows for Collection Labels
     for (let r = 0; r <= 10; r++) {
       const row = data[r];
       if (!row) continue;
@@ -88,6 +93,9 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       // Filter valid SKU codes
       if (rawSku.length < 2 || rawSku.length > 40) continue;
       
+      // Aggressive normalization
+      const cleanSku = normalizeSku(rawSku);
+      
       // Map valid SKU to each detected collection column
       collections.forEach(coll => {
         const rawPrice = row[coll.colIndex];
@@ -99,7 +107,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
             manufacturer_id: manufacturerId,
             collection_name: coll.name,
             door_style: doorStyles[coll.colIndex] || 'Standard',
-            sku: rawSku.toUpperCase().replace(/\s/g, ''), // Normalize SKU for matching
+            sku: cleanSku,
             price: price,
             raw_source_file_id: fileId,
             created_at: new Date().toISOString()

@@ -4,6 +4,13 @@ import { createServerSupabase } from '@/lib/supabase-server';
 export const maxDuration = 60;
 
 /**
+ * Aggressive SKU normalization for matching.
+ */
+function normalizeSku(sku: string): string {
+  return String(sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/**
  * Professional BOM Generation API.
  * Handles pricing lookups and line item aggregation with strict JSON responses.
  */
@@ -13,8 +20,7 @@ export async function POST(req: Request) {
     const { projectId, manufacturerId } = body;
 
     console.log(`[BOM API] Initiating generation for Project: ${projectId}`);
-    console.log(`[BOM API] Selected Manufacturer: ${manufacturerId}`);
-
+    
     if (!projectId || !manufacturerId) {
       return Response.json({ 
         success: false, 
@@ -33,7 +39,7 @@ export async function POST(req: Request) {
 
     if (pError || !project) {
       console.error('[BOM API] Project fetch error:', pError);
-      return Response.json({ success: false, error: 'Project not found in database.' }, { status: 404 });
+      return Response.json({ success: false, error: `Project not found: ${pError?.message || 'Unknown'}` }, { status: 404 });
     }
 
     const rooms = project.extracted_data?.rooms || [];
@@ -51,15 +57,11 @@ export async function POST(req: Request) {
       const doorStyle = room.door_style;
 
       if (!collection || !doorStyle) {
-        console.warn(`[BOM API] Skipping room ${room.room_name} - Missing collection or style`);
-        return Response.json({ 
-          success: false, 
-          error: `Room "${room.room_name}" is missing configuration. Please select a collection and style.` 
-        }, { status: 400 });
+        console.warn(`[BOM API] Skipping room ${room.room_name} - Missing configuration`);
+        continue;
       }
 
       // Fetch Pricing for this specific room's configuration
-      // We look up the exact SKU/Price mapping from the matrix
       const { data: pricing, error: prError } = await supabase
         .from('manufacturer_specifications')
         .select('sku, price')
@@ -68,12 +70,16 @@ export async function POST(req: Request) {
         .eq('door_style', doorStyle);
 
       if (prError) {
-        console.error(`[BOM API] Pricing fetch error for ${room.room_name}:`, prError);
-        return Response.json({ success: false, error: `Database error during pricing fetch for ${room.room_name}.` }, { status: 500 });
+        console.error(`[BOM API] Database error during pricing fetch for ${room.room_name}:`, prError);
+        return Response.json({ 
+          success: false, 
+          error: `Database error for ${room.room_name}: ${prError.message}. Ensure the specifications are uploaded correctly.` 
+        }, { status: 500 });
       }
 
+      // Map SKUs using aggressive normalization for high-precision matching
       const pricingMap = new Map(
-        (pricing || []).map(p => [String(p.sku).toUpperCase().replace(/\s/g, ''), p.price])
+        (pricing || []).map(p => [normalizeSku(p.sku), p.price])
       );
 
       const sections = room.sections || {};
@@ -82,8 +88,8 @@ export async function POST(req: Request) {
         cabinets.forEach((cab: any) => {
           if (!cab.code) return;
 
-          const normalizedSku = String(cab.code).toUpperCase().replace(/\s/g, '');
-          const unitPrice = pricingMap.get(normalizedSku) || 0;
+          const cleanSku = normalizeSku(cab.code);
+          const unitPrice = pricingMap.get(cleanSku) || 0;
           
           bomItems.push({
             project_id: projectId,
@@ -103,7 +109,7 @@ export async function POST(req: Request) {
     if (bomItems.length === 0) {
       return Response.json({ 
         success: false, 
-        error: 'No priced items could be generated. Ensure your takeoff codes match the manufacturer price matrix.' 
+        error: 'No priced items could be generated. Please ensure collections and door styles are selected for all areas.' 
       }, { status: 400 });
     }
 
@@ -114,18 +120,14 @@ export async function POST(req: Request) {
     const { error: insertError } = await supabase.from('quotation_bom').insert(bomItems);
     if (insertError) {
       console.error('[BOM API] BOM Insert error:', insertError);
-      return Response.json({ success: false, error: 'Failed to persist generated BOM items.' }, { status: 500 });
+      return Response.json({ success: false, error: `BOM Persist error: ${insertError.message}` }, { status: 500 });
     }
 
     // 5. Update project status to Priced
-    const { error: updateError } = await supabase.from('quotation_projects').update({ 
+    await supabase.from('quotation_projects').update({ 
       manufacturer_id: manufacturerId,
       status: 'Priced' 
     }).eq('id', projectId);
-
-    if (updateError) {
-      console.error('[BOM API] Project status update error:', updateError);
-    }
 
     console.log(`[BOM API] Success! Generated ${bomItems.length} line items.`);
     return Response.json({ success: true, count: bomItems.length });
