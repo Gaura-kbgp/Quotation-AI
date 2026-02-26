@@ -1,11 +1,12 @@
+
 import { createServerSupabase } from '@/lib/supabase-server';
 import { normalizeSku } from '@/lib/utils';
 
 export const maxDuration = 60;
 
 /**
- * Precision Pricing Engine (v8.0).
- * Implements Multi-Tier Heuristic Matching (EXACT -> PARTIAL -> FUZZY).
+ * Precision Pricing Engine (v9.5).
+ * Optimized for Multi-Tier Heuristic Matching (EXACT -> PARTIAL -> FUZZY).
  */
 export async function POST(req: Request) {
   try {
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
           let precisionLevel = 'NOT_FOUND';
           let matchedSku = '';
 
-          // LEVEL 1: EXACT MATCH (SKU + Door Style)
+          // LEVEL 1: EXACT MATCH (Cleaned SKU + Selected Style)
           matchedRow = (allPricing || []).find(p => {
             const pSku = normalizeSku(p.sku);
             const pStyle = normalizeSku(p.door_style);
@@ -79,13 +80,13 @@ export async function POST(req: Request) {
               const pSku = normalizeSku(p.sku);
               const pStyle = normalizeSku(p.door_style);
               const styleMatch = selectedDoorStyle === "" || pStyle === selectedDoorStyle;
-              // 2-way containment search
+              // 2-way containment search to handle B24 matching B24BUTT or vice versa
               return styleMatch && (normTakeoff.includes(pSku) || pSku.includes(normTakeoff));
             });
             if (matchedRow) precisionLevel = 'PARTIAL';
           }
 
-          // LEVEL 3: FUZZY FALLBACK (Within Style, prefix match)
+          // LEVEL 3: FUZZY FALLBACK (Match on first 4 characters for similar models)
           if (!matchedRow && normTakeoff.length >= 3) {
             const prefix = normTakeoff.substring(0, 4);
             matchedRow = (allPricing || []).find(p => {

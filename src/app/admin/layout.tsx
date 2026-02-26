@@ -1,5 +1,6 @@
+
 import { AdminSidebar } from '@/components/admin/sidebar';
-import { ShieldCheck, User, Home } from 'lucide-react';
+import { User, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
@@ -10,7 +11,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden" suppressHydrationWarning>
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       <AdminSidebar />
       
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">

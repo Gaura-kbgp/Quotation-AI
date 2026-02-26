@@ -1,7 +1,9 @@
+
 "use client";
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   LayoutDashboard, 
@@ -20,6 +22,11 @@ const menuItems = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <aside className="w-72 admin-sidebar flex flex-col h-full shrink-0">
@@ -37,7 +44,8 @@ export function AdminSidebar() {
 
       <nav className="flex-1 px-4 space-y-1">
         {menuItems.map((item) => {
-          const isActive = pathname.startsWith(item.href);
+          // Robust check for active state to prevent hydration mismatch
+          const isActive = mounted && pathname ? pathname.startsWith(item.href) : false;
           return (
             <Link
               key={item.name}
