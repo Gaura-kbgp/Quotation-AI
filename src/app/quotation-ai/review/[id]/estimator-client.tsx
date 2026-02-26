@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -494,26 +495,26 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                           </TableHeader>
                           <TableBody>
                             {cabinets.map((cab: Cabinet, cIdx: number) => (
-                              <TableRow key={cIdx} className="border-slate-50 group transition-colors hover:bg-slate-50/30">
+                              <TableRow key={cIdx} className="border-slate-50 h-16 hover:bg-slate-50/20">
                                 <TableCell className="pl-8">
                                   <div className="flex items-center gap-3">
                                     <button 
                                       onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: Math.max(1, (Number(cab.qty) || 1) - 1) })}
-                                      className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
+                                      className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
                                     >
-                                      <Minus className="w-4 h-4" />
+                                      <Minus className="w-3 h-3" />
                                     </button>
                                     <Input 
                                       type="number" 
                                       value={cab.qty || 1} 
                                       onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: parseInt(e.target.value) || 1 })}
-                                      className="w-16 h-10 text-center bg-white border border-slate-200 rounded-xl font-black text-slate-900 focus-visible:ring-sky-500"
+                                      className="w-12 h-8 text-center bg-white border border-slate-200 rounded-lg font-bold text-slate-900 focus-visible:ring-sky-500"
                                     />
                                     <button 
                                       onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: (Number(cab.qty) || 1) + 1 })}
-                                      className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
+                                      className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
                                     >
-                                      <Plus className="w-4 h-4" />
+                                      <Plus className="w-3 h-3" />
                                     </button>
                                   </div>
                                 </TableCell>
@@ -521,14 +522,14 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                   <Input 
                                     value={cab.code} 
                                     onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { code: e.target.value.toUpperCase() })}
-                                    className="h-12 font-black text-xl text-sky-600 bg-transparent border-none focus-visible:ring-1 focus-visible:ring-sky-100 rounded-xl"
+                                    className="h-10 font-black text-lg text-sky-600 bg-transparent border-none focus-visible:ring-1 focus-visible:ring-sky-100 rounded-lg"
                                     placeholder="ENTER SKU"
                                   />
                                 </TableCell>
                                 <TableCell className="text-right pr-8">
                                   <button 
                                     onClick={() => handleRemoveCabinet(rIdx, sectionKey, cIdx)}
-                                    className="opacity-0 group-hover:opacity-100 w-10 h-10 rounded-xl bg-red-50 text-red-400 hover:text-red-600 hover:bg-red-100 flex items-center justify-center transition-all"
+                                    className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-lg bg-red-50 text-red-400 hover:text-red-600 hover:bg-red-100 flex items-center justify-center transition-all"
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -536,12 +537,12 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                               </TableRow>
                             ))}
                             <TableRow className="hover:bg-transparent border-none">
-                              <TableCell colSpan={3} className="p-6 pl-8">
+                              <TableCell colSpan={3} className="p-4 pl-8">
                                 <button 
                                   onClick={() => handleAddRow(rIdx, sectionKey)}
-                                  className="text-[10px] font-black text-sky-600 uppercase tracking-[0.2em] flex items-center gap-2 hover:text-sky-700 hover:gap-3 transition-all"
+                                  className="text-[9px] font-black text-sky-600 uppercase tracking-[0.2em] flex items-center gap-2 hover:text-sky-700 hover:gap-3 transition-all"
                                 >
-                                  <Plus className="w-4 h-4" />
+                                  <Plus className="w-3 h-3" />
                                   Add New Line Item
                                 </button>
                               </TableCell>
