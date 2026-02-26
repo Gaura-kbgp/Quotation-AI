@@ -87,6 +87,7 @@
         "room": { "type": "string" },
         "collection": { "type": "string" },
         "door_style": { "type": "string" },
+        "price_source": { "type": "string", "enum": ["EXACT_MATCH", "PARTIAL_MATCH", "BASE_MODEL_MATCH", "FALLBACK_COLLECTION_MATCH", "NOT_FOUND"] },
         "created_at": { "type": "string", "format": "date-time" }
       }
     }
