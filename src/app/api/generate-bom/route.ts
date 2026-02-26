@@ -1,12 +1,14 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 import { normalizeSku } from '@/lib/utils';
 
 export const maxDuration = 60;
 
 /**
- * Precision Pricing Engine (v5.0).
- * Implements Unified Normalization and 3-Tier Match Strategy.
+ * Precision Pricing Engine (v6.0).
+ * strictly implements 3-Level Match Strategy:
+ * LEVEL 1: EXACT
+ * LEVEL 2: PARTIAL (Contains)
+ * LEVEL 3: FUZZY (Prefix)
  */
 export async function POST(req: Request) {
   try {
@@ -42,7 +44,7 @@ export async function POST(req: Request) {
       return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
 
-    console.log(`[Pricing Engine] Loaded ${allPricing?.length || 0} pricing records.`);
+    console.log(`[Pricing Engine] Loaded ${allPricing?.length || 0} pricing records from manufacturer_pricing table.`);
 
     const bomItems: any[] = [];
     
@@ -67,27 +69,31 @@ export async function POST(req: Request) {
             precisionLevel = 'EXACT';
           } 
           
-          // LEVEL 2: CONTAINS MATCH
+          // LEVEL 2: CONTAINS MATCH (If exact fails)
           if (!matchedRow) {
             matchedRow = (allPricing || []).find(p => {
               const normPrice = normalizeSku(p.sku);
+              if (!normPrice) return false;
               return normTakeoff.includes(normPrice) || normPrice.includes(normTakeoff);
             });
             if (matchedRow) precisionLevel = 'PARTIAL';
           }
 
-          // LEVEL 3: SIMILAR / FUZZY MATCH (First 4 characters)
+          // LEVEL 3: SIMILAR / FUZZY MATCH (Prefix 4 chars)
           if (!matchedRow && normTakeoff.length >= 3) {
             const prefix = normTakeoff.substring(0, 4);
-            matchedRow = (allPricing || []).find(p => normalizeSku(p.sku).startsWith(prefix));
+            matchedRow = (allPricing || []).find(p => {
+              const normPrice = normalizeSku(p.sku);
+              return normPrice.startsWith(prefix);
+            });
             if (matchedRow) precisionLevel = 'FUZZY';
           }
 
           if (matchedRow) {
             matchedSku = matchedRow.sku;
-            console.log(`[Pricing Engine] MATCH SUCCESS: ${rawTakeoff} -> ${matchedSku} (${precisionLevel})`);
+            console.log(`[Pricing Engine] Matching SKU: ${rawTakeoff} -> Matched SKU: ${matchedSku} (${precisionLevel})`);
           } else {
-            console.log(`[Pricing Engine] MATCH FAILED: ${rawTakeoff}`);
+            console.log(`[Pricing Engine] Matching SKU: ${rawTakeoff} -> Matched SKU: NOT FOUND`);
           }
 
           const price = matchedRow ? Number(matchedRow.price) : 0;
