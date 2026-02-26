@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS manufacturers (
 
 -- 2. Manufacturer Files
 CREATE TABLE IF NOT EXISTS manufacturer_files (
-  id PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   manufacturer_id UUID REFERENCES manufacturers(id) ON DELETE CASCADE,
   file_type TEXT,
   file_name TEXT,
