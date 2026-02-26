@@ -1,7 +1,7 @@
 'use server';
 /**
  * @fileOverview Production-Grade AI Flow for Architectural Cabinet Takeoff.
- * Optimized for Gemini 1.5 Flash to handle multi-page PDFs with visual reasoning.
+ * Optimized for Gemini 2.0 Flash to handle multi-page PDFs with visual reasoning.
  */
 
 import { ai } from '@/ai/genkit';
@@ -30,11 +30,11 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log('[AI Flow] Starting Multi-Page PDF Vision Analysis...');
+  console.log('[AI Flow] Starting Multi-Page PDF Vision Analysis with Gemini 2.0 Flash...');
 
-  // Using ai.generate directly for maximum control over vision parameters and error handling
+  // Use ai.generate directly to avoid definePrompt schema validation issues
   const response = await ai.generate({
-    model: 'googleai/gemini-1.5-flash',
+    model: 'googleai/gemini-2.0-flash',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
       { text: `You are a professional architectural estimator specializing in cabinet takeoff. 
@@ -51,7 +51,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
      - Starts with B or SB -> base
      - Starts with UF -> tall
      - Starts with VSB -> vanity
-     - Fillers/Moldings -> hardware
+     - Fillers/Moldings/Trim -> hardware
   4. IGNORE: Do NOT extract electrical, lighting, HVAC, or plumbing fixtures.
   5. OUTPUT: Return a raw JSON array of objects.
   
@@ -63,7 +63,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   Rules for extraction:
   - Normalize codes: "B 24" -> "B24".
-  - Detect specific rooms: "Standard Kitchen", "Owners Bath", "Laundry", etc.
+  - Detect specific rooms: "Standard Kitchen", "Owners Bath", "Laundry", "Mudroom", etc.
   
   IMPORTANT: Return ONLY the raw JSON array. No markdown, no backticks.` }
     ],
@@ -73,6 +73,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
         { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
         { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
       ],
     },
   });
@@ -80,14 +81,14 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   const text = response.text;
   
   if (!text || text.trim() === '') {
-    throw new Error('AI analysis produced no results. This can happen if the PDF is not readable or if content filters were triggered. Please ensure the drawing is clear and try again.');
+    console.error('[AI Flow] Model returned empty response.');
+    throw new Error('AI analysis produced no results. Ensure the PDF contains readable architectural drawings.');
   }
 
   // Manually parse the JSON to bypass potential formatting issues
   let items: any[] = [];
   try {
     const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    // Find the first [ and last ] to extract just the array
     const firstBracket = cleanedText.indexOf('[');
     const lastBracket = cleanedText.lastIndexOf(']');
     if (firstBracket !== -1 && lastBracket !== -1) {
@@ -140,7 +141,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   if (roomsList.length === 0) {
     roomsList.push({
-      room_name: 'Standard Kitchen',
+      room_name: 'Main Room',
       room_type: 'Kitchen',
       sections: {
         'Wall Cabinets': [],
@@ -154,24 +155,23 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: roomsList,
-    summary: `Processed multiple pages using Gemini AI. Extracted ${items.length} line items and aggregated into ${roomsMap.size} rooms.`
+    summary: `Processed full document with Gemini 2.0 Flash. Extracted ${items.length} line items across ${roomsMap.size} rooms.`
   };
 }
 
 function mapSectionToLabel(section: string): string {
   const s = String(section).toLowerCase();
-  switch (s) {
-    case 'wall': return 'Wall Cabinets';
-    case 'base': return 'Base Cabinets';
-    case 'tall': return 'Tall Cabinets';
-    case 'vanity': return 'Vanity Cabinets';
-    default: return 'Hardware';
-  }
+  if (s.includes('wall')) return 'Wall Cabinets';
+  if (s.includes('base')) return 'Base Cabinets';
+  if (s.includes('tall')) return 'Tall Cabinets';
+  if (s.includes('vanity')) return 'Vanity Cabinets';
+  return 'Hardware';
 }
 
 function classifyRoomType(name: string): string {
   const n = name.toUpperCase();
   if (n.includes('BATH') || n.includes('POWDER')) return 'Bathroom';
   if (n.includes('LAUNDRY')) return 'Laundry';
+  if (n.includes('MUD')) return 'Mudroom';
   return 'Kitchen';
 }
