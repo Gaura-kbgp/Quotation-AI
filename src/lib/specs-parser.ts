@@ -2,9 +2,11 @@
 import * as XLSX from 'xlsx';
 
 /**
- * Adaptive Grid-Matrix Parser (v12.0)
- * Optimized for cabinetry price books with Row 1 = Collections, Row 2 = Door Styles.
- * Specifically handles multi-block sheets and merged fill-forward logic.
+ * High-Precision Matrix Extraction Engine (v15.0)
+ * Optimized for cabinetry price books where:
+ * - Row 1 = Collections (Merged cells)
+ * - Row 2 = Door Style Groups (Multiple styles per cell, separated by newlines)
+ * - Row 3 = SKU Headers
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -12,113 +14,95 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
   
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
+    // Use header: 1 to get raw grid
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
     
-    if (rawData.length < 2) continue;
+    if (rawData.length < 3) {
+      console.log(`[Parser] Skipping sheet ${sheetName}: Insufficient rows.`);
+      continue;
+    }
 
-    let currentSkuColIdx = -1;
-    let stickyDoorStyleRow: any[] = [];
-    let stickyCollectionRow: any[] = [];
+    // 1. Locate the SKU Anchor Row
+    let skuRowIdx = -1;
+    let skuColIdx = -1;
 
-    const isHeaderAnchor = (row: any[]) => {
-      if (!row || !Array.isArray(row)) return -1;
-      return row.findIndex(cell => {
-        const val = String(cell || "").toUpperCase().trim();
-        return val === "SKU" || val === "MODEL" || val === "ITEM" || val === "PART #" || val === "CODE";
-      });
-    };
-
-    const isTitleRow = (str: string) => {
-      const s = String(str || "").toUpperCase();
-      // Skip very long descriptive title rows or generic "Pricing" headers
-      return s.length > 120 || s.includes("PRICING GUIDE") || s.includes("CABINETRY CATALOG");
-    };
-
-    for (let r = 0; r < rawData.length; r++) {
+    for (let r = 0; r < Math.min(rawData.length, 20); r++) {
       const row = rawData[r];
-      const anchorIdx = isHeaderAnchor(row);
-
-      // If we find a new SKU header anchor, update our mapping context
-      if (anchorIdx !== -1) {
-        currentSkuColIdx = anchorIdx;
-        
-        // Dynamic Header Check: Look at Rows 1 and 2 if we are at the top,
-        // otherwise look immediately above the detected SKU row.
-        const rowAbove1 = r > 0 ? rawData[r - 1] : [];
-        const rowAbove2 = r > 1 ? rawData[r - 2] : [];
-
-        // Validate if these rows contain headers
-        const hasStyles = rowAbove1.some(c => String(c).trim().length > 0);
-        
-        if (hasStyles) {
-          stickyDoorStyleRow = rowAbove1;
-          stickyCollectionRow = rowAbove2;
-          console.log(`[Parser] Found SKU anchor at Row ${r + 1}. Mapping Door Styles from Row ${r} and Collections from Row ${r-1}.`);
-        } else if (stickyDoorStyleRow.length === 0) {
-          // Fallback to absolute Row 1/2 if the immediate rows are empty
-          stickyDoorStyleRow = rawData[1] || [];
-          stickyCollectionRow = rawData[0] || [];
-          console.log(`[Parser] Immediate headers empty at Row ${r+1}. Falling back to absolute Row 1/2.`);
-        }
-        continue;
+      const foundIdx = row.findIndex(cell => {
+        const val = String(cell || "").toUpperCase().trim();
+        return val === "SKU" || val === "MODEL" || val === "ITEM" || val === "CODE";
+      });
+      if (foundIdx !== -1) {
+        skuRowIdx = r;
+        skuColIdx = foundIdx;
+        break;
       }
+    }
 
-      if (currentSkuColIdx === -1) continue;
+    if (skuRowIdx === -1) {
+      console.log(`[Parser] SKU header not found in sheet ${sheetName}.`);
+      continue;
+    }
 
-      const rawSku = row[currentSkuColIdx];
+    // 2. Identify Header Rows (Relative to SKU Anchor)
+    const doorStyleRow = skuRowIdx > 0 ? rawData[skuRowIdx - 1] : [];
+    const collectionRow = skuRowIdx > 1 ? rawData[skuRowIdx - 2] : [];
+
+    console.log(`[Parser] Processing sheet: ${sheetName} | Anchor: Row ${skuRowIdx + 1}, Col ${skuColIdx + 1}`);
+
+    // 3. Process Data Rows
+    for (let r = skuRowIdx + 1; r < rawData.length; r++) {
+      const row = rawData[r];
+      const rawSku = row[skuColIdx];
       const skuStr = String(rawSku || "").trim();
 
-      // Skip rows without SKUs or the header row itself
-      if (!skuStr || isHeaderAnchor(row) !== -1 || skuStr.length < 1) continue;
+      // Skip category headers or empty rows
+      if (!skuStr || skuStr.length < 1 || skuStr.toUpperCase() === "SKU") continue;
 
-      // Scan all columns to the right of the SKU
-      for (let c = currentSkuColIdx + 1; c < row.length; c++) {
-        // Find Door Style (Fill-Forward for merged cells)
-        let doorStyle = "";
-        for (let i = c; i >= currentSkuColIdx + 1; i--) {
-          const val = String(stickyDoorStyleRow[i] || "").trim();
-          if (val && !isTitleRow(val)) {
-            doorStyle = val;
-            break;
-          }
-        }
-        
-        if (!doorStyle) continue;
+      // Scan all columns to the right of the SKU for prices
+      for (let c = skuColIdx + 1; c < row.length; c++) {
+        const rawPrice = row[c];
+        if (rawPrice === null || rawPrice === undefined || rawPrice === "") continue;
+
+        const priceNum = parseFloat(String(rawPrice).replace(/[^0-9.]/g, ""));
+        if (isNaN(priceNum) || priceNum <= 0) continue;
 
         // Find Collection (Fill-Forward for merged cells)
         let collection = "";
-        for (let i = c; i >= currentSkuColIdx + 1; i--) {
-          const val = String(stickyCollectionRow[i] || "").trim();
-          if (val && !isTitleRow(val)) {
+        for (let i = c; i >= skuColIdx + 1; i--) {
+          const val = String(collectionRow[i] || "").trim();
+          if (val && val.length > 2 && !val.includes("PRICING")) {
             collection = val;
             break;
           }
         }
-        
-        const finalCollection = collection || sheetName;
-        const rawPrice = row[c];
-        
-        // Only process cells with actual numbers
-        if (rawPrice !== null && rawPrice !== undefined && rawPrice !== "") {
-          const priceStr = String(rawPrice || "").replace(/[^0-9.]/g, "");
-          const price = parseFloat(priceStr);
+        if (!collection) collection = sheetName;
 
-          if (!isNaN(price) && price > 0) {
-            pricing.push({
-              manufacturer_id: manufacturerId,
-              collection_name: finalCollection.trim(),
-              door_style: doorStyle.trim(),
-              sku: skuStr,
-              price: price,
-              raw_source_file_id: fileId,
-              created_at: new Date().toISOString()
-            });
-          }
+        // Find Door Style Group and SPLIT it (v15.0 logic)
+        const styleGroupStr = String(doorStyleRow[c] || "").trim();
+        if (!styleGroupStr) continue;
+
+        // Split by newlines, commas, or semicolons to handle Price Groups
+        const individualStyles = styleGroupStr
+          .split(/[\n\r,;]+/)
+          .map(s => s.trim())
+          .filter(s => s.length > 1);
+
+        for (const style of individualStyles) {
+          pricing.push({
+            manufacturer_id: manufacturerId,
+            collection_name: collection.toUpperCase().replace(/\s+/g, ' '),
+            door_style: style.toUpperCase().replace(/\s+/g, ' '),
+            sku: skuStr.toUpperCase(),
+            price: priceNum,
+            raw_source_file_id: fileId,
+            created_at: new Date().toISOString()
+          });
         }
       }
     }
   }
 
-  console.log(`[Specs Parser] Success: Extracted ${pricing.length} pricing records.`);
+  console.log(`[Specs Parser] Final Extraction Count: ${pricing.length} pricing points across all sheets.`);
   return pricing;
 }

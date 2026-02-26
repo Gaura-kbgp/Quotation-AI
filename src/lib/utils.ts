@@ -1,3 +1,4 @@
+
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -6,29 +7,26 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * UNIFIED SKU NORMALIZATION (v11.0)
- * Optimized for architectural cabinet takeoffs vs price book entries.
- * 1. Convert to uppercase.
- * 2. Remove text inside parentheses (e.g. "FL48 (VOIDS)" -> "FL48").
- * 3. Remove text inside curly braces (e.g. "DWR3 {L}" -> "DWR3").
- * 4. Remove leading architectural quantity callouts (e.g. "1-QM8" -> "QM8").
- * 5. Strip ALL special characters (dots, dashes, slashes, spaces).
- * 6. PRESERVE alphanumeric strings like "BUTT", "LD", "RD".
+ * UNIFIED SKU NORMALIZATION (v15.0)
+ * Precision mapping for architectural takeoffs.
+ * 1. Strips quantity prefixes (1-B24 -> B24).
+ * 2. Strips architectural comments in (), {}, or [].
+ * 3. Removes all dots, dashes, and spaces.
+ * 4. Preserves critical designations like BUTT, LD, RD, SD.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  let s = sku.toString().toUpperCase();
+  let s = sku.toString().toUpperCase().trim();
   
-  // Remove content within parentheses e.g. "B24 (BUTT)" -> "B24"
+  // Remove content within any brackets e.g. "B24 (BUTT)" -> "B24"
   s = s.replace(/\([^)]*\)/g, '');
-  
-  // Remove content within curly braces e.g. "DWR3 {L}" -> "DWR3"
   s = s.replace(/\{[^}]*\}/g, '');
+  s = s.replace(/\[[^\]]*\]/g, '');
   
-  // Remove leading "Qty-" callouts common in architectural sets (e.g. "1-QM8" -> "QM8")
+  // Remove leading architectural quantity callouts (e.g. "1-QM8" -> "QM8")
   s = s.replace(/^\d+[\s\-]+/, '');
 
-  // Strip special characters except A-Z and 0-9
+  // Strip all non-alphanumeric characters but keep the rest
   s = s.replace(/[^A-Z0-9]/g, '');
   
   return s.trim();
