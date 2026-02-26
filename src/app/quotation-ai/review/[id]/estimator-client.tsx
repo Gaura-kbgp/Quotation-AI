@@ -100,7 +100,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       }));
     } catch (err: any) {
       console.error('[Estimator] Config Fetch Error:', err);
-      toast({ variant: 'destructive', title: 'Data Error', description: 'Failed to load brand configuration.' });
+      toast({ variant: 'destructive', title: 'Data Error', description: 'Failed to load manufacturer configuration.' });
     } finally {
       setIsLoadingConfig(false);
     }
@@ -258,7 +258,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     return (
       <div className="max-w-xl mx-auto space-y-12 py-12 animate-in slide-in-from-bottom-4">
         <div className="text-center space-y-3">
-           <h2 className="text-3xl font-black text-slate-900">Brand Selection</h2>
+           <h2 className="text-3xl font-black text-slate-900">Manufacturer Selection</h2>
            <p className="text-slate-500">Apply pricing matrix to current takeoff.</p>
         </div>
         <div className="grid grid-cols-1 gap-4">
@@ -303,7 +303,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
               <span className="text-3xl font-black text-sky-600">{totalSkus}</span>
             </div>
             <div className="hidden lg:flex flex-col pl-10 border-l border-slate-100">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Selected Brand</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Selected Manufacturer</span>
               <div className="flex items-center gap-2">
                 <Factory className="w-4 h-4 text-sky-500" />
                 <span className="text-lg font-bold text-slate-900">{selectedManufacturer?.name || 'Unspecified'}</span>
@@ -314,7 +314,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
           <div className="flex items-center gap-4 w-full md:w-auto">
             <Button variant="outline" onClick={() => setStep('manufacturer')} className="flex-1 md:flex-none h-14 px-6 rounded-xl border-slate-200">
               <Settings2 className="w-4 h-4 mr-2" />
-              Change Brand
+              Change Manufacturer
             </Button>
             <Button 
               onClick={handleGenerateQuote} 

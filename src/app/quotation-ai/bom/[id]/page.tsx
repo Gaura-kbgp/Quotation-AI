@@ -1,4 +1,3 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -121,7 +120,7 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
                     
                     <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
                        <div>
-                          <p className="text-[9px] font-bold uppercase text-slate-400 tracking-widest">Brand Configuration</p>
+                          <p className="text-[9px] font-bold uppercase text-slate-400 tracking-widest">Manufacturer Configuration</p>
                           <p className="text-sm font-bold text-slate-800">{project.manufacturers?.name}</p>
                        </div>
                        <div className="grid grid-cols-2 gap-2">
