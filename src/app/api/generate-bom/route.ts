@@ -41,7 +41,7 @@ export async function POST(req: Request) {
       return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
 
-    console.log(`[Pricing Engine] Total database records: ${allPricing?.length || 0}`);
+    console.log(`[Pricing Engine] Total database records for manufacturer: ${allPricing?.length || 0}`);
 
     const bomItems: any[] = [];
     
@@ -61,20 +61,19 @@ export async function POST(req: Request) {
           let precisionLevel = 'NOT_FOUND';
           let matchedSku = '';
 
-          // Filter pricing by normalized door style first to optimize search
+          // Filter pricing by normalized door style first
           const styleFilteredPricing = (allPricing || []).filter(p => {
             if (!roomSelectedStyle) return true;
             return normalizeSku(p.door_style) === roomSelectedStyle;
           });
 
-          // LEVEL 1: EXACT MATCH
+          // LEVEL 1: EXACT MATCH (Style Specific)
           matchedRow = styleFilteredPricing.find(p => normalizeSku(p.sku) === normTakeoff);
-
           if (matchedRow) {
             precisionLevel = 'EXACT';
           } 
           
-          // LEVEL 2: PARTIAL MATCH (Contains logic)
+          // LEVEL 2: PARTIAL MATCH (Style Specific - Contains logic)
           if (!matchedRow) {
             matchedRow = styleFilteredPricing.find(p => {
               const pSku = normalizeSku(p.sku);
@@ -83,17 +82,25 @@ export async function POST(req: Request) {
             if (matchedRow) precisionLevel = 'PARTIAL';
           }
 
-          // LEVEL 3: FUZZY FALLBACK (Prefix match)
-          if (!matchedRow && normTakeoff.length >= 3) {
-            const prefix = normTakeoff.substring(0, 4);
-            matchedRow = styleFilteredPricing.find(p => normalizeSku(p.sku).startsWith(prefix));
+          // LEVEL 3: STYLE-AGNOSTIC MATCH (Fallback - Ignore Style filter if no match found)
+          if (!matchedRow) {
+            matchedRow = (allPricing || []).find(p => normalizeSku(p.sku) === normTakeoff);
+            if (matchedRow) precisionLevel = 'FUZZY'; // Mark as fuzzy because style might differ
+          }
+
+          // LEVEL 4: STYLE-AGNOSTIC PARTIAL (Absolute Last Resort)
+          if (!matchedRow) {
+            matchedRow = (allPricing || []).find(p => {
+              const pSku = normalizeSku(p.sku);
+              return normTakeoff.includes(pSku) || pSku.includes(normTakeoff);
+            });
             if (matchedRow) precisionLevel = 'FUZZY';
           }
 
           if (matchedRow) {
             matchedSku = matchedRow.sku;
             const price = Number(matchedRow.price) || 0;
-            console.log(`[Pricing Engine] MATCHED: ${rawTakeoff} -> ${matchedSku} (${precisionLevel}) Price: $${price}`);
+            console.log(`[Pricing Engine] MATCHED: ${rawTakeoff} -> ${matchedSku} (${precisionLevel}) Price: $${price} (Style: ${matchedRow.door_style})`);
             
             bomItems.push({
               project_id: projectId,
