@@ -4,8 +4,8 @@ import { normalizeSku } from '@/lib/utils';
 export const maxDuration = 60;
 
 /**
- * Precision Pricing Engine (v7.0).
- * Implements Multi-Matrix Grid Matching strategy.
+ * Precision Pricing Engine (v8.0).
+ * Implements Multi-Tier Heuristic Matching (EXACT -> PARTIAL -> FUZZY).
  */
 export async function POST(req: Request) {
   try {
@@ -40,11 +40,15 @@ export async function POST(req: Request) {
       return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
 
+    console.log(`[Pricing Engine] Loaded ${allPricing?.length || 0} pricing records for manufacturer ${manufacturerId}`);
+
     const bomItems: any[] = [];
     
     for (const room of rooms) {
       const selectedDoorStyle = normalizeSku(room.door_style || "");
       const sections = room.sections || {};
+
+      console.log(`[Pricing Engine] Processing Room: ${room.room_name} (Selected Style: ${selectedDoorStyle})`);
 
       for (const [sectionName, items] of Object.entries(sections)) {
         const cabinetItems = items as any[];
@@ -69,18 +73,19 @@ export async function POST(req: Request) {
             precisionLevel = 'EXACT';
           } 
           
-          // LEVEL 2: CONTAINS MATCH (If exact fails)
+          // LEVEL 2: PARTIAL/CONTAINS MATCH (If exact fails)
           if (!matchedRow) {
             matchedRow = (allPricing || []).find(p => {
               const pSku = normalizeSku(p.sku);
               const pStyle = normalizeSku(p.door_style);
               const styleMatch = selectedDoorStyle === "" || pStyle === selectedDoorStyle;
+              // 2-way containment search
               return styleMatch && (normTakeoff.includes(pSku) || pSku.includes(normTakeoff));
             });
             if (matchedRow) precisionLevel = 'PARTIAL';
           }
 
-          // LEVEL 3: FUZZY FALLBACK (Within Style)
+          // LEVEL 3: FUZZY FALLBACK (Within Style, prefix match)
           if (!matchedRow && normTakeoff.length >= 3) {
             const prefix = normTakeoff.substring(0, 4);
             matchedRow = (allPricing || []).find(p => {
@@ -94,6 +99,7 @@ export async function POST(req: Request) {
           if (matchedRow) {
             matchedSku = matchedRow.sku;
             const price = Number(matchedRow.price) || 0;
+            console.log(`[Pricing Engine] MATCHED: ${rawTakeoff} -> ${matchedSku} (${precisionLevel}) Price: $${price}`);
             
             bomItems.push({
               project_id: projectId,
@@ -110,7 +116,7 @@ export async function POST(req: Request) {
               created_at: new Date().toISOString()
             });
           } else {
-            // Push even if not found to show in BOM as $0
+            console.log(`[Pricing Engine] NOT FOUND: ${rawTakeoff} (Normalized: ${normTakeoff})`);
             bomItems.push({
               project_id: projectId,
               sku: rawTakeoff,

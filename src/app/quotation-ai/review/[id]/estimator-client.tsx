@@ -211,6 +211,17 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     }
 
     setIsProcessing(true);
+    
+    // FORCE SYNC: Ensure latest selections are saved before generating
+    try {
+      await updateProjectAction(project.id, { 
+        extracted_data: { rooms },
+        manufacturer_id: selectedManId || null
+      });
+    } catch (e) {
+      console.error('[Estimator] Forced sync failed:', e);
+    }
+
     try {
       const response = await fetch('/api/generate-bom', {
         method: 'POST',
@@ -321,7 +332,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
         <div className="grid grid-cols-1 gap-6">
           {rooms.map((room, rIdx) => (
-            <Card key(rIdx) className="rounded-[2rem] border-slate-100 shadow-sm overflow-hidden group hover:shadow-md transition-all">
+            <Card key={rIdx} className="rounded-[2rem] border-slate-100 shadow-sm overflow-hidden group hover:shadow-md transition-all">
               <div className="p-8 flex flex-col md:flex-row items-center justify-between gap-8">
                 <div className="flex items-center gap-5">
                   <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-2xl">
