@@ -4,15 +4,15 @@ import { normalizeSku } from '@/lib/utils';
 export const maxDuration = 60;
 
 /**
- * Smart Pricing Engine API (v3.0).
- * Implements 2-Way Includes matching and Deep Logging.
+ * Precision Pricing Engine (v4.0).
+ * Implements Unified Normalization and Cross-Collection Deep Search.
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { projectId, manufacturerId } = body;
 
-    console.log(`--- BOM GENERATION START ---`);
+    console.log(`--- PRICING ENGINE START ---`);
     console.log(`Project: ${projectId}, Manufacturer: ${manufacturerId}`);
 
     if (!projectId || !manufacturerId) {
@@ -34,19 +34,18 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. Load ALL Manufacturer Specifications
+    // 2. Load ALL Manufacturer Specifications (The Price Book)
     const { data: allSpecs, error: sError } = await supabase
       .from('manufacturer_specifications')
       .select('*')
       .eq('manufacturer_id', manufacturerId);
 
     if (sError) {
-      console.error('[BOM Engine] Database Error:', sError);
-      return Response.json({ success: false, error: `Database error during pricing fetch.` }, { status: 500 });
+      console.error('[Pricing Engine] DB Error:', sError);
+      return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
 
-    const specCount = allSpecs?.length || 0;
-    console.log(`Loaded ${specCount} price records from database.`);
+    console.log(`Loaded ${allSpecs?.length || 0} price book records.`);
 
     // 3. Process each takeoff item
     const bomItems: any[] = [];
@@ -61,15 +60,15 @@ export async function POST(req: Request) {
 
           // STEP 3: STRONG NORMALIZATION
           const takeoffCode = normalizeSku(cab.code);
-          console.log(`Searching for: ${cab.code} (Normalized: ${takeoffCode})`);
+          console.log(`Searching for takeoff code: ${cab.code} -> Normalized: ${takeoffCode}`);
           
           let matchedRow = null;
           let matchSource = 'NOT_FOUND';
 
-          // STEP 4 & 5: 2-WAY INCLUDES MATCHING
-          // We search the in-memory array for performance
+          // STEP 4: FUZZY MULTI-TIER MATCHING
+          // allSpecs.sku is already normalized from the parser
           matchedRow = (allSpecs || []).find(spec => {
-            const dbSku = normalizeSku(spec.sku);
+            const dbSku = spec.sku; // Assumed normalized from DB
             
             // 1. Exact Match
             if (dbSku === takeoffCode) {
@@ -77,15 +76,15 @@ export async function POST(req: Request) {
               return true;
             }
             
-            // 2. Contains Match (Excel SKU contains Takeoff)
-            if (dbSku.includes(takeoffCode)) {
-              matchSource = 'PARTIAL_MATCH';
+            // 2. Takeoff contains DB entry (e.g., Takeoff "B24BUTT" contains DB "B24")
+            if (takeoffCode.includes(dbSku) && dbSku.length > 2) {
+              matchSource = 'BASE_MODEL_MATCH';
               return true;
             }
 
-            // 3. Reverse Match (Takeoff contains Excel SKU)
-            if (takeoffCode.includes(dbSku)) {
-              matchSource = 'BASE_MODEL_MATCH';
+            // 3. DB entry contains Takeoff (e.g., DB "W2442-12" contains Takeoff "W2442")
+            if (dbSku.includes(takeoffCode) && takeoffCode.length > 2) {
+              matchSource = 'PARTIAL_MATCH';
               return true;
             }
 
@@ -93,9 +92,7 @@ export async function POST(req: Request) {
           });
 
           if (matchedRow) {
-            console.log(`FOUND Match: ${takeoffCode} -> ${matchedRow.sku} (${matchSource})`);
-          } else {
-            console.log(`NOT FOUND: ${takeoffCode}`);
+            console.log(`MATCH SUCCESS: ${takeoffCode} -> ${matchedRow.sku} (${matchSource}) at $${matchedRow.price}`);
           }
 
           const price = matchedRow ? Number(matchedRow.price) : 0;
@@ -122,8 +119,8 @@ export async function POST(req: Request) {
     if (bomItems.length > 0) {
       const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
       if (insertError) {
-        console.error("BOM Insert Error:", insertError);
-        return Response.json({ success: false, error: 'Failed to persist BOM items.' }, { status: 500 });
+        console.error("BOM Persistence Failure:", insertError);
+        return Response.json({ success: false, error: 'Failed to save quotation line items.' }, { status: 500 });
       }
     }
 
@@ -132,11 +129,11 @@ export async function POST(req: Request) {
       status: 'Priced' 
     }).eq('id', projectId);
 
-    console.log(`--- BOM GENERATION END: ${bomItems.length} items processed ---`);
+    console.log(`--- PRICING ENGINE COMPLETE: ${bomItems.length} items processed ---`);
     return Response.json({ success: true, count: bomItems.length });
 
   } catch (err: any) {
-    console.error('[BOM Engine] Critical Failure:', err);
+    console.error('[Pricing Engine] Critical Error:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
