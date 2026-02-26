@@ -1,7 +1,8 @@
+
 'use server';
 /**
  * @fileOverview Production-Grade AI Flow for Architectural Cabinet Takeoff.
- * Optimized for Gemini 2.0 Flash to handle multi-page PDFs with visual reasoning.
+ * Optimized for Gemini 2.5 Flash to handle multi-page PDFs with visual reasoning.
  */
 
 import { ai } from '@/ai/genkit';
@@ -30,11 +31,12 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log('[AI Flow] Starting Multi-Page PDF Vision Analysis with Gemini 2.0 Flash...');
+  console.log('[AI Flow] Starting Multi-Page PDF Vision Analysis with Gemini 2.5 Flash...');
 
-  // Use ai.generate directly to avoid definePrompt schema validation issues
+  // Use ai.generate directly to bypass definePrompt's fragile schema validation layer
+  // This prevents the "(root): must be string" error when the model returns null/empty.
   const response = await ai.generate({
-    model: 'googleai/gemini-2.0-flash',
+    model: 'googleai/gemini-2.5-flash',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
       { text: `You are a professional architectural estimator specializing in cabinet takeoff. 
@@ -81,8 +83,8 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   const text = response.text;
   
   if (!text || text.trim() === '') {
-    console.error('[AI Flow] Model returned empty response.');
-    throw new Error('AI analysis produced no results. Ensure the PDF contains readable architectural drawings.');
+    console.warn('[AI Flow] Model returned empty response. Check safety filters or PDF readability.');
+    return getEmptyResult('AI analysis produced no results. Ensure the PDF contains readable drawings.');
   }
 
   // Manually parse the JSON to bypass potential formatting issues
@@ -98,8 +100,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     }
   } catch (e) {
     console.error('[AI Parser] JSON Parse Error:', e);
-    console.error('[AI Parser] Raw Text:', text);
-    throw new Error('The AI returned data in an unexpected format. Please try again.');
+    return getEmptyResult('The AI returned data in an unexpected format. Please try again.');
   }
 
   // Aggregate the flat items into the room-wise structure
@@ -140,7 +141,18 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   const roomsList = Array.from(roomsMap.values());
 
   if (roomsList.length === 0) {
-    roomsList.push({
+    return getEmptyResult('No cabinets detected in the drawing.');
+  }
+
+  return {
+    rooms: roomsList,
+    summary: `Processed full document with Gemini 2.5 Flash. Extracted ${items.length} line items across ${roomsMap.size} rooms.`
+  };
+}
+
+function getEmptyResult(message: string): AnalyzeDrawingOutput {
+  return {
+    rooms: [{
       room_name: 'Main Room',
       room_type: 'Kitchen',
       sections: {
@@ -150,12 +162,8 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
         'Vanity Cabinets': [],
         'Hardware': []
       }
-    });
-  }
-
-  return {
-    rooms: roomsList,
-    summary: `Processed full document with Gemini 2.0 Flash. Extracted ${items.length} line items across ${roomsMap.size} rooms.`
+    }],
+    summary: message
   };
 }
 
