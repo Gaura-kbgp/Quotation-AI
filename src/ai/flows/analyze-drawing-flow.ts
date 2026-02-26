@@ -2,7 +2,7 @@
 'use server';
 /**
  * @fileOverview High-Performance AI Flow for Architectural Cabinet Takeoff.
- * Uses Gemini 2.0 Flash for native multi-page vision analysis.
+ * Uses Gemini 2.5 Flash for high-precision multi-page vision analysis.
  */
 
 import { ai } from '@/ai/genkit';
@@ -31,14 +31,14 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log('[AI Flow] Starting Gemini 2.0 Flash Vision Analysis...');
+  console.log('[AI Flow] Starting Gemini 2.5 Flash Multi-Page Vision Analysis...');
 
   // Using direct generation to bypass nested schema limits and improve timeout resilience
   const response = await ai.generate({
-    model: 'googleai/gemini-2.0-flash',
+    model: 'googleai/gemini-2.5-flash',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator. 
+      { text: `You are a professional architectural estimator specializing in cabinetry takeoffs. 
   
   TASK:
   Analyze the provided PDF. It contains multiple pages (Floor Plans, Cabinet Schedules, Elevations).
@@ -130,7 +130,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: roomsList.length > 0 ? roomsList : [getEmptyResult('No cabinets detected.').rooms[0]],
-    summary: `Extracted ${items.length} units across ${roomsMap.size} project areas.`
+    summary: `Extracted ${items.length} units across ${roomsMap.size} project areas using Gemini 2.5 Flash.`
   };
 }
 

@@ -5,6 +5,7 @@ export const maxDuration = 60;
 
 /**
  * Aggressive SKU normalization for matching.
+ * Strips all non-alphanumeric characters.
  */
 function normalizeSku(sku: string): string {
   return String(sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -30,7 +31,6 @@ export async function POST(req: Request) {
     const { projectId, manufacturerId } = body;
 
     console.log(`[BOM API] Initiating Smart Pricing for Project: ${projectId}`);
-    console.log(`[BOM API] Selected Manufacturer: ${manufacturerId}`);
     
     if (!projectId || !manufacturerId) {
       return Response.json({ 
@@ -55,14 +55,14 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     if (rooms.length === 0) {
-      return Response.json({ success: false, error: 'No takeoff data found in project.' }, { status: 400 });
+      return Response.json({ success: false, error: 'No takeoff data found in project. Please review the extraction.' }, { status: 400 });
     }
 
     // 2. Load ALL Manufacturer Specifications for memory-cached matching
-    // We explicitly select 'sku' to match backend.json and DB schema
+    // We select all columns to be resilient to schema variations (price vs unit_price)
     const { data: allSpecs, error: sError } = await supabase
       .from('manufacturer_specifications')
-      .select('sku, price, collection_name, door_style')
+      .select('*')
       .eq('manufacturer_id', manufacturerId);
 
     if (sError) {
@@ -86,17 +86,20 @@ export async function POST(req: Request) {
       const baseSku = getBaseSku(spec.sku);
       const collection = String(spec.collection_name || '').toUpperCase();
       const style = String(spec.door_style || '').toUpperCase();
+      
+      // Handle schema variation for price/unit_price
+      const price = spec.price !== undefined ? spec.price : (spec.unit_price || 0);
 
-      exactMap.set(`${collection}|${style}|${cleanSku}`, spec.price);
-      collectionMap.set(`${collection}|${cleanSku}`, spec.price);
+      exactMap.set(`${collection}|${style}|${cleanSku}`, price);
+      collectionMap.set(`${collection}|${cleanSku}`, price);
       
       // For base model, keep the lowest valid price
       const existingBase = baseModelMap.get(baseSku);
-      if (!existingBase || spec.price < existingBase) {
-        baseModelMap.set(baseSku, spec.price);
+      if (!existingBase || price < existingBase) {
+        baseModelMap.set(baseSku, price);
       }
 
-      globalSkuMap.set(cleanSku, spec.price);
+      globalSkuMap.set(cleanSku, price);
     });
 
     // 3. Process each room and match SKUs using the Smart Pipeline
@@ -122,28 +125,28 @@ export async function POST(req: Request) {
 
           // LEVEL 1: EXACT MATCH (Collection + Style + SKU)
           const exactPrice = exactMap.get(`${selectedColl}|${selectedStyle}|${cleanCode}`);
-          if (exactPrice) {
+          if (exactPrice !== undefined) {
             price = exactPrice;
             source = 'EXACT_MATCH';
           } 
           // LEVEL 2: PARTIAL MATCH (Collection + SKU)
           else {
             const partialPrice = collectionMap.get(`${selectedColl}|${cleanCode}`);
-            if (partialPrice) {
+            if (partialPrice !== undefined) {
               price = partialPrice;
               source = 'PARTIAL_MATCH';
             } 
             // LEVEL 3: BASE MODEL MATCH (Remove L/R suffixes)
             else {
               const basePrice = baseModelMap.get(baseCode);
-              if (basePrice) {
+              if (basePrice !== undefined) {
                 price = basePrice;
                 source = 'BASE_MODEL_MATCH';
               }
               // LEVEL 4: FALLBACK MATCH (Any collection with this SKU)
               else {
                 const fallbackPrice = globalSkuMap.get(cleanCode);
-                if (fallbackPrice) {
+                if (fallbackPrice !== undefined) {
                   price = fallbackPrice;
                   source = 'FALLBACK_COLLECTION_MATCH';
                 }
@@ -176,7 +179,7 @@ export async function POST(req: Request) {
     const { error: insertError } = await supabase.from('quotation_bom').insert(bomItems);
     if (insertError) {
       console.error('[BOM API] Error inserting new BOM:', insertError);
-      throw insertError;
+      throw new Error(`Failed to persist BOM items: ${insertError.message}`);
     }
 
     const { error: updateError } = await supabase.from('quotation_projects').update({ 
@@ -192,6 +195,6 @@ export async function POST(req: Request) {
 
   } catch (err: any) {
     console.error('[BOM API CRITICAL ERROR]:', err);
-    return Response.json({ success: false, error: err.message || 'Internal processing error' }, { status: 500 });
+    return Response.json({ success: false, error: err.message || 'Internal processing error during BOM generation.' }, { status: 500 });
   }
 }
