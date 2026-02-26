@@ -4,8 +4,8 @@ import { normalizeSku, getBaseSku } from '@/lib/utils';
 export const maxDuration = 60;
 
 /**
- * Smart Pricing Engine API for Architectural Cabinetry.
- * Implements multi-tier matching heuristics for high-precision takeoff verification.
+ * Smart Pricing Engine API for Architectural Cabinetry (v2.0).
+ * Implements Step 2, 4, 6, and 7 of the production-level matching requirements.
  */
 export async function POST(req: Request) {
   try {
@@ -28,59 +28,40 @@ export async function POST(req: Request) {
       .single();
 
     if (pError || !project) {
-      console.error('[BOM Engine] Project Fetch Error:', pError);
       return Response.json({ success: false, error: 'Project record retrieval failed.' }, { status: 404 });
     }
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. Load ALL Manufacturer Specifications into high-speed memory maps
+    // 2. Load ALL Manufacturer Specifications for memory-safe scan
     const { data: allSpecs, error: sError } = await supabase
       .from('manufacturer_specifications')
       .select('*')
       .eq('manufacturer_id', manufacturerId);
 
     if (sError) {
-      console.error('[BOM Engine] Database error during specs fetch:', sError);
-      return Response.json({ success: false, error: `Failed to fetch pricing guide from database.` }, { status: 500 });
+      console.error('[BOM Engine] Database Error:', sError);
+      return Response.json({ success: false, error: `Database error during pricing fetch.` }, { status: 500 });
     }
 
+    // STEP 6 - PRE-LOAD MAPS FOR PERFORMANCE
     const specCount = allSpecs?.length || 0;
-    console.log(`[BOM Engine] Loaded ${specCount} price book entries.`);
+    console.log(`[BOM Engine] Loaded ${specCount} price records.`);
 
-    if (specCount === 0) {
-      console.warn(`[BOM Engine] WARNING: No pricing guide found in database for manufacturer: ${manufacturerId}`);
-    }
-
-    const exactMap = new Map();
-    const collectionMap = new Map();
-    const baseModelMap = new Map();
-    const globalSkuMap = new Map();
+    const exactMap = new Map(); // Key: Collection|NormalizedSku
+    const globalSkuMap = new Map(); // Key: NormalizedSku (Fallback)
 
     (allSpecs || []).forEach(spec => {
-      // SKUs are already normalized during ingestion by specs-parser
-      const cleanSku = spec.sku; 
+      const cleanSku = normalizeSku(spec.sku);
       const collection = String(spec.collection_name || '').toUpperCase().trim();
-      const style = String(spec.door_style || '').toUpperCase().trim();
       const price = Number(spec.price) || 0;
 
       if (price <= 0) return;
 
-      // Tier 1: Exact Collection + Door Style Match
-      exactMap.set(`${collection}|${style}|${cleanSku}`, price);
+      // Primary tier: Specific Collection Match
+      exactMap.set(`${collection}|${cleanSku}`, price);
       
-      // Tier 2: Collection-Level Fallback
-      if (!collectionMap.has(`${collection}|${cleanSku}`)) {
-        collectionMap.set(`${collection}|${cleanSku}`, price);
-      }
-
-      // Tier 3: Base Model Identification
-      const baseSku = getBaseSku(cleanSku);
-      if (!baseModelMap.has(baseSku) || price < baseModelMap.get(baseSku)) {
-        baseModelMap.set(baseSku, price);
-      }
-
-      // Tier 4: Global SKU lookup (Any collection)
+      // Fallback tier: Global SKU lookup
       if (!globalSkuMap.has(cleanSku)) {
         globalSkuMap.set(cleanSku, price);
       }
@@ -91,37 +72,45 @@ export async function POST(req: Request) {
     
     for (const room of rooms) {
       const selectedColl = String(room.collection || '').toUpperCase().trim();
-      const selectedStyle = String(room.door_style || '').toUpperCase().trim();
-
       const sections = room.sections || {};
+
       for (const [sectionName, items] of Object.entries(sections)) {
         const cabinetItems = items as any[];
         for (const cab of cabinetItems) {
           if (!cab.code) continue;
 
+          // STEP 2 - NORMALIZE FOR MATCHING
           const rawCode = cab.code;
           const cleanCode = normalizeSku(rawCode);
-          const baseCode = getBaseSku(rawCode);
-
+          
           let price = 0;
           let source = 'NOT_FOUND';
 
-          // HEURISTIC MATCHING PIPELINE
-          const exactKey = `${selectedColl}|${selectedStyle}|${cleanCode}`;
-          const collKey = `${selectedColl}|${cleanCode}`;
+          // STEP 4 - HIERARCHICAL MATCHING PIPELINE
+          const exactKey = `${selectedColl}|${cleanCode}`;
 
+          // Tier 1: Exact Collection Match
           if (exactMap.has(exactKey)) {
             price = exactMap.get(exactKey);
             source = 'EXACT_MATCH';
-          } else if (collectionMap.has(collKey)) {
-            price = collectionMap.get(collKey);
-            source = 'PARTIAL_MATCH';
-          } else if (baseModelMap.has(baseCode)) {
-            price = baseModelMap.get(baseCode);
-            source = 'BASE_MODEL_MATCH';
-          } else if (globalSkuMap.has(cleanCode)) {
+          } 
+          // Tier 2: Global Fallback Match (Step 4 logic)
+          else if (globalSkuMap.has(cleanCode)) {
             price = globalSkuMap.get(cleanCode);
             source = 'FALLBACK_COLLECTION_MATCH';
+          }
+          // Tier 3: Base Model Match (Heuristic)
+          else {
+            const baseCode = getBaseSku(rawCode);
+            if (globalSkuMap.has(baseCode)) {
+              price = globalSkuMap.get(baseCode);
+              source = 'BASE_MODEL_MATCH';
+            }
+          }
+
+          // STEP 7 - DEBUG LOGGING
+          if (source === 'NOT_FOUND') {
+            console.log(`[BOM Debug] NOT FOUND: ${rawCode} (Normalized: ${cleanCode})`);
           }
 
           bomItems.push({
@@ -141,16 +130,12 @@ export async function POST(req: Request) {
     }
 
     // 4. Persistence
-    const { error: deleteError } = await supabase.from('quotation_boms').delete().eq('project_id', projectId);
-    if (deleteError) {
-      console.error('[BOM Engine] Failed to clear existing items:', deleteError);
-    }
+    await supabase.from('quotation_boms').delete().eq('project_id', projectId);
 
     if (bomItems.length > 0) {
       const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
       if (insertError) {
-        console.error('[BOM Engine] Persistence error:', insertError);
-        return Response.json({ success: false, error: 'Failed to persist BOM items. Please ensure database tables are created.' }, { status: 500 });
+        return Response.json({ success: false, error: 'Failed to persist BOM items.' }, { status: 500 });
       }
     }
 
@@ -159,11 +144,10 @@ export async function POST(req: Request) {
       status: 'Priced' 
     }).eq('id', projectId);
 
-    console.log(`[BOM Engine] SUCCESS: Generated ${bomItems.length} line items.`);
     return Response.json({ success: true, count: bomItems.length });
 
   } catch (err: any) {
-    console.error('[BOM Engine] CRITICAL FAILURE:', err);
+    console.error('[BOM Engine] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }

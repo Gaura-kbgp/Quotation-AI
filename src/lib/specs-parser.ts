@@ -2,125 +2,108 @@ import * as XLSX from 'xlsx';
 import { normalizeSku } from './utils';
 
 /**
- * Advanced cabinetry specification parser.
- * Detects collection headers, door styles, and maps them to SKUs and pricing.
+ * Advanced cabinetry specification parser (v2.0).
+ * Implements Step 1, 3, and 5 of the requested pricing logic.
+ * Scans all sheets and dynamically detects SKU/Price columns.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const specs: any[] = [];
   
+  // STEP 1 - READ COMPLETE EXCEL FILE (ALL SHEETS)
   workbook.SheetNames.forEach(sheetName => {
     const sheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+    // Use header: 1 to get raw rows for manual column detection
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
     
-    if (data.length < 2) return;
+    if (rows.length < 2) return;
 
-    console.log(`[Parser] Processing sheet: ${sheetName} with ${data.length} rows.`);
+    console.log(`[Parser] Processing sheet: ${sheetName} (${rows.length} rows)`);
 
     let skuCol = -1;
-    const collections: { name: string, colIndex: number }[] = [];
-    const doorStyles: { [colIndex: number]: string } = {};
+    let priceCol = -1;
+    let doorStyleCol = -1;
+    let headerRowIndex = -1;
 
-    // 1. Find SKU Column - Scan first 100 rows for common headers
-    for (let r = 0; r < Math.min(data.length, 100); r++) {
-      const row = data[r];
+    // STEP 3 - DYNAMIC COLUMN DETECTION
+    // Scan the first 100 rows to find headers
+    for (let r = 0; r < Math.min(rows.length, 100); r++) {
+      const row = rows[r];
       if (!row) continue;
+      
       for (let c = 0; c < row.length; c++) {
         const val = String(row[c] || '').trim().toUpperCase();
-        if (['SKU', 'CODE', 'MODEL', 'ITEM', 'CATALOG #', 'PART', 'PRODUCT', 'NAME', 'CABINET', 'UNIT'].includes(val)) {
+        
+        // SKU Column Keywords
+        if (skuCol === -1 && ['SKU', 'CODE', 'MODEL', 'ITEM', 'CATALOG', 'PART', 'PRODUCT'].some(k => val.includes(k))) {
           skuCol = c;
-          break;
+        }
+        
+        // Price Column Keywords
+        if (priceCol === -1 && ['PRICE', 'LIST', 'MSRP', 'COST', 'AMOUNT', 'NET'].some(k => val.includes(k))) {
+          priceCol = c;
+        }
+
+        // Door Style Keywords
+        if (doorStyleCol === -1 && ['DOOR', 'STYLE', 'FINISH'].some(k => val.includes(k))) {
+          doorStyleCol = c;
         }
       }
-      if (skuCol !== -1) break;
-    }
 
-    // Fallback SKU detection by scanning for patterns
-    if (skuCol === -1) {
-      for (let c = 0; c < 5; c++) {
-        for (let r = 0; r < Math.min(data.length, 50); r++) {
-          const val = String(data[r]?.[c] || '').toUpperCase();
-          if (/^[A-Z]{1,3}\d+/.test(val)) {
-            skuCol = c;
-            break;
-          }
-        }
-        if (skuCol !== -1) break;
-      }
-    }
-
-    if (skuCol === -1) skuCol = 0;
-
-    // 2. Identify Collection Columns
-    for (let r = 0; r < Math.min(data.length, 50); r++) {
-      const row = data[r];
-      if (!row) continue;
-      for (let c = skuCol + 1; c < row.length; c++) {
-        const val = String(row[c] || '').trim();
-        const upperVal = val.toUpperCase();
-        if (val.length > 2 && !['PRICE', 'QTY', 'UOM', 'DESC', 'SKU', 'CODE', 'NOTE', 'EXT', 'UNIT', 'MSRP'].includes(upperVal)) {
-          if (!collections.some(coll => coll.colIndex === c)) {
-            collections.push({ name: val, colIndex: c });
-            doorStyles[c] = val;
-          }
-        }
-      }
-    }
-
-    // 3. Find Start Row
-    let startRow = 0;
-    const cabinetMarkers = ['B', 'W', 'S', 'V', 'T', 'U', 'F', 'R', 'L', 'A', 'P', 'C', 'O', 'M', 'K'];
-    for (let r = 0; r < Math.min(data.length, 200); r++) {
-      const cell = String(data[r]?.[skuCol] || '').toUpperCase().trim();
-      if (cabinetMarkers.some(m => cell.startsWith(m))) {
-        startRow = r;
+      if (skuCol !== -1 && priceCol !== -1) {
+        headerRowIndex = r;
+        console.log(`[Parser] Headers found at row ${r}: SKU[Col ${skuCol}], Price[Col ${priceCol}]`);
         break;
       }
     }
 
-    // Determine target columns (fallback if no collection headers found)
-    let targets = collections;
-    if (targets.length === 0) {
-      // Look for the first column with numeric data after the SKU column
-      for (let c = skuCol + 1; c < (data[startRow]?.length || 20); c++) {
-        const val = data[startRow]?.[c];
-        if (typeof val === 'number' || (typeof val === 'string' && /^\$?[0-9,.]+$/.test(val))) {
-          targets = [{ name: 'Standard', colIndex: c }];
-          break;
-        }
+    // Fallback detection if no headers matched
+    if (skuCol === -1) skuCol = 0; 
+    if (priceCol === -1) {
+      // Find first numeric column after SKU
+      const sampleRow = rows[Math.min(rows.length - 1, (headerRowIndex === -1 ? 0 : headerRowIndex) + 5)];
+      for (let j = skuCol + 1; j < (sampleRow?.length || 0); j++) {
+        if (typeof sampleRow[j] === 'number') { priceCol = j; break; }
       }
     }
 
-    for (let r = startRow; r < data.length; r++) {
-      const row = data[r];
+    if (priceCol === -1) priceCol = skuCol + 1;
+
+    // STEP 2 & 6 - NORMALIZE AND PREPARE OBJECTS
+    const startRow = (headerRowIndex === -1 ? 0 : headerRowIndex + 1);
+    for (let r = startRow; r < rows.length; r++) {
+      const row = rows[r];
       if (!row || !row[skuCol]) continue;
 
       const rawSku = String(row[skuCol]).trim();
       const cleanSku = normalizeSku(rawSku);
-
+      
       if (cleanSku.length < 2) continue;
 
-      targets.forEach(coll => {
-        const rawPrice = row[coll.colIndex];
-        let price = 0;
-        if (typeof rawPrice === 'number') price = rawPrice;
-        else if (typeof rawPrice === 'string') price = parseFloat(rawPrice.replace(/[^0-9.]/g, ''));
+      const rawPrice = row[priceCol];
+      let price = 0;
+      if (typeof rawPrice === 'number') {
+        price = rawPrice;
+      } else if (typeof rawPrice === 'string') {
+        price = parseFloat(rawPrice.replace(/[^0-9.]/g, ''));
+      }
 
-        if (price > 0) {
-          specs.push({
-            manufacturer_id: manufacturerId,
-            collection_name: coll.name,
-            door_style: doorStyles[coll.colIndex] || 'Standard',
-            sku: cleanSku,
-            price: price,
-            raw_source_file_id: fileId,
-            created_at: new Date().toISOString()
-          });
-        }
-      });
+      const doorStyle = doorStyleCol !== -1 ? String(row[doorStyleCol] || '').trim() : 'Standard';
+
+      if (price > 0) {
+        specs.push({
+          manufacturer_id: manufacturerId,
+          collection_name: sheetName, // Use Sheet Name as Collection as per Step 1 logic
+          door_style: doorStyle,
+          sku: cleanSku,
+          price: price,
+          raw_source_file_id: fileId,
+          created_at: new Date().toISOString()
+        });
+      }
     }
   });
 
-  console.log(`[Parser] Successfully extracted ${specs.length} records from all sheets.`);
+  console.log(`[Parser] Extracted ${specs.length} specifications across all sheets.`);
   return specs;
 }
