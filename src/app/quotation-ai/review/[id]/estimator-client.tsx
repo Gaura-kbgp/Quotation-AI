@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -31,7 +31,11 @@ import {
   ArrowRight,
   DollarSign,
   Info,
-  Settings2
+  Settings2,
+  ArrowLeft,
+  ChevronRight,
+  FileSearch,
+  BookOpen
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { updateProjectAction, generateBOMAction } from '../../actions';
@@ -60,18 +64,18 @@ interface EstimatorClientProps {
   manufacturers: any[];
 }
 
+type Step = 'review' | 'manufacturer' | 'specifications';
+
 export function EstimatorClient({ project, manufacturers }: EstimatorClientProps) {
   const router = useRouter();
   const { toast } = useToast();
   const initialSyncRef = useRef(false);
   
-  const [step, setStep] = useState<'review' | 'manufacturer'>('review');
+  const [step, setStep] = useState<Step>('review');
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedManId, setSelectedManId] = useState<string>(project.manufacturer_id || '');
   
-  // Track DB-fetched configs for non-hardcoded manufacturers
   const [dbConfigs, setDbConfigs] = useState<Record<string, { collections: string[], styles: string[] }>>({});
-  
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
@@ -100,11 +104,10 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       }));
     } catch (err: any) {
       console.error('[Estimator] Config Fetch Error:', err);
-      toast({ variant: 'destructive', title: 'Data Error', description: 'Failed to load manufacturer configuration.' });
     } finally {
       setIsLoadingConfig(false);
     }
-  }, [manufacturers, toast]);
+  }, [manufacturers]);
 
   useEffect(() => {
     if (initialSyncRef.current) return;
@@ -160,7 +163,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     const nr = [...rooms];
     if (field === 'collection') {
       nr[roomIdx].collection = value;
-      nr[roomIdx].door_style = ''; // Reset style when collection changes
+      nr[roomIdx].door_style = '';
     } else {
       nr[roomIdx].door_style = value;
     }
@@ -210,7 +213,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       toast({ 
         variant: 'destructive', 
         title: 'Missing Specifications', 
-        description: 'Please select a collection and door style for every room before generating the quote.' 
+        description: 'Please select a collection and door style for every room.' 
       });
       return;
     }
@@ -244,7 +247,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     return dbConfigs[selectedManId]?.styles || [];
   };
 
-  const totalSkus = rooms.reduce((acc, r) => {
+  const totalUnits = rooms.reduce((acc, r) => {
     let count = 0;
     Object.values(r.sections).forEach((s: any) => {
       s.forEach((c: any) => {
@@ -254,88 +257,186 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     return acc + count;
   }, 0);
 
+  // --- RENDERING LOGIC ---
+
   if (step === 'manufacturer') {
     return (
-      <div className="max-w-xl mx-auto space-y-12 py-12 animate-in slide-in-from-bottom-4">
+      <div className="max-w-3xl mx-auto space-y-12 py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="text-center space-y-3">
-           <h2 className="text-3xl font-black text-slate-900">Manufacturer Selection</h2>
-           <p className="text-slate-500">Apply pricing matrix to current takeoff.</p>
+           <h2 className="text-4xl font-black text-slate-900 tracking-tight">Select Manufacturer</h2>
+           <p className="text-slate-500 text-lg">Choose the cabinet brand to apply pricing to your takeoff.</p>
         </div>
-        <div className="grid grid-cols-1 gap-4">
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
            {manufacturers.map(m => (
              <button 
                key={m.id}
-               onClick={() => { setSelectedManId(m.id); fetchManConfig(m.id); setStep('review'); }}
+               onClick={() => { setSelectedManId(m.id); fetchManConfig(m.id); }}
                className={cn(
-                 "p-6 rounded-2xl border-2 text-left flex items-center justify-between transition-all",
-                 selectedManId === m.id ? "border-sky-500 bg-sky-50" : "border-slate-100 hover:bg-slate-50"
+                 "p-8 rounded-[2rem] border-2 text-left flex items-center justify-between transition-all group",
+                 selectedManId === m.id ? "border-sky-500 bg-sky-50" : "border-slate-100 hover:bg-slate-50 hover:border-slate-200"
                )}
              >
                 <div className="flex items-center gap-5">
-                   <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center transition-colors", selectedManId === m.id ? "bg-sky-600 text-white" : "bg-white text-slate-400")}>
-                      <Factory className="w-6 h-6" />
+                   <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110", selectedManId === m.id ? "bg-sky-600 text-white" : "bg-white text-slate-300")}>
+                      <Factory className="w-7 h-7" />
                    </div>
-                   <span className="font-bold text-xl text-slate-900">{m.name}</span>
+                   <div>
+                     <span className="font-black text-xl text-slate-900 block">{m.name}</span>
+                     <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Active Matrix v1.0</span>
+                   </div>
                 </div>
-                {selectedManId === m.id && <CheckCircle2 className="w-6 h-6 text-sky-600" />}
+                {selectedManId === m.id && <CheckCircle2 className="w-8 h-8 text-sky-600 animate-in zoom-in" />}
              </button>
            ))}
         </div>
-        <div className="flex gap-4 pt-4">
-           <Button variant="outline" className="w-full h-14 rounded-xl font-bold" onClick={() => setStep('review')}>Back to Review</Button>
+
+        <div className="flex flex-col sm:flex-row gap-4 pt-10">
+           <Button variant="ghost" className="h-16 px-8 rounded-2xl font-bold text-slate-500" onClick={() => setStep('review')}>
+              <ArrowLeft className="w-5 h-5 mr-2" /> Back to Review
+           </Button>
+           <Button 
+              className="flex-1 h-16 rounded-2xl gradient-button text-lg" 
+              disabled={!selectedManId}
+              onClick={() => setStep('specifications')}
+            >
+              Continue to Specifications
+              <ChevronRight className="w-5 h-5 ml-2" />
+           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'specifications') {
+    return (
+      <div className="max-w-5xl mx-auto space-y-12 py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="text-center space-y-3">
+           <h2 className="text-4xl font-black text-slate-900 tracking-tight">Configure Specifications</h2>
+           <p className="text-slate-500 text-lg">Select the collection and door style for each area of the project.</p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6">
+          {rooms.map((room, rIdx) => (
+            <Card key={rIdx} className="rounded-[2rem] border-slate-100 shadow-sm overflow-hidden group hover:shadow-md transition-all">
+              <div className="p-8 flex flex-col md:flex-row items-center justify-between gap-8">
+                <div className="flex items-center gap-5">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-2xl">
+                    {room.room_name.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900">{room.room_name}</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Configuration Required</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                  <div className="w-full sm:w-64 space-y-1.5">
+                    <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Collection</label>
+                    <Select 
+                      value={room.collection || ''} 
+                      onValueChange={(v) => handleUpdateRoomStyle(rIdx, 'collection', v)}
+                    >
+                      <SelectTrigger className="h-12 rounded-xl bg-slate-50 border-none font-bold text-slate-900 shadow-sm focus:ring-sky-500">
+                        <SelectValue placeholder="Select Collection" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white rounded-xl">
+                        {getCollectionsForRoom().map(c => (
+                          <SelectItem key={c} value={c} className="font-bold">{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="w-full sm:w-64 space-y-1.5">
+                    <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Door Style</label>
+                    <Select 
+                      value={room.door_style || ''} 
+                      onValueChange={(v) => handleUpdateRoomStyle(rIdx, 'door_style', v)}
+                      disabled={!room.collection}
+                    >
+                      <SelectTrigger className="h-12 rounded-xl bg-slate-50 border-none font-bold text-slate-900 shadow-sm focus:ring-sky-500 disabled:opacity-30">
+                        <SelectValue placeholder="Select Style" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white rounded-xl">
+                        {getStylesForRoom(room).map(s => (
+                          <SelectItem key={s} value={s} className="font-bold">{s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4 pt-10">
+           <Button variant="ghost" className="h-16 px-8 rounded-2xl font-bold text-slate-500" onClick={() => setStep('manufacturer')}>
+              <ArrowLeft className="w-5 h-5 mr-2" /> Back to Manufacturer
+           </Button>
+           <Button 
+              className="flex-1 h-16 rounded-2xl gradient-button text-lg group" 
+              disabled={isProcessing || rooms.some(r => !r.collection || !r.door_style)}
+              onClick={handleGenerateQuote}
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-6 h-6 animate-spin mr-3" />
+                  Generating Final BOM...
+                </>
+              ) : (
+                <>
+                  Generate Final Quote
+                  <ChevronRight className="w-6 h-6 ml-2 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+           </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-24 animate-in fade-in duration-500">
-      {/* Project Header Summary */}
-      <Card className="rounded-[2rem] border-slate-100 shadow-xl bg-white overflow-hidden">
-        <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-10">
+    <div className="max-w-7xl mx-auto space-y-8 pb-32 animate-in fade-in duration-700">
+      {/* Step Header Summary */}
+      <Card className="rounded-[2.5rem] border-slate-100 shadow-xl bg-white overflow-hidden p-8">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-10">
+          <div className="flex items-center gap-16">
             <div className="flex flex-col">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Rooms</span>
-              <span className="text-3xl font-black text-slate-900">{rooms.length}</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                <Layout className="w-3 h-3 text-sky-500" />
+                Project Areas
+              </span>
+              <span className="text-4xl font-black text-slate-900 leading-none">{rooms.length}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Active Units</span>
-              <span className="text-3xl font-black text-sky-600">{totalSkus}</span>
-            </div>
-            <div className="hidden lg:flex flex-col pl-10 border-l border-slate-100">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Selected Manufacturer</span>
-              <div className="flex items-center gap-2">
-                <Factory className="w-4 h-4 text-sky-500" />
-                <span className="text-lg font-bold text-slate-900">{selectedManufacturer?.name || 'Unspecified'}</span>
-              </div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                <Package className="w-3 h-3 text-sky-500" />
+                Total Units
+              </span>
+              <span className="text-4xl font-black text-sky-600 leading-none">{totalUnits}</span>
             </div>
           </div>
           
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <Button variant="outline" onClick={() => setStep('manufacturer')} className="flex-1 md:flex-none h-14 px-6 rounded-xl border-slate-200">
-              <Settings2 className="w-4 h-4 mr-2" />
-              Change Manufacturer
-            </Button>
-            <Button 
-              onClick={handleGenerateQuote} 
-              disabled={isProcessing || !selectedManId}
-              className="flex-1 md:flex-none h-14 px-10 gradient-button rounded-xl text-md group"
-            >
-              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <DollarSign className="w-4 h-4 mr-2" />}
-              Generate Final Quote
-            </Button>
-          </div>
+          <Button 
+            onClick={() => setStep('manufacturer')} 
+            className="w-full md:w-auto h-16 px-12 gradient-button rounded-2xl text-lg group"
+          >
+            Confirm & Select Manufacturer
+            <ChevronRight className="w-6 h-6 ml-2 group-hover:translate-x-1 transition-transform" />
+          </Button>
         </div>
       </Card>
 
-      {/* Areas & Table Schedules */}
-      <div className="space-y-12">
+      {/* Takeoff Review Sections */}
+      <div className="space-y-16 mt-12">
         {rooms.map((room, rIdx) => (
           <div key={rIdx} className="space-y-6">
-             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-2">
-                <div className="flex items-center gap-4">
-                   <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white">
-                      <Package className="w-5 h-5" />
+             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-4">
+                <div className="flex items-center gap-5">
+                   <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-lg shadow-slate-200">
+                      <FileSearch className="w-6 h-6" />
                    </div>
                    <Input 
                       value={room.room_name} 
@@ -344,96 +445,65 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                         nr[rIdx].room_name = e.target.value;
                         setRooms(nr);
                       }}
-                      className="text-xl font-bold bg-transparent border-none focus-visible:ring-0 p-0 w-64 text-slate-900"
+                      className="text-2xl font-black bg-transparent border-none focus-visible:ring-0 p-0 w-80 text-slate-900"
                    />
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
-                  {selectedManId && (
-                    <div className="flex items-center gap-3 bg-slate-50 p-1.5 pr-4 rounded-xl border border-slate-100">
-                      <Select 
-                        value={room.collection || ''} 
-                        onValueChange={(v) => handleUpdateRoomStyle(rIdx, 'collection', v)}
-                      >
-                        <SelectTrigger className="w-[180px] h-10 rounded-lg border-none bg-white font-bold text-xs shadow-sm">
-                          <SelectValue placeholder="Collection" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white rounded-xl">
-                          {getCollectionsForRoom().map(c => (
-                            <SelectItem key={c} value={c} className="font-bold">{c}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      <Select 
-                        value={room.door_style || ''} 
-                        onValueChange={(v) => handleUpdateRoomStyle(rIdx, 'door_style', v)}
-                        disabled={!room.collection}
-                      >
-                        <SelectTrigger className="w-[180px] h-10 rounded-lg border-none bg-white font-bold text-xs shadow-sm">
-                          <SelectValue placeholder="Door Style" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white rounded-xl">
-                          {getStylesForRoom(room).map(s => (
-                            <SelectItem key={s} value={s} className="font-bold">{s}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  
-                  <div className="flex items-center gap-2">
-                    <Button onClick={() => handleAddRoom()} variant="ghost" size="sm" className="text-sky-600 hover:bg-sky-50">
-                      <Plus className="w-4 h-4 mr-2" /> Add Area
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(rIdx)} className="text-slate-300 hover:text-red-500 h-9 w-9">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <Button onClick={() => handleAddRoom()} variant="ghost" size="sm" className="h-10 rounded-xl text-sky-600 font-bold hover:bg-sky-50">
+                    <Plus className="w-4 h-4 mr-2" /> Add Area
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(rIdx)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 h-10 w-10 rounded-xl">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
              </div>
 
              <div className="grid grid-cols-1 gap-8">
                 {Object.entries(room.sections)
-                  .filter(([_, items]) => (items as Cabinet[]).length > 0)
                   .map(([sectionKey, items]) => {
                     const cabinets = items as Cabinet[];
+                    // Conditionally render only if there are items (as requested)
+                    if (cabinets.length === 0) return null;
+
                     return (
-                      <Card key={sectionKey} className="rounded-2xl border-slate-100 overflow-hidden shadow-sm">
-                        <div className="bg-slate-50/50 px-6 py-3 border-b border-slate-100 flex items-center justify-between">
-                           <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{sectionKey}</span>
-                           <span className="text-[10px] font-bold text-slate-400">{cabinets.length} units</span>
+                      <Card key={sectionKey} className="rounded-[2rem] border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-all">
+                        <div className="bg-slate-50/50 px-8 py-4 border-b border-slate-100 flex items-center justify-between">
+                           <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">{sectionKey}</span>
+                           <span className="text-[10px] font-black text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-100">
+                              {cabinets.length} {cabinets.length === 1 ? 'UNIT' : 'UNITS'}
+                           </span>
                         </div>
                         <Table>
                           <TableHeader>
                             <TableRow className="hover:bg-transparent border-slate-100">
-                              <TableHead className="w-[160px] text-[10px] font-bold uppercase tracking-widest text-slate-400 pl-6">Quantity</TableHead>
-                              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Cabinet SKU / Code</TableHead>
-                              <TableHead className="w-[60px] text-right pr-6"></TableHead>
+                              <TableHead className="w-[180px] text-[10px] font-black uppercase tracking-widest text-slate-400 pl-8">Quantity</TableHead>
+                              <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cabinet SKU / Code</TableHead>
+                              <TableHead className="w-[80px] text-right pr-8"></TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {cabinets.map((cab: Cabinet, cIdx: number) => (
-                              <TableRow key={cIdx} className="border-slate-50 group">
-                                <TableCell className="pl-6">
-                                  <div className="flex items-center gap-2">
+                              <TableRow key={cIdx} className="border-slate-50 group transition-colors hover:bg-slate-50/30">
+                                <TableCell className="pl-8">
+                                  <div className="flex items-center gap-3">
                                     <button 
                                       onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: Math.max(1, (Number(cab.qty) || 1) - 1) })}
-                                      className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600"
+                                      className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
                                     >
-                                      <Minus className="w-3.5 h-3.5" />
+                                      <Minus className="w-4 h-4" />
                                     </button>
                                     <Input 
                                       type="number" 
                                       value={cab.qty || 1} 
                                       onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: parseInt(e.target.value) || 1 })}
-                                      className="w-14 h-8 text-center bg-white border border-slate-200 rounded-lg font-bold text-slate-900"
+                                      className="w-16 h-10 text-center bg-white border border-slate-200 rounded-xl font-black text-slate-900 focus-visible:ring-sky-500"
                                     />
                                     <button 
                                       onClick={() => handleUpdateCabinet(rIdx, sectionKey, cIdx, { qty: (Number(cab.qty) || 1) + 1 })}
-                                      className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600"
+                                      className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-colors"
                                     >
-                                      <Plus className="w-3.5 h-3.5" />
+                                      <Plus className="w-4 h-4" />
                                     </button>
                                   </div>
                                 </TableCell>
@@ -441,14 +511,14 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                   <Input 
                                     value={cab.code} 
                                     onChange={(e) => handleUpdateCabinet(rIdx, sectionKey, cIdx, { code: e.target.value.toUpperCase() })}
-                                    className="h-10 font-bold text-lg text-sky-600 bg-transparent border-none focus-visible:ring-1 focus-visible:ring-sky-100"
-                                    placeholder="SKU"
+                                    className="h-12 font-black text-xl text-sky-600 bg-transparent border-none focus-visible:ring-1 focus-visible:ring-sky-100 rounded-xl"
+                                    placeholder="ENTER SKU"
                                   />
                                 </TableCell>
-                                <TableCell className="text-right pr-6">
+                                <TableCell className="text-right pr-8">
                                   <button 
                                     onClick={() => handleRemoveCabinet(rIdx, sectionKey, cIdx)}
-                                    className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-opacity"
+                                    className="opacity-0 group-hover:opacity-100 w-10 h-10 rounded-xl bg-red-50 text-red-400 hover:text-red-600 hover:bg-red-100 flex items-center justify-center transition-all"
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -456,13 +526,13 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                               </TableRow>
                             ))}
                             <TableRow className="hover:bg-transparent border-none">
-                              <TableCell colSpan={3} className="p-4 pl-6">
+                              <TableCell colSpan={3} className="p-6 pl-8">
                                 <button 
                                   onClick={() => handleAddRow(rIdx, sectionKey)}
-                                  className="text-[10px] font-bold text-sky-600 uppercase tracking-widest flex items-center gap-2 hover:text-sky-700"
+                                  className="text-[10px] font-black text-sky-600 uppercase tracking-[0.2em] flex items-center gap-2 hover:text-sky-700 hover:gap-3 transition-all"
                                 >
-                                  <Plus className="w-3.5 h-3.5" />
-                                  Add Line Item
+                                  <Plus className="w-4 h-4" />
+                                  Add New Line Item
                                 </button>
                               </TableCell>
                             </TableRow>
@@ -474,6 +544,13 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
              </div>
           </div>
         ))}
+
+        <div className="flex justify-center pt-10">
+           <Button onClick={() => handleAddRoom()} variant="outline" className="h-16 px-10 rounded-2xl border-dashed border-2 border-slate-200 text-slate-500 hover:border-sky-500 hover:text-sky-600 hover:bg-sky-50/50 transition-all font-bold">
+              <Plus className="w-5 h-5 mr-3" />
+              Add Project Area
+           </Button>
+        </div>
       </div>
     </div>
   );
