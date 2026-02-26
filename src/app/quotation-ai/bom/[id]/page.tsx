@@ -1,4 +1,3 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,7 +36,8 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
   let error: string | null = null;
 
   try {
-    // Step 1: Fetch Project and BOM items separately to avoid brittle join errors
+    // Step 1: Fetch Project and BOM items separately to avoid schema relationship errors
+    // We select '*' only from quotation_projects to avoid triggering nested join logic
     const [pRes, bRes] = await Promise.all([
       supabase.from('quotation_projects').select('*').eq('id', id).single(),
       supabase.from('quotation_boms').select('*').eq('project_id', id).order('room')
@@ -49,20 +49,21 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
     project = pRes.data;
     bom = bRes.data || [];
 
-    // Step 2: Fetch manufacturer name if ID exists (more robust than nested select)
-    if (project.manufacturer_id) {
-      const { data: mData } = await supabase
+    // Step 2: Fetch manufacturer name manually if manufacturer_id exists
+    // This is the robust way to handle this without relying on DB foreign key relationship cache
+    if (project?.manufacturer_id) {
+      const { data: mData, error: mError } = await supabase
         .from('manufacturers')
         .select('name')
         .eq('id', project.manufacturer_id)
         .single();
       
-      if (mData) {
+      if (!mError && mData) {
         manufacturerName = mData.name;
       }
     }
   } catch (err: any) {
-    console.error('[BOM Page Error]:', err.message);
+    console.error('[BOM Page Diagnostic Error]:', err.message);
     error = err.message;
   }
 
