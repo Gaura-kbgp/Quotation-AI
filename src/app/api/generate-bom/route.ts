@@ -1,12 +1,11 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 import { normalizeSku } from '@/lib/utils';
 
 export const maxDuration = 60;
 
 /**
- * Precision Pricing Engine (v10.0).
- * Optimized for Multi-Tier Heuristic Matching with deep logging.
+ * Precision Pricing Engine (v11.0).
+ * Optimized for Multi-Tier Fallback Matching with style-agnostic recovery.
  */
 export async function POST(req: Request) {
   try {
@@ -31,7 +30,7 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // Load ALL Manufacturer Pricing
+    // Load ALL Manufacturer Pricing (Single Source of Truth)
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
@@ -41,7 +40,7 @@ export async function POST(req: Request) {
       return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
 
-    console.log(`[Pricing Engine] Total database records for manufacturer: ${allPricing?.length || 0}`);
+    console.log(`[Pricing Engine v11] Loaded ${allPricing?.length || 0} price book records.`);
 
     const bomItems: any[] = [];
     
@@ -59,7 +58,6 @@ export async function POST(req: Request) {
           
           let matchedRow = null;
           let precisionLevel = 'NOT_FOUND';
-          let matchedSku = '';
 
           // Filter pricing by normalized door style first
           const styleFilteredPricing = (allPricing || []).filter(p => {
@@ -67,13 +65,11 @@ export async function POST(req: Request) {
             return normalizeSku(p.door_style) === roomSelectedStyle;
           });
 
-          // LEVEL 1: EXACT MATCH (Style Specific)
+          // TIER 1: EXACT MATCH (Within Selected Style)
           matchedRow = styleFilteredPricing.find(p => normalizeSku(p.sku) === normTakeoff);
-          if (matchedRow) {
-            precisionLevel = 'EXACT';
-          } 
-          
-          // LEVEL 2: PARTIAL MATCH (Style Specific - Contains logic)
+          if (matchedRow) precisionLevel = 'EXACT';
+
+          // TIER 2: PARTIAL MATCH (Within Selected Style)
           if (!matchedRow) {
             matchedRow = styleFilteredPricing.find(p => {
               const pSku = normalizeSku(p.sku);
@@ -82,13 +78,15 @@ export async function POST(req: Request) {
             if (matchedRow) precisionLevel = 'PARTIAL';
           }
 
-          // LEVEL 3: STYLE-AGNOSTIC MATCH (Fallback - Ignore Style filter if no match found)
+          // TIER 3: EXACT MATCH (Style-Agnostic Fallback)
+          // Search the entire manufacturer database regardless of style selection
           if (!matchedRow) {
             matchedRow = (allPricing || []).find(p => normalizeSku(p.sku) === normTakeoff);
-            if (matchedRow) precisionLevel = 'FUZZY'; // Mark as fuzzy because style might differ
+            if (matchedRow) precisionLevel = 'FUZZY';
           }
 
-          // LEVEL 4: STYLE-AGNOSTIC PARTIAL (Absolute Last Resort)
+          // TIER 4: PARTIAL MATCH (Style-Agnostic Fallback)
+          // Search entire database for similar SKUs (Ultimate Recovery)
           if (!matchedRow) {
             matchedRow = (allPricing || []).find(p => {
               const pSku = normalizeSku(p.sku);
@@ -98,14 +96,13 @@ export async function POST(req: Request) {
           }
 
           if (matchedRow) {
-            matchedSku = matchedRow.sku;
             const price = Number(matchedRow.price) || 0;
-            console.log(`[Pricing Engine] MATCHED: ${rawTakeoff} -> ${matchedSku} (${precisionLevel}) Price: $${price} (Style: ${matchedRow.door_style})`);
+            console.log(`[Tier Match] ${rawTakeoff} -> ${matchedRow.sku} (${precisionLevel}) $${price}`);
             
             bomItems.push({
               project_id: projectId,
               sku: rawTakeoff,
-              matched_sku: matchedSku,
+              matched_sku: matchedRow.sku,
               qty: Number(cab.qty) || 1,
               unit_price: price,
               line_total: price * (Number(cab.qty) || 1),
@@ -117,7 +114,7 @@ export async function POST(req: Request) {
               created_at: new Date().toISOString()
             });
           } else {
-            console.log(`[Pricing Engine] NOT FOUND: ${rawTakeoff} (Room Style: ${roomSelectedStyle})`);
+            console.log(`[Tier Match] FAILED: ${rawTakeoff} (Normalized: ${normTakeoff})`);
             bomItems.push({
               project_id: projectId,
               sku: rawTakeoff,

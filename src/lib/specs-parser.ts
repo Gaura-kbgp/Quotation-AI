@@ -1,15 +1,9 @@
-
 import * as XLSX from 'xlsx';
 import { normalizeSku } from './utils';
 
 /**
- * Adaptive Grid-Matrix Parser (v12.0)
+ * Adaptive Grid-Matrix Parser (v11.0)
  * Specifically designed for cabinetry price books with repeating header blocks.
- * Logic:
- * 1. Scans rows sequentially.
- * 2. If a row contains "SKU", "MODEL", or "ITEM", it treats it as a NEW header anchor.
- * 3. Updates the active Door Style and Collection mapping based on the rows immediately above the new anchor.
- * 4. Processes data rows until the next anchor or end of sheet.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -29,13 +23,14 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       if (!row || !Array.isArray(row)) return -1;
       return row.findIndex(cell => {
         const val = String(cell || "").toUpperCase().trim();
-        return val === "SKU" || val === "MODEL" || val === "ITEM" || val === "PART #";
+        return val === "SKU" || val === "MODEL" || val === "ITEM" || val === "PART #" || val === "CODE";
       });
     };
 
     const isTitleRow = (str: string) => {
       const s = String(str || "").toUpperCase();
-      return s.includes("PRICING") || s.includes("CATALOG") || s.includes("EFFECTIVE") || s.includes("GUIDE") || s.length > 80;
+      // Only filter out very long title rows, keep actual names
+      return s.length > 120;
     };
 
     for (let r = 0; r < rawData.length; r++) {
@@ -45,22 +40,21 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       // If we find a new header anchor, update our mapping context
       if (anchorIdx !== -1) {
         currentSkuColIdx = anchorIdx;
+        // Search Row-1 and Row-2 relative to where SKU was found
         currentDoorStyleRow = r > 0 ? rawData[r - 1] : [];
         currentCollectionRow = r > 1 ? rawData[r - 2] : [];
-        console.log(`[Parser] Found header anchor at sheet "${sheetName}" row ${r + 1}`);
-        continue; // Skip the header row itself
+        console.log(`[Parser] Found SKU anchor at Row ${r + 1}, searching Row ${r} for Styles and Row ${r-1} for Collections.`);
+        continue;
       }
 
-      // If no anchor found yet, skip
       if (currentSkuColIdx === -1) continue;
 
       const rawSku = row[currentSkuColIdx];
       const skuStr = String(rawSku || "").trim();
 
-      // Skip empty SKU rows or repeated headers
-      if (!skuStr || skuStr.toUpperCase() === "SKU" || skuStr.length < 2) continue;
+      if (!skuStr || isHeaderAnchor(row) !== -1 || skuStr.length < 1) continue;
 
-      // Process columns to the right of the SKU
+      // Scan all columns to the right of the SKU
       for (let c = currentSkuColIdx + 1; c < row.length; c++) {
         // Find Door Style (Fill-Forward)
         let doorStyle = "";
@@ -104,6 +98,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   }
 
-  console.log(`[Specs Parser] Success: Extracted ${pricing.length} precise records.`);
+  console.log(`[Specs Parser] Success: Extracted ${pricing.length} pricing records.`);
   return pricing;
 }
