@@ -1,6 +1,6 @@
 
 import { createServerSupabase } from '@/lib/supabase-server';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
   Table, 
@@ -11,26 +11,18 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { 
-  Printer, 
-  Download, 
-  ArrowLeft, 
-  DollarSign, 
-  Layout, 
-  ShieldCheck, 
   AlertCircle,
-  HelpCircle,
-  FileText,
-  BadgePercent,
+  Layout, 
   Factory,
   SearchCode,
   Calendar,
-  User,
   Hash
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { BomHeaderClient } from './bom-header-client';
 
 export default async function BomPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -93,28 +85,12 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
 
   return (
     <main className="min-h-screen bg-white text-slate-900 pb-32">
-      {/* Sticky Top Bar for Navigation Actions */}
-      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-100 px-8 h-20 flex items-center justify-between print:hidden">
-         <div className="flex items-center gap-6">
-            <Link href={`/quotation-ai/review/${id}`}>
-              <Button variant="ghost" size="icon" className="rounded-full h-12 w-12"><ArrowLeft className="w-6 h-6" /></Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">{project.project_name}</h1>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-2">
-                Quotation Preview • {manufacturerName}
-              </p>
-            </div>
-         </div>
-         <div className="flex items-center gap-3">
-            <Button variant="outline" className="rounded-xl h-11 px-5 font-semibold text-slate-600" onClick={() => window.print()}>
-              <Printer className="w-4 h-4 mr-2" /> Print PDF
-            </Button>
-            <Button className="gradient-button rounded-xl px-8 h-11 shadow-sky-500/10">
-              <Download className="w-4 h-4 mr-2" /> Export XLSX
-            </Button>
-         </div>
-      </header>
+      {/* Client-side Header for Print Logic */}
+      <BomHeaderClient 
+        id={id} 
+        projectName={project.project_name || 'Untitled Project'} 
+        manufacturerName={manufacturerName} 
+      />
 
       <div className="max-w-5xl mx-auto px-8 mt-16 space-y-16">
         {/* Invoice Header Information */}
