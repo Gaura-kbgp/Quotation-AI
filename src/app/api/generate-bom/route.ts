@@ -1,16 +1,14 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
-import { normalizeSku, calculateSimilarity, detectCategory } from '@/lib/utils';
+import { calculateSimilarity, detectCategory, normalizeSku } from '@/lib/utils';
 
 export const maxDuration = 120;
 
 /**
- * Enterprise BOM Generation Engine (v20.0)
+ * Enterprise BOM Generation Engine (v21.0)
  * Features:
- * - Category-First Search Priority
- * - Tiered Confidence Scoring
- * - Closest Match Debugging (Top 3)
- * - Dimension-Aware Confidence Boost
+ * - Style-Agnostic Global Fallback
+ * - 4-Tier Search Pipeline
+ * - Multi-Sheet Cross-Reference
  */
 export async function POST(req: Request) {
   try {
@@ -35,7 +33,7 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // Load ALL Manufacturer Pricing
+    // Load ALL Manufacturer Pricing records
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
@@ -56,7 +54,7 @@ export async function POST(req: Request) {
         for (const cab of cabinetItems) {
           if (!cab.code) continue;
 
-          const rawTakeoff = cab.code;
+          const rawTakeoff = String(cab.code).toUpperCase().trim();
           const targetCategory = detectCategory(rawTakeoff);
           
           let bestMatch: any = null;
@@ -66,38 +64,42 @@ export async function POST(req: Request) {
           // Debugging candidates
           const candidates: any[] = [];
 
-          // 1. Filter by Style for Category-First Search
+          // 1. PHASE ONE: SEARCH IN SELECTED STYLE (The target price category)
           const styleSpecificRecords = (allPricing || []).filter(p => 
-            String(p.door_style).toUpperCase().trim() === roomSelectedStyle
+            String(p.door_style || "").toUpperCase().trim() === roomSelectedStyle
           );
 
-          // 2. SEARCH PIPELINE (Category First)
-          const searchSet = styleSpecificRecords.length > 0 ? styleSpecificRecords : (allPricing || []);
-
-          for (const p of searchSet) {
-            const currentScore = calculateSimilarity(rawTakeoff, p.sku);
-            
-            // Tier 1: EXACT
-            if (currentScore >= 0.95) {
-              bestScore = 1.0;
-              bestMatch = p;
-              precisionLevel = 'EXACT';
-              break; 
+          // If we have style-specific records, search them first
+          if (styleSpecificRecords.length > 0) {
+            for (const p of styleSpecificRecords) {
+              const score = calculateSimilarity(rawTakeoff, p.sku);
+              if (score > bestScore) {
+                bestScore = score;
+                bestMatch = p;
+              }
+              if (score >= 1.0) break; 
             }
+          }
 
-            if (currentScore > bestScore) {
-              bestScore = currentScore;
-              bestMatch = p;
+          // 2. PHASE TWO: GLOBAL FALLBACK (Search all sheets and styles for the SKU)
+          // If match is still poor (< 0.85), search the entire database for this manufacturer
+          if (bestScore < 0.85) {
+            for (const p of (allPricing || [])) {
+              const score = calculateSimilarity(rawTakeoff, p.sku);
+              // Slight penalty for global matches to favor style-specific ones if possible
+              const adjustedScore = score * 0.98; 
+              if (adjustedScore > bestScore) {
+                bestScore = adjustedScore;
+                bestMatch = p;
+              }
+              if (score >= 1.0) break;
             }
-
-            // Keep track for top 3 fallback
-            candidates.push({ record: p, score: currentScore });
           }
 
           // Tier Fallback logic
           if (bestScore >= 0.90) {
             precisionLevel = 'EXACT';
-          } else if (bestScore >= 0.80) {
+          } else if (bestScore >= 0.75) {
             precisionLevel = 'FUZZY';
           } else {
             precisionLevel = 'NOT_FOUND';
@@ -116,16 +118,17 @@ export async function POST(req: Request) {
               room: room.room_name,
               collection: room.collection || bestMatch.collection_name,
               door_style: room.door_style || bestMatch.door_style,
-              price_source: 'Manufacturer Price Guide',
+              price_source: 'Manufacturer Guide',
               precision_level: precisionLevel,
               created_at: new Date().toISOString()
             });
           } else {
-            // Return NOT FOUND with potential matches in debugging info
-            const top3 = candidates
+            // Collect top 3 candidates for the "Potential" UI helper
+            const top3 = (allPricing || [])
+              .map(p => ({ p, score: calculateSimilarity(rawTakeoff, p.sku) }))
               .sort((a, b) => b.score - a.score)
               .slice(0, 3)
-              .map(c => `${c.record.sku} (${Math.round(c.score * 100)}%)`)
+              .map(c => `${c.p.sku} (${Math.round(c.score * 100)}%)`)
               .join(', ');
 
             bomItems.push({
