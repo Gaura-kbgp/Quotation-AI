@@ -1,14 +1,18 @@
 import { createServerSupabase } from '@/lib/supabase-server';
-import { calculateSimilarity, detectCategory, normalizeSku } from '@/lib/utils';
+import { normalizeSku, extractBaseModel, getLevenshteinDistance, calculateSimilarity } from '@/lib/utils';
 
 export const maxDuration = 120;
 
 /**
- * Enterprise BOM Generation Engine (v21.0)
- * Features:
- * - Style-Agnostic Global Fallback
- * - 4-Tier Search Pipeline
- * - Multi-Sheet Cross-Reference
+ * ENTERPRISE PRICING ENGINE (v21.0)
+ * Implements 8-stage matching pipeline:
+ * 1. Strict Normalization
+ * 2. Multi-Sheet Dataset Merging
+ * 3. Specification Filtering (Mandatory)
+ * 4. 4-Tier Priority (Exact -> Contains -> Similar -> Structure)
+ * 5. Intelligent Fallbacks (Global Search)
+ * 6. $0 Protection
+ * 7. Candidate Suggestions
  */
 export async function POST(req: Request) {
   try {
@@ -21,32 +25,34 @@ export async function POST(req: Request) {
 
     const supabase = createServerSupabase();
 
-    const { data: project, error: pError } = await supabase
-      .from('quotation_projects')
-      .select('*')
-      .eq('id', projectId)
-      .single();
+    // 1. Fetch Project and Manufacturers to ensure active status
+    const [pRes, mRes] = await Promise.all([
+      supabase.from('quotation_projects').select('*').eq('id', projectId).single(),
+      supabase.from('manufacturers').select('*').eq('id', manufacturerId).single()
+    ]);
 
-    if (pError || !project) {
-      return Response.json({ success: false, error: 'Project record retrieval failed.' }, { status: 404 });
-    }
+    if (pRes.error || !pRes.data) throw new Error('Project retrieval failed.');
+    if (mRes.error || !mRes.data) throw new Error('Manufacturer pricing sheet not found or inactive.');
 
+    const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // Load ALL Manufacturer Pricing records
+    // 2. Load ALL sheets for this manufacturer and merge into one dataset
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
       .eq('manufacturer_id', manufacturerId);
 
-    if (sError) {
-      return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
-    }
+    if (sError) throw new Error(`Database error: ${sError.message}`);
+    if (!allPricing || allPricing.length === 0) throw new Error('No pricing records found for this manufacturer.');
+
+    console.log(`[Enterprise Engine] Loaded ${allPricing.length} pricing records from all sheets.`);
 
     const bomItems: any[] = [];
     
     for (const room of rooms) {
-      const roomSelectedStyle = String(room.door_style || "").toUpperCase().trim();
+      const selectedCollection = normalizeSku(room.collection || "");
+      const selectedStyle = normalizeSku(room.door_style || "");
       const sections = room.sections || {};
 
       for (const [sectionName, items] of Object.entries(sections)) {
@@ -54,78 +60,50 @@ export async function POST(req: Request) {
         for (const cab of cabinetItems) {
           if (!cab.code) continue;
 
-          const rawTakeoff = String(cab.code).toUpperCase().trim();
-          const targetCategory = detectCategory(rawTakeoff);
+          const rawInput = String(cab.code).toUpperCase().trim();
+          const normalizedInput = normalizeSku(rawInput);
+          const baseInput = extractBaseModel(normalizedInput);
           
-          let bestMatch: any = null;
-          let bestScore = -1;
-          let precisionLevel = 'NOT_FOUND';
-          
-          // Debugging candidates
-          const candidates: any[] = [];
+          let result: { match: any, type: string, confidence: number } | null = null;
 
-          // 1. PHASE ONE: SEARCH IN SELECTED STYLE (The target price category)
-          const styleSpecificRecords = (allPricing || []).filter(p => 
-            String(p.door_style || "").toUpperCase().trim() === roomSelectedStyle
-          );
+          // 3. SPECIFICATION FILTER (MANDATORY PHASE)
+          // Search only in rows matching the selected style/collection
+          const styleFiltered = allPricing.filter(p => {
+            const pColl = normalizeSku(p.collection_name);
+            const pStyle = normalizeSku(p.door_style);
+            return pColl === selectedCollection && pStyle === selectedStyle;
+          });
 
-          // If we have style-specific records, search them first
-          if (styleSpecificRecords.length > 0) {
-            for (const p of styleSpecificRecords) {
-              const score = calculateSimilarity(rawTakeoff, p.sku);
-              if (score > bestScore) {
-                bestScore = score;
-                bestMatch = p;
-              }
-              if (score >= 1.0) break; 
-            }
+          // 4. MATCHING PRIORITY (PIPELINE)
+          result = runMatchingPipeline(normalizedInput, baseInput, styleFiltered);
+
+          // 5. INTELLIGENT FALLBACK (GLOBAL PHASE)
+          // If not found in specific style, search entire manufacturer database (Accessories, Global sheets)
+          if (!result) {
+            console.log(`[Enterprise Engine] Falling back to global search for ${normalizedInput}`);
+            result = runMatchingPipeline(normalizedInput, baseInput, allPricing);
           }
 
-          // 2. PHASE TWO: GLOBAL FALLBACK (Search all sheets and styles for the SKU)
-          // If match is still poor (< 0.85), search the entire database for this manufacturer
-          if (bestScore < 0.85) {
-            for (const p of (allPricing || [])) {
-              const score = calculateSimilarity(rawTakeoff, p.sku);
-              // Slight penalty for global matches to favor style-specific ones if possible
-              const adjustedScore = score * 0.98; 
-              if (adjustedScore > bestScore) {
-                bestScore = adjustedScore;
-                bestMatch = p;
-              }
-              if (score >= 1.0) break;
-            }
-          }
-
-          // Tier Fallback logic
-          if (bestScore >= 0.90) {
-            precisionLevel = 'EXACT';
-          } else if (bestScore >= 0.75) {
-            precisionLevel = 'FUZZY';
-          } else {
-            precisionLevel = 'NOT_FOUND';
-            bestMatch = null;
-          }
-
-          if (bestMatch) {
-            const price = Number(bestMatch.price) || 0;
+          if (result) {
+            const price = Number(result.match.price) || 0;
             bomItems.push({
               project_id: projectId,
-              sku: rawTakeoff,
-              matched_sku: bestMatch.sku,
+              sku: rawInput,
+              matched_sku: result.match.sku,
               qty: Number(cab.qty) || 1,
               unit_price: price,
               line_total: price * (Number(cab.qty) || 1),
               room: room.room_name,
-              collection: room.collection || bestMatch.collection_name,
-              door_style: room.door_style || bestMatch.door_style,
-              price_source: 'Manufacturer Guide',
-              precision_level: precisionLevel,
+              collection: room.collection || result.match.collection_name,
+              door_style: room.door_style || result.match.door_style,
+              price_source: `Price Book (${result.type})`,
+              precision_level: result.type,
               created_at: new Date().toISOString()
             });
           } else {
-            // Collect top 3 candidates for the "Potential" UI helper
-            const top3 = (allPricing || [])
-              .map(p => ({ p, score: calculateSimilarity(rawTakeoff, p.sku) }))
+            // 7. CANDIDATE SUGGESTIONS (TOP 3)
+            const suggestions = allPricing
+              .map(p => ({ p, score: calculateSimilarity(normalizedInput, p.sku) }))
               .sort((a, b) => b.score - a.score)
               .slice(0, 3)
               .map(c => `${c.p.sku} (${Math.round(c.score * 100)}%)`)
@@ -133,8 +111,8 @@ export async function POST(req: Request) {
 
             bomItems.push({
               project_id: projectId,
-              sku: rawTakeoff,
-              matched_sku: top3 ? `Potential: ${top3}` : 'NOT FOUND',
+              sku: rawInput,
+              matched_sku: suggestions ? `Potential: ${suggestions}` : 'NOT FOUND',
               qty: Number(cab.qty) || 1,
               unit_price: 0,
               line_total: 0,
@@ -152,7 +130,6 @@ export async function POST(req: Request) {
 
     // Persist results
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
-
     if (bomItems.length > 0) {
       await supabase.from('quotation_boms').insert(bomItems);
     }
@@ -168,4 +145,36 @@ export async function POST(req: Request) {
     console.error('[Enterprise Engine] Critical Error:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
+}
+
+/**
+ * 4-TIER MATCHING PIPELINE
+ */
+function runMatchingPipeline(normalizedInput: string, baseInput: string, dataset: any[]) {
+  // Step 1: EXACT MATCH
+  const exact = dataset.find(p => normalizeSku(p.sku) === normalizedInput);
+  if (exact) return { match: exact, type: 'EXACT', confidence: 100 };
+
+  // Step 2: CONTAINS MATCH
+  const contains = dataset.find(p => {
+    const pSku = normalizeSku(p.sku);
+    return pSku.includes(normalizedInput) || normalizedInput.includes(pSku);
+  });
+  if (contains) return { match: contains, type: 'PARTIAL', confidence: 90 };
+
+  // Step 3: SIMILAR MATCH (Levenshtein Distance < 5)
+  const similar = dataset.find(p => {
+    const dist = getLevenshteinDistance(normalizedInput, normalizeSku(p.sku));
+    return dist > 0 && dist < 5;
+  });
+  if (similar) return { match: similar, type: 'SIMILAR', confidence: 85 };
+
+  // Step 4: STRUCTURE MATCH (Base model fallback)
+  const structure = dataset.find(p => {
+    const pBase = extractBaseModel(p.sku);
+    return pBase === baseInput;
+  });
+  if (structure) return { match: structure, type: 'STRUCTURE', confidence: 80 };
+
+  return null;
 }
