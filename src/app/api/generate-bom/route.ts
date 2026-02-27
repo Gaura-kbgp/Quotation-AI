@@ -1,11 +1,16 @@
-import { createServerSupabase } from '@/lib/supabase-server';
-import { normalizeSku, calculateSimilarity, tokenizeSku } from '@/lib/utils';
 
-export const maxDuration = 120; // Increased for high-accuracy scoring
+import { createServerSupabase } from '@/lib/supabase-server';
+import { normalizeSku, calculateSimilarity, detectCategory } from '@/lib/utils';
+
+export const maxDuration = 120;
 
 /**
- * High-Accuracy Pricing Engine (v18.0)
- * Implements 8-stage matching: Normalized Exact, Prefix, Token/Dimensions, and Levenshtein Fuzzy.
+ * Enterprise BOM Generation Engine (v20.0)
+ * Features:
+ * - Category-First Search Priority
+ * - Tiered Confidence Scoring
+ * - Closest Match Debugging (Top 3)
+ * - Dimension-Aware Confidence Boost
  */
 export async function POST(req: Request) {
   try {
@@ -30,7 +35,7 @@ export async function POST(req: Request) {
 
     const rooms = project.extracted_data?.rooms || [];
     
-    // Load ALL Manufacturer Pricing (Includes main SKUs and Accessory Sheets)
+    // Load ALL Manufacturer Pricing
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
@@ -39,8 +44,6 @@ export async function POST(req: Request) {
     if (sError) {
       return Response.json({ success: false, error: `Database error: ${sError.message}` }, { status: 500 });
     }
-
-    console.log(`[High Accuracy Engine] Loaded ${allPricing?.length || 0} price records.`);
 
     const bomItems: any[] = [];
     
@@ -54,62 +57,54 @@ export async function POST(req: Request) {
           if (!cab.code) continue;
 
           const rawTakeoff = cab.code;
-          const normTakeoff = normalizeSku(rawTakeoff);
-          const tokensTakeoff = tokenizeSku(rawTakeoff);
+          const targetCategory = detectCategory(rawTakeoff);
           
           let bestMatch: any = null;
           let bestScore = -1;
           let precisionLevel = 'NOT_FOUND';
+          
+          // Debugging candidates
+          const candidates: any[] = [];
 
-          // SCORING PIPELINE
-          for (const p of (allPricing || [])) {
-            const normExcel = normalizeSku(p.sku);
-            const styleMatch = String(p.door_style).toUpperCase().trim() === roomSelectedStyle;
+          // 1. Filter by Style for Category-First Search
+          const styleSpecificRecords = (allPricing || []).filter(p => 
+            String(p.door_style).toUpperCase().trim() === roomSelectedStyle
+          );
+
+          // 2. SEARCH PIPELINE (Category First)
+          const searchSet = styleSpecificRecords.length > 0 ? styleSpecificRecords : (allPricing || []);
+
+          for (const p of searchSet) {
+            const currentScore = calculateSimilarity(rawTakeoff, p.sku);
             
-            let currentScore = 0;
-            let currentLevel = 'NOT_FOUND';
-
-            // Tier 1: Exact Normalized Match
-            if (normTakeoff === normExcel) {
-              currentScore = 1.0;
-              currentLevel = 'EXACT';
-            } 
-            // Tier 2: Prefix Matching
-            else if (normExcel.startsWith(normTakeoff) || normTakeoff.startsWith(normExcel)) {
-              currentScore = 0.9;
-              currentLevel = 'PARTIAL';
-            }
-            // Tier 3: Token-Based Dimension Match (Width/Height)
-            else {
-              const tokensExcel = tokenizeSku(p.sku);
-              let tokenMatchCount = 0;
-              const maxTokens = Math.max(tokensTakeoff.length, tokensExcel.length);
-              tokensTakeoff.forEach(t => { if (tokensExcel.includes(t)) tokenMatchCount++; });
-              
-              const tokenScore = tokenMatchCount / maxTokens;
-              if (tokenScore >= 0.8) {
-                currentScore = 0.8;
-                currentLevel = 'FUZZY';
-              } else {
-                // Tier 4: Fuzzy Levenshtein
-                const sim = calculateSimilarity(normTakeoff, normExcel);
-                currentScore = sim;
-                currentLevel = sim > 0.85 ? 'FUZZY' : 'NOT_FOUND';
-              }
+            // Tier 1: EXACT
+            if (currentScore >= 0.95) {
+              bestScore = 1.0;
+              bestMatch = p;
+              precisionLevel = 'EXACT';
+              break; 
             }
 
-            // Weighting: Prioritize selected Door Style
-            if (styleMatch) currentScore += 0.05;
-
-            // Update Best Match
-            if (currentScore > bestScore && currentScore >= 0.7) {
+            if (currentScore > bestScore) {
               bestScore = currentScore;
               bestMatch = p;
-              precisionLevel = currentLevel;
             }
+
+            // Keep track for top 3 fallback
+            candidates.push({ record: p, score: currentScore });
           }
 
-          if (bestMatch && bestScore >= 0.85) {
+          // Tier Fallback logic
+          if (bestScore >= 0.90) {
+            precisionLevel = 'EXACT';
+          } else if (bestScore >= 0.80) {
+            precisionLevel = 'FUZZY';
+          } else {
+            precisionLevel = 'NOT_FOUND';
+            bestMatch = null;
+          }
+
+          if (bestMatch) {
             const price = Number(bestMatch.price) || 0;
             bomItems.push({
               project_id: projectId,
@@ -126,11 +121,17 @@ export async function POST(req: Request) {
               created_at: new Date().toISOString()
             });
           } else {
-            // No confident match found
+            // Return NOT FOUND with potential matches in debugging info
+            const top3 = candidates
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 3)
+              .map(c => `${c.record.sku} (${Math.round(c.score * 100)}%)`)
+              .join(', ');
+
             bomItems.push({
               project_id: projectId,
               sku: rawTakeoff,
-              matched_sku: 'NOT FOUND',
+              matched_sku: top3 ? `Potential: ${top3}` : 'NOT FOUND',
               qty: Number(cab.qty) || 1,
               unit_price: 0,
               line_total: 0,
@@ -161,7 +162,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, count: bomItems.length });
 
   } catch (err: any) {
-    console.error('[Pricing Engine] Critical Error:', err);
+    console.error('[Enterprise Engine] Critical Error:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }

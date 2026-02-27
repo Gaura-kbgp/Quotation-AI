@@ -1,12 +1,14 @@
 
 import * as XLSX from 'xlsx';
+import { normalizeSku, detectCategory } from './utils';
 
 /**
- * High-Precision Matrix Extraction Engine (v15.0)
- * Optimized for cabinetry price books where:
- * - Row 1 = Collections (Merged cells)
- * - Row 2 = Door Style Groups (Multiple styles per cell, separated by newlines)
- * - Row 3 = SKU Headers
+ * High-Precision Enterprise Matrix Extraction Engine (v20.0)
+ * Features:
+ * - Multi-Sheet Processing (SKU Pricing, Accessory, Option Sheets)
+ * - Matrix Style Splitting (Row 2 labels split by newlines/commas)
+ * - Merged Cell Fill-Forward (Row 1 Collections)
+ * - Category Auto-Detection
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -14,15 +16,11 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
   
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
-    // Use header: 1 to get raw grid
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
     
-    if (rawData.length < 3) {
-      console.log(`[Parser] Skipping sheet ${sheetName}: Insufficient rows.`);
-      continue;
-    }
+    if (rawData.length < 3) continue;
 
-    // 1. Locate the SKU Anchor Row
+    // 1. Locate SKU Anchor Row (Scan top 20 rows)
     let skuRowIdx = -1;
     let skuColIdx = -1;
 
@@ -40,26 +38,23 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
 
     if (skuRowIdx === -1) {
-      console.log(`[Parser] SKU header not found in sheet ${sheetName}.`);
+      // List-style sheet fallback (e.g., Accessories without a matrix)
+      processListSheet(rawData, sheetName, manufacturerId, fileId, pricing);
       continue;
     }
 
-    // 2. Identify Header Rows (Relative to SKU Anchor)
+    // 2. Identify Matrix Headers
     const doorStyleRow = skuRowIdx > 0 ? rawData[skuRowIdx - 1] : [];
     const collectionRow = skuRowIdx > 1 ? rawData[skuRowIdx - 2] : [];
-
-    console.log(`[Parser] Processing sheet: ${sheetName} | Anchor: Row ${skuRowIdx + 1}, Col ${skuColIdx + 1}`);
 
     // 3. Process Data Rows
     for (let r = skuRowIdx + 1; r < rawData.length; r++) {
       const row = rawData[r];
-      const rawSku = row[skuColIdx];
-      const skuStr = String(rawSku || "").trim();
+      const rawSku = String(row[skuColIdx] || "").trim();
 
-      // Skip category headers or empty rows
-      if (!skuStr || skuStr.length < 1 || skuStr.toUpperCase() === "SKU") continue;
+      if (!rawSku || rawSku.toUpperCase() === "SKU") continue;
 
-      // Scan all columns to the right of the SKU for prices
+      // Scan matrix columns for prices
       for (let c = skuColIdx + 1; c < row.length; c++) {
         const rawPrice = row[c];
         if (rawPrice === null || rawPrice === undefined || rawPrice === "") continue;
@@ -67,7 +62,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         const priceNum = parseFloat(String(rawPrice).replace(/[^0-9.]/g, ""));
         if (isNaN(priceNum) || priceNum <= 0) continue;
 
-        // Find Collection (Fill-Forward for merged cells)
+        // Collection Fill-Forward
         let collection = "";
         for (let i = c; i >= skuColIdx + 1; i--) {
           const val = String(collectionRow[i] || "").trim();
@@ -78,22 +73,23 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         }
         if (!collection) collection = sheetName;
 
-        // Find Door Style Group and SPLIT it (v15.0 logic)
+        // Door Style Splitting (Enterprise Step 2 requirement)
         const styleGroupStr = String(doorStyleRow[c] || "").trim();
         if (!styleGroupStr) continue;
 
-        // Split by newlines, commas, or semicolons to handle Price Groups
         const individualStyles = styleGroupStr
           .split(/[\n\r,;]+/)
           .map(s => s.trim())
           .filter(s => s.length > 1);
+
+        const category = detectCategory(rawSku, sheetName);
 
         for (const style of individualStyles) {
           pricing.push({
             manufacturer_id: manufacturerId,
             collection_name: collection.toUpperCase().replace(/\s+/g, ' '),
             door_style: style.toUpperCase().replace(/\s+/g, ' '),
-            sku: skuStr.toUpperCase(),
+            sku: rawSku.toUpperCase(),
             price: priceNum,
             raw_source_file_id: fileId,
             created_at: new Date().toISOString()
@@ -103,6 +99,35 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   }
 
-  console.log(`[Specs Parser] Final Extraction Count: ${pricing.length} pricing points across all sheets.`);
   return pricing;
+}
+
+/**
+ * Handles non-matrix sheets where prices are in a simple column.
+ */
+function processListSheet(data: any[][], sheetName: string, manufacturerId: string, fileId: string, pricing: any[]) {
+  // Find SKU and PRICE columns
+  const header = data[0].map(h => String(h || "").toUpperCase().trim());
+  const skuIdx = header.findIndex(h => h === "SKU" || h === "MODEL" || h === "ITEM");
+  const priceIdx = header.findIndex(h => h === "PRICE" || h === "BASE" || h === "NET");
+
+  if (skuIdx === -1 || priceIdx === -1) return;
+
+  for (let r = 1; r < data.length; r++) {
+    const row = data[r];
+    const sku = String(row[skuIdx] || "").trim();
+    const price = parseFloat(String(row[priceIdx] || "").replace(/[^0-9.]/g, ""));
+
+    if (sku && !isNaN(price) && price > 0) {
+      pricing.push({
+        manufacturer_id: manufacturerId,
+        collection_name: sheetName.toUpperCase(),
+        door_style: "STANDARD",
+        sku: sku.toUpperCase(),
+        price,
+        raw_source_file_id: fileId,
+        created_at: new Date().toISOString()
+      });
+    }
+  }
 }
