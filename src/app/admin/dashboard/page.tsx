@@ -1,10 +1,12 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Factory, BookOpen, Database, Quote, RefreshCcw, AlertCircle } from 'lucide-react';
 import { createServerSupabase } from '@/lib/supabase-server';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import Link from 'link';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function AdminDashboardPage() {
   const supabase = createServerSupabase();

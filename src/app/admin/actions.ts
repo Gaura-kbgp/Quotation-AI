@@ -36,6 +36,7 @@ export async function addManufacturer(name: string) {
     if (error) throw error;
 
     revalidatePath('/admin/manufacturers');
+    revalidatePath('/admin/dashboard');
     return { success: true, data };
   } catch (err: any) {
     console.error('Add Manufacturer Error:', err);
@@ -45,12 +46,43 @@ export async function addManufacturer(name: string) {
 
 /**
  * Deletes a manufacturer from the database.
- * Cascading deletion is handled by Postgres foreign keys for files and pricing.
+ * Implements DEEP RECURSIVE CLEANUP of all associated data.
  */
 export async function deleteManufacturer(id: string) {
   try {
     const supabase = createServerSupabase();
     
+    // 1. Fetch all file URLs to clean up storage
+    const { data: files } = await supabase
+      .from('manufacturer_files')
+      .select('file_url')
+      .eq('manufacturer_id', id);
+
+    if (files && files.length > 0) {
+      for (const file of files) {
+        const pathParts = file.file_url.split('/public/manufacturer-docs/');
+        const path = pathParts.length > 1 ? pathParts[1] : null;
+        if (path) {
+          await supabase.storage.from('manufacturer-docs').remove([path]);
+        }
+      }
+    }
+
+    // 2. Delete ALL pricing records for this manufacturer
+    const { error: pricingError } = await supabase
+      .from('manufacturer_pricing')
+      .delete()
+      .eq('manufacturer_id', id);
+    if (pricingError) throw new Error(`Pricing cleanup failed: ${pricingError.message}`);
+
+    // 3. Delete ALL file records
+    const { error: filesError } = await supabase
+      .from('manufacturer_files')
+      .delete()
+      .eq('manufacturer_id', id);
+    if (filesError) throw new Error(`File record cleanup failed: ${filesError.message}`);
+
+    // 4. Finally delete the manufacturer
     const { error } = await supabase
       .from('manufacturers')
       .delete()
@@ -59,6 +91,7 @@ export async function deleteManufacturer(id: string) {
     if (error) throw error;
 
     revalidatePath('/admin/manufacturers');
+    revalidatePath('/admin/dashboard');
     return { success: true };
   } catch (err: any) {
     console.error('Delete Manufacturer Error:', err);
@@ -75,7 +108,6 @@ export async function deleteManufacturerFileAction(fileId: string, fileUrl: stri
     const supabase = createServerSupabase();
     
     // 1. Delete all extracted pricing records associated with this specific file
-    // This ensures that Collections, Door Styles, and SKUs in the summary are updated instantly.
     const { error: pricingError } = await supabase
       .from('manufacturer_pricing')
       .delete()
@@ -99,8 +131,9 @@ export async function deleteManufacturerFileAction(fileId: string, fileUrl: stri
 
     if (fileError) throw new Error(`File record deletion failed: ${fileError.message}`);
     
-    // 4. Force refresh of the Admin UI
+    // 4. Force refresh of the UI components
     revalidatePath(`/admin/manufacturers/${manufacturerId}`);
+    revalidatePath('/admin/dashboard');
     return { success: true };
   } catch (err: any) {
     console.error('[Cleanup Action] Critical Failure:', err);
