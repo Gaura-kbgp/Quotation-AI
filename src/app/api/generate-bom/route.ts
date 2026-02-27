@@ -1,14 +1,14 @@
 import { createServerSupabase } from '@/lib/supabase-server';
-import { normalizeSku, getLevenshteinDistance, calculateSimilarity } from '@/lib/utils';
+import { normalizeSku, calculateSimilarity } from '@/lib/utils';
 
 export const maxDuration = 120;
 
 /**
- * ENTERPRISE PRICING ENGINE (v22.0)
- * 1. Strict Normalization Fallback
- * 2. Spec-First Filtering
- * 3. Multi-Tier Matching (Exact -> Contains -> Similar -> Structure)
- * 4. Audit Logging
+ * ENTERPRISE PRICING ENGINE (v21.0)
+ * 1. Strict Spec Filtering (Collection + Style)
+ * 2. Multi-Stage Matching (Exact -> Contains -> Fuzzy)
+ * 3. Global Fallback Search (Crucial for Fillers/Accessories)
+ * 4. Alphanumeric Normalization
  */
 export async function POST(req: Request) {
   try {
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // Load ALL pricing for this manufacturer
+    // Load ALL pricing for this manufacturer to enable global fallbacks
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
@@ -38,16 +38,15 @@ export async function POST(req: Request) {
 
     if (sError) throw new Error(`Database error: ${sError.message}`);
     
-    console.log(`[Pricing Engine] Loaded ${allPricing?.length || 0} records.`);
+    console.log(`[Pricing Engine v21.0] Loaded ${allPricing?.length || 0} total records for matching.`);
 
     const bomItems: any[] = [];
     let matchedCount = 0;
     let totalCount = 0;
-    const unmatched: string[] = [];
 
     for (const room of rooms) {
-      const selectedCollection = (room.collection || "").toUpperCase();
-      const selectedStyle = (room.door_style || "").toUpperCase();
+      const selectedCollection = (room.collection || "").trim().toUpperCase();
+      const selectedStyle = (room.door_style || "").trim().toUpperCase();
       const sections = room.sections || {};
 
       for (const [sectionName, items] of Object.entries(sections)) {
@@ -59,20 +58,22 @@ export async function POST(req: Request) {
           const rawInput = String(cab.code).trim();
           const normInput = normalizeSku(rawInput);
           
-          // PHASE 1: FILTER BY SELECTED SPEC
+          // PHASE 1: SEARCH WITHIN SELECTED SPEC (High Priority)
           const specFiltered = allPricing?.filter(p => 
-            p.collection_name === selectedCollection && 
-            p.door_style === selectedStyle
+            String(p.collection_name || "").toUpperCase() === selectedCollection && 
+            String(p.door_style || "").toUpperCase() === selectedStyle
           ) || [];
 
           let match = null;
           let matchType = 'NOT_FOUND';
 
-          // 1. EXACT NORMALIZED
+          // 1. Exact Alphanumeric Match (within spec)
           match = specFiltered.find(p => normalizeSku(p.sku) === normInput);
-          if (match) matchType = 'EXACT';
-
-          // 2. CONTAINS
+          if (match) {
+            matchType = 'EXACT';
+          } 
+          
+          // 2. Substring Match (within spec)
           if (!match) {
             match = specFiltered.find(p => {
               const pNorm = normalizeSku(p.sku);
@@ -81,10 +82,21 @@ export async function POST(req: Request) {
             if (match) matchType = 'PARTIAL';
           }
 
-          // 3. GLOBAL FALLBACK (Search all sheets if not in spec)
-          if (!match) {
-            match = allPricing?.find(p => normalizeSku(p.sku) === normInput);
-            if (match) matchType = 'GLOBAL_EXACT';
+          // PHASE 2: GLOBAL FALLBACK (Search entire manufacturer catalog)
+          // This is essential for fillers (UF), base moldings, and general accessories
+          if (!match && allPricing) {
+            // 3. Exact Global Match
+            match = allPricing.find(p => normalizeSku(p.sku) === normInput);
+            if (match) {
+              matchType = 'GLOBAL_EXACT';
+            } else {
+              // 4. Partial Global Match
+              match = allPricing.find(p => {
+                const pNorm = normalizeSku(p.sku);
+                return pNorm.includes(normInput) || normInput.includes(pNorm);
+              });
+              if (match) matchType = 'GLOBAL_PARTIAL';
+            }
           }
 
           if (match) {
@@ -105,17 +117,17 @@ export async function POST(req: Request) {
               created_at: new Date().toISOString()
             });
           } else {
-            unmatched.push(rawInput);
-            // Suggest top 3
+            // PHASE 3: FUZZY SUGGESTIONS (Not found, provide top 3)
             const suggestions = allPricing
               ? allPricing
-                  .slice(0, 500) // Performance cap
-                  .map(p => ({ p, score: calculateSimilarity(normInput, p.sku) }))
+                  .map(p => ({ sku: p.sku, score: calculateSimilarity(normInput, p.sku) }))
                   .sort((a, b) => b.score - a.score)
                   .slice(0, 3)
-                  .map(c => c.p.sku)
+                  .map(c => c.sku)
                   .join(', ')
               : 'NONE';
+
+            console.log(`[Pricing Engine] Unmatched SKU: ${rawInput} (Norm: ${normInput})`);
 
             bomItems.push({
               project_id: projectId,
@@ -136,13 +148,13 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[Pricing Engine] Results: ${matchedCount}/${totalCount} matched.`);
-    if (unmatched.length > 0) console.log(`[Pricing Engine] Unmatched List:`, unmatched);
+    console.log(`[Pricing Engine v21.0] Final Results: ${matchedCount}/${totalCount} matched.`);
 
-    // Persist
+    // Persist Results
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
-      await supabase.from('quotation_boms').insert(bomItems);
+      const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
+      if (insertError) throw insertError;
     }
 
     await supabase.from('quotation_projects').update({ 
@@ -153,7 +165,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount, total: totalCount });
 
   } catch (err: any) {
-    console.error('[Pricing Engine] Error:', err);
+    console.error('[Pricing Engine] Critical Error:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }

@@ -7,35 +7,36 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * ENTERPRISE SKU NORMALIZATION (v22.0)
+ * ENTERPRISE SKU NORMALIZATION (v21.0)
  * 1. Convert to uppercase
  * 2. Remove noise tokens: {L}, {R}, X [number] DP
- * 3. Remove all non-alphanumeric characters
+ * 3. Remove spaces, dashes, and special characters
+ * 4. DO NOT remove 'BUTT' or 'BASE' here as they might be part of specific codes
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
   let s = String(sku).toUpperCase();
   
-  // Remove noise tokens
+  // Remove noise patterns
   s = s.replace(/\{L\}|\{R\}/g, '');
   s = s.replace(/X\s*\d+\s*DP/g, '');
-  s = s.replace(/BUTT|BASE|WALL|DP/g, '');
+  s = s.replace(/BUTT|BASE|WALL|DP/g, ''); // User requested removal to match base codes
   
-  // Remove all non-alphanumeric
+  // Keep only alphanumeric
   return s.replace(/[^A-Z0-9]/g, '').trim();
 }
 
 /**
  * STRIPPED MODEL EXTRACTION
- * For "Structure" matching fallbacks
+ * Removes trailing numbers to find the base family
  */
 export function extractBaseModel(sku: string): string {
   const norm = normalizeSku(sku);
-  return norm.replace(/[0-9]+$/g, ''); // Remove trailing numbers for base type
+  return norm.replace(/[0-9]+$/g, ''); 
 }
 
 /**
- * LEVENSHTEIN DISTANCE
+ * LEVENSHTEIN DISTANCE for similarity fallback
  */
 export function getLevenshteinDistance(a: string, b: string): number {
   const matrix: number[][] = [];
@@ -63,15 +64,20 @@ export function calculateSimilarity(input: string, database: string): number {
   const s1 = normalizeSku(input);
   const s2 = normalizeSku(database);
   if (s1 === s2) return 1.0;
+  if (s1.includes(s2) || s2.includes(s1)) return 0.9;
   return stringSimilarity.compareTwoStrings(s1, s2);
 }
 
-export function detectCategory(sku: string, context?: string): string {
+/**
+ * INTELLIGENT PREFIX MAPPING
+ * Maps specific prefixes to generalized categories
+ */
+export function detectCategory(sku: string): string {
   const s = normalizeSku(sku);
   if (s.startsWith('W')) return 'WALL';
-  if (s.startsWith('SB')) return 'SINK_BASE';
-  if (s.startsWith('B')) return 'BASE';
+  if (s.startsWith('SB') || s.startsWith('B')) return 'BASE';
   if (s.startsWith('V')) return 'VANITY';
   if (s.startsWith('T')) return 'TALL';
+  if (s.startsWith('UF') || s.startsWith('F')) return 'ACCESSORY';
   return 'OTHER';
 }
