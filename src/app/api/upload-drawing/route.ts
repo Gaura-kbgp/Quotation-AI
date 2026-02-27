@@ -1,4 +1,3 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 import { analyzeDrawing } from '@/ai/flows/analyze-drawing-flow';
 
@@ -12,7 +11,7 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
-    const projectName = (formData.get('projectName') as string) || 'Untitled Project';
+    const projectName = (formData.get('projectName') as string) || '4031 MAGNOLIA';
 
     if (!file) {
       return Response.json({ error: 'No drawing PDF provided.' }, { status: 400 });
@@ -23,10 +22,13 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(arrayBuffer);
     const dataUri = `data:application/pdf;base64,${buffer.toString('base64')}`;
 
-    console.log('[Analyzer] Initiating High-Precision Vision Analysis (300s limit)...');
+    console.log(`[Analyzer] Initiating High-Precision Analysis for ${projectName}...`);
     
     // Call the AI flow using Gemini 2.0 Flash for multi-page reasoning
-    const extractionResult = await analyzeDrawing({ pdfDataUri: dataUri });
+    const extractionResult = await analyzeDrawing({ 
+      pdfDataUri: dataUri,
+      projectName: projectName
+    });
 
     // Persist PDF to Storage for reference
     const storagePath = `quotations/drawings/${crypto.randomUUID()}.pdf`;

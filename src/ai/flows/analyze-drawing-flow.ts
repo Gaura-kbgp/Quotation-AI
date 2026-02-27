@@ -1,8 +1,8 @@
 'use server';
 /**
  * @fileOverview High-Performance AI Flow for Architectural Cabinet Takeoff.
- * Uses Gemini 2.0 Flash for ultra-fast multi-page vision analysis.
- * Includes automatic retry logic for rate-limit (429) errors.
+ * Implements strict room classification and laundry exclusion rules.
+ * Uses Gemini 2.0 Flash for multi-page vision analysis.
  */
 
 import { ai } from '@/ai/genkit';
@@ -10,6 +10,7 @@ import { z } from 'genkit';
 
 const AnalyzeDrawingInputSchema = z.object({
   pdfDataUri: z.string().describe("PDF data URI containing the full architectural set."),
+  projectName: z.string().optional().default("Project"),
 });
 export type AnalyzeDrawingInput = z.infer<typeof AnalyzeDrawingInputSchema>;
 
@@ -31,7 +32,7 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log('[AI Flow] Starting Gemini 2.0 Flash Multi-Page Vision Analysis...');
+  console.log(`[AI Flow] Starting Blueprint Analysis for: ${input.projectName}`);
 
   let attempts = 0;
   const maxAttempts = 3;
@@ -43,22 +44,42 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
         model: 'googleai/gemini-2.0-flash',
         prompt: [
           { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-          { text: `You are a professional architectural estimator specializing in cabinetry takeoffs. 
+          { text: `You are a professional architectural estimator specializing in cabinetry takeoffs.
       
       TASK:
       Analyze the provided PDF. It contains multiple pages (Floor Plans, Cabinet Schedules, Elevations).
-      Iterate through EVERY page to find every cabinet.
       
-      CRITICAL EXTRACTION RULES:
-      - Extract cabinet codes EXACTLY as written.
-      - DO NOT truncate codes. 
-      - The suffix "BUTT" (e.g., "W3042 BUTT") is a CRITICAL part of the SKU. You MUST include it if present on the drawing.
-      - Capture all items from Cabinet Schedules, Floor Plans, and Detail/Interior Elevations.
-      - Group items by the ROOM identified on the drawing (e.g., "Kitchen", "Master Bath").
+      CRITICAL ROOM CLASSIFICATION RULES:
+      1. ONLY PROCESS these room types:
+         - KITCHEN
+         - BATH
+         - OWNERS BATH
+         - BATH 2
+         - BATH 3 UPSTAIRS
+      
+      2. ABSOLUTELY IGNORE (DO NOT EXTRACT ANYTHING FROM THESE):
+         - LAUNDRY
+         - OPT LAUNDRY
+         - TRIM LIST
+         - INSTALLATION NOTE
+         - HARDWARE (as a room)
+         - PERIMETER (as a room)
+      
+      3. LAUNDRY CONFLICT RULE:
+         If a page header mentions a valid room (e.g., "BATH 3 UPSTAIRS") but the page content or sub-headers mention "OPT LAUNDRY" or "LAUNDRY", you MUST IGNORE the entire page. It is a residual header from a template.
+      
+      4. ROOM TITLE FORMAT:
+         Extract the exact full title from the page header.
+         Format: ${input.projectName} – <Exact Room Title From Header>
+         Example: ${input.projectName} – STANDARD OWNERS BATH
+      
+      CABINET EXTRACTION RULES:
+      - Extract cabinet codes EXACTLY as written (e.g., "W3042 BUTT").
+      - Group items by the EXACT FULL ROOM TITLE extracted.
       
       OUTPUT:
-      Return ONLY a raw JSON array of objects. 
-      Format: [ { "room": "Kitchen", "section": "wall", "code": "W3042 BUTT", "qty": 1 } ]
+      Return ONLY a raw JSON array of objects.
+      Format: [ { "room": "Full Room Title", "section": "wall", "code": "W3042 BUTT", "qty": 1 } ]
       
       Valid sections: wall, base, tall, vanity, hardware.` }
         ],
@@ -94,9 +115,16 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
         return getEmptyResult('Failed to parse AI response structure.');
       }
 
+      // Filter out ignored rooms just in case the AI missed any
+      const ignoredKeywords = ['LAUNDRY', 'TRIM LIST', 'INSTALLATION', 'PERIMETER'];
+      const filteredItems = items.filter(item => {
+        const r = String(item.room || '').toUpperCase();
+        return !ignoredKeywords.some(kw => r.includes(kw));
+      });
+
       const roomsMap = new Map<string, any>();
 
-      items.forEach((item) => {
+      filteredItems.forEach((item) => {
         const roomKey = item.room || 'Project Area';
         
         if (!roomsMap.has(roomKey)) {
@@ -132,8 +160,8 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       const roomsList = Array.from(roomsMap.values());
 
       return {
-        rooms: roomsList.length > 0 ? roomsList : [getEmptyResult('No cabinets detected.').rooms[0]],
-        summary: `Extracted ${items.length} units across ${roomsMap.size} project areas using Gemini 2.0 Flash.`
+        rooms: roomsList.length > 0 ? roomsList : [getEmptyResult('No valid rooms detected.').rooms[0]],
+        summary: `Extracted ${filteredItems.length} units across ${roomsMap.size} valid areas for ${input.projectName}.`
       };
 
     } catch (err: any) {
@@ -184,7 +212,5 @@ function mapSectionToLabel(section: string): string {
 function classifyRoomType(name: string): string {
   const n = name.toUpperCase();
   if (n.includes('BATH') || n.includes('POWDER')) return 'Bathroom';
-  if (n.includes('LAUNDRY')) return 'Laundry';
-  if (n.includes('MUD')) return 'Mudroom';
   return 'Kitchen';
 }
