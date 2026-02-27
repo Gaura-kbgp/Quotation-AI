@@ -1,18 +1,14 @@
 import { createServerSupabase } from '@/lib/supabase-server';
-import { normalizeSku, extractBaseModel, getLevenshteinDistance, calculateSimilarity } from '@/lib/utils';
+import { normalizeSku, getLevenshteinDistance, calculateSimilarity } from '@/lib/utils';
 
 export const maxDuration = 120;
 
 /**
- * ENTERPRISE PRICING ENGINE (v21.0)
- * Implements 8-stage matching pipeline:
- * 1. Strict Normalization
- * 2. Multi-Sheet Dataset Merging
- * 3. Specification Filtering (Mandatory)
- * 4. 4-Tier Priority (Exact -> Contains -> Similar -> Structure)
- * 5. Intelligent Fallbacks (Global Search)
- * 6. $0 Protection
- * 7. Candidate Suggestions
+ * ENTERPRISE PRICING ENGINE (v22.0)
+ * 1. Strict Normalization Fallback
+ * 2. Spec-First Filtering
+ * 3. Multi-Tier Matching (Exact -> Contains -> Similar -> Structure)
+ * 4. Audit Logging
  */
 export async function POST(req: Request) {
   try {
@@ -25,94 +21,106 @@ export async function POST(req: Request) {
 
     const supabase = createServerSupabase();
 
-    // 1. Fetch Project and Manufacturers to ensure active status
     const [pRes, mRes] = await Promise.all([
       supabase.from('quotation_projects').select('*').eq('id', projectId).single(),
       supabase.from('manufacturers').select('*').eq('id', manufacturerId).single()
     ]);
 
     if (pRes.error || !pRes.data) throw new Error('Project retrieval failed.');
-    if (mRes.error || !mRes.data) throw new Error('Manufacturer pricing sheet not found or inactive.');
-
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. Load ALL sheets for this manufacturer and merge into one dataset
+    // Load ALL pricing for this manufacturer
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
       .eq('manufacturer_id', manufacturerId);
 
     if (sError) throw new Error(`Database error: ${sError.message}`);
-    if (!allPricing || allPricing.length === 0) throw new Error('No pricing records found for this manufacturer.');
-
-    console.log(`[Enterprise Engine] Loaded ${allPricing.length} pricing records from all sheets.`);
+    
+    console.log(`[Pricing Engine] Loaded ${allPricing?.length || 0} records.`);
 
     const bomItems: any[] = [];
-    
+    let matchedCount = 0;
+    let totalCount = 0;
+    const unmatched: string[] = [];
+
     for (const room of rooms) {
-      const selectedCollection = normalizeSku(room.collection || "");
-      const selectedStyle = normalizeSku(room.door_style || "");
+      const selectedCollection = (room.collection || "").toUpperCase();
+      const selectedStyle = (room.door_style || "").toUpperCase();
       const sections = room.sections || {};
 
       for (const [sectionName, items] of Object.entries(sections)) {
         const cabinetItems = items as any[];
         for (const cab of cabinetItems) {
           if (!cab.code) continue;
+          totalCount++;
 
-          const rawInput = String(cab.code).toUpperCase().trim();
-          const normalizedInput = normalizeSku(rawInput);
-          const baseInput = extractBaseModel(normalizedInput);
+          const rawInput = String(cab.code).trim();
+          const normInput = normalizeSku(rawInput);
           
-          let result: { match: any, type: string, confidence: number } | null = null;
+          // PHASE 1: FILTER BY SELECTED SPEC
+          const specFiltered = allPricing?.filter(p => 
+            p.collection_name === selectedCollection && 
+            p.door_style === selectedStyle
+          ) || [];
 
-          // 3. SPECIFICATION FILTER (MANDATORY PHASE)
-          // Search only in rows matching the selected style/collection
-          const styleFiltered = allPricing.filter(p => {
-            const pColl = normalizeSku(p.collection_name);
-            const pStyle = normalizeSku(p.door_style);
-            return pColl === selectedCollection && pStyle === selectedStyle;
-          });
+          let match = null;
+          let matchType = 'NOT_FOUND';
 
-          // 4. MATCHING PRIORITY (PIPELINE)
-          result = runMatchingPipeline(normalizedInput, baseInput, styleFiltered);
+          // 1. EXACT NORMALIZED
+          match = specFiltered.find(p => normalizeSku(p.sku) === normInput);
+          if (match) matchType = 'EXACT';
 
-          // 5. INTELLIGENT FALLBACK (GLOBAL PHASE)
-          // If not found in specific style, search entire manufacturer database (Accessories, Global sheets)
-          if (!result) {
-            console.log(`[Enterprise Engine] Falling back to global search for ${normalizedInput}`);
-            result = runMatchingPipeline(normalizedInput, baseInput, allPricing);
+          // 2. CONTAINS
+          if (!match) {
+            match = specFiltered.find(p => {
+              const pNorm = normalizeSku(p.sku);
+              return pNorm.includes(normInput) || normInput.includes(pNorm);
+            });
+            if (match) matchType = 'PARTIAL';
           }
 
-          if (result) {
-            const price = Number(result.match.price) || 0;
+          // 3. GLOBAL FALLBACK (Search all sheets if not in spec)
+          if (!match) {
+            match = allPricing?.find(p => normalizeSku(p.sku) === normInput);
+            if (match) matchType = 'GLOBAL_EXACT';
+          }
+
+          if (match) {
+            matchedCount++;
+            const price = Number(match.price) || 0;
             bomItems.push({
               project_id: projectId,
               sku: rawInput,
-              matched_sku: result.match.sku,
+              matched_sku: match.sku,
               qty: Number(cab.qty) || 1,
               unit_price: price,
               line_total: price * (Number(cab.qty) || 1),
               room: room.room_name,
-              collection: room.collection || result.match.collection_name,
-              door_style: room.door_style || result.match.door_style,
-              price_source: `Price Book (${result.type})`,
-              precision_level: result.type,
+              collection: room.collection || match.collection_name,
+              door_style: room.door_style || match.door_style,
+              price_source: `Price Book (${matchType})`,
+              precision_level: matchType,
               created_at: new Date().toISOString()
             });
           } else {
-            // 7. CANDIDATE SUGGESTIONS (TOP 3)
+            unmatched.push(rawInput);
+            // Suggest top 3
             const suggestions = allPricing
-              .map(p => ({ p, score: calculateSimilarity(normalizedInput, p.sku) }))
-              .sort((a, b) => b.score - a.score)
-              .slice(0, 3)
-              .map(c => `${c.p.sku} (${Math.round(c.score * 100)}%)`)
-              .join(', ');
+              ? allPricing
+                  .slice(0, 500) // Performance cap
+                  .map(p => ({ p, score: calculateSimilarity(normInput, p.sku) }))
+                  .sort((a, b) => b.score - a.score)
+                  .slice(0, 3)
+                  .map(c => c.p.sku)
+                  .join(', ')
+              : 'NONE';
 
             bomItems.push({
               project_id: projectId,
               sku: rawInput,
-              matched_sku: suggestions ? `Potential: ${suggestions}` : 'NOT FOUND',
+              matched_sku: suggestions ? `SUGGEST: ${suggestions}` : 'NOT FOUND',
               qty: Number(cab.qty) || 1,
               unit_price: 0,
               line_total: 0,
@@ -128,7 +136,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // Persist results
+    console.log(`[Pricing Engine] Results: ${matchedCount}/${totalCount} matched.`);
+    if (unmatched.length > 0) console.log(`[Pricing Engine] Unmatched List:`, unmatched);
+
+    // Persist
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
       await supabase.from('quotation_boms').insert(bomItems);
@@ -139,42 +150,10 @@ export async function POST(req: Request) {
       status: 'Priced' 
     }).eq('id', projectId);
 
-    return Response.json({ success: true, count: bomItems.length });
+    return Response.json({ success: true, matched: matchedCount, total: totalCount });
 
   } catch (err: any) {
-    console.error('[Enterprise Engine] Critical Error:', err);
+    console.error('[Pricing Engine] Error:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
-}
-
-/**
- * 4-TIER MATCHING PIPELINE
- */
-function runMatchingPipeline(normalizedInput: string, baseInput: string, dataset: any[]) {
-  // Step 1: EXACT MATCH
-  const exact = dataset.find(p => normalizeSku(p.sku) === normalizedInput);
-  if (exact) return { match: exact, type: 'EXACT', confidence: 100 };
-
-  // Step 2: CONTAINS MATCH
-  const contains = dataset.find(p => {
-    const pSku = normalizeSku(p.sku);
-    return pSku.includes(normalizedInput) || normalizedInput.includes(pSku);
-  });
-  if (contains) return { match: contains, type: 'PARTIAL', confidence: 90 };
-
-  // Step 3: SIMILAR MATCH (Levenshtein Distance < 5)
-  const similar = dataset.find(p => {
-    const dist = getLevenshteinDistance(normalizedInput, normalizeSku(p.sku));
-    return dist > 0 && dist < 5;
-  });
-  if (similar) return { match: similar, type: 'SIMILAR', confidence: 85 };
-
-  // Step 4: STRUCTURE MATCH (Base model fallback)
-  const structure = dataset.find(p => {
-    const pBase = extractBaseModel(p.sku);
-    return pBase === baseInput;
-  });
-  if (structure) return { match: structure, type: 'STRUCTURE', confidence: 80 };
-
-  return null;
 }
