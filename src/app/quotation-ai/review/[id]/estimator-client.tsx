@@ -2,14 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
-  TableHeader,
   TableRow
 } from '@/components/ui/table';
 import {
@@ -69,7 +67,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   const [step, setStep] = useState<Step>('review');
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedManId, setSelectedManId] = useState<string>(project.manufacturer_id || '');
-  const [dbConfigs, setDbConfigs] = useState<Record<string, { collections: string[], styles: string[] }>>({});
+  const [manMapping, setManMapping] = useState<Record<string, string[]>>({});
   const [isProcessing, setIsProcessing] = useState(false);
 
   const fetchManConfig = useCallback(async (id: string) => {
@@ -77,10 +75,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     try {
       const res = await fetch(`/api/manufacturer-config?id=${id}`);
       const data = await res.json();
-      setDbConfigs(prev => ({
-        ...prev,
-        [id]: { collections: data.collections || [], styles: data.styles || [] }
-      }));
+      setManMapping(data.mapping || {});
     } catch (err) {
       console.error('Config Error:', err);
     }
@@ -95,7 +90,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     initialSyncRef.current = true;
   }, [project, fetchManConfig]);
 
-  // Live calculation of total cabinets across all rooms and sections
   const totalUnits = useMemo(() => {
     return rooms.reduce((acc, room) => {
       let roomTotal = 0;
@@ -112,7 +106,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     const nr = [...rooms];
     if (field === 'collection') {
       nr[roomIdx].collection = value;
-      nr[roomIdx].door_style = '';
+      nr[roomIdx].door_style = ''; // Reset door style when collection changes
     } else {
       nr[roomIdx].door_style = value;
     }
@@ -121,21 +115,35 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   const handleGenerateQuote = async () => {
     if (rooms.some(r => !r.collection || !r.door_style)) {
-      toast({ variant: 'destructive', title: 'Missing Specs', description: 'Select Collection and Style for all areas.' });
+      toast({ 
+        variant: 'destructive', 
+        title: 'Missing Specs', 
+        description: 'Please select both Collection and Door Style for all areas.' 
+      });
       return;
     }
     setIsProcessing(true);
     try {
-      await updateProjectAction(project.id, { extracted_data: { rooms }, manufacturer_id: selectedManId });
+      await updateProjectAction(project.id, { 
+        extracted_data: { rooms }, 
+        manufacturer_id: selectedManId 
+      });
+      
       const res = await fetch('/api/generate-bom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: project.id, manufacturerId: selectedManId })
       });
+      
       const result = await res.json();
-      if (result.success) router.push(`/quotation-ai/bom/${project.id}`);
-    } catch (err) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to generate pricing.' });
+      if (result.success) {
+        toast({ title: 'Pricing Generated', description: 'Matched takeoffs to the price book.' });
+        router.push(`/quotation-ai/bom/${project.id}`);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.message || 'Failed to generate pricing.' });
     } finally {
       setIsProcessing(false);
     }
@@ -175,7 +183,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                       nr[rIdx].room_name = e.target.value;
                       setRooms(nr);
                     }}
-                    className="text-2xl font-semibold text-slate-900 bg-transparent border-none p-0 w-full focus:ring-0 resize-none overflow-hidden leading-[1.4] break-words whitespace-normal"
+                    className="text-2xl font-semibold text-slate-900 bg-transparent border-none p-0 w-full focus:ring-0 resize-none overflow-hidden leading-[1.4] break-words whitespace-normal font-headline"
                     rows={1}
                     onInput={(e) => {
                       const target = e.target as HTMLTextAreaElement;
@@ -187,26 +195,24 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
                <div className="grid grid-cols-1 gap-8">
                   {Object.entries(room.sections).map(([key, items]) => (
-                    items.length > 0 && (
-                      <Card key={key} className="rounded-[2rem] border-slate-100 shadow-sm">
+                    (items as Cabinet[]).length > 0 && (
+                      <Card key={key} className="rounded-[2rem] border-slate-100 shadow-sm overflow-hidden">
                         <div className="px-8 py-4 bg-slate-50/50 border-b border-slate-100 text-[10px] font-bold uppercase tracking-widest text-slate-500">{key}</div>
                         <Table>
                           <TableBody>
                             {(items as Cabinet[]).map((cab, cIdx) => (
                               <TableRow key={cIdx} className="h-16 border-slate-50">
                                 <TableCell className="pl-8 w-24">
-                                  <div className="flex items-center gap-2">
-                                    <Input 
-                                      type="number" 
-                                      value={cab.qty} 
-                                      onChange={(e) => {
-                                        const nr = [...rooms];
-                                        (nr[rIdx].sections[key] as Cabinet[])[cIdx].qty = parseInt(e.target.value) || 0;
-                                        setRooms(nr);
-                                      }}
-                                      className="w-12 h-8 text-center font-bold"
-                                    />
-                                  </div>
+                                  <Input 
+                                    type="number" 
+                                    value={cab.qty} 
+                                    onChange={(e) => {
+                                      const nr = [...rooms];
+                                      (nr[rIdx].sections[key] as Cabinet[])[cIdx].qty = parseInt(e.target.value) || 0;
+                                      setRooms(nr);
+                                    }}
+                                    className="w-12 h-8 text-center font-bold"
+                                  />
                                 </TableCell>
                                 <TableCell>
                                   <Input 
@@ -236,17 +242,21 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   if (step === 'manufacturer') {
     return (
-      <div className="max-w-3xl mx-auto py-20 space-y-12">
-        <h2 className="text-4xl font-bold text-center">Select Cabinet Manufacturer</h2>
+      <div className="max-w-3xl mx-auto py-20 space-y-12 animate-in fade-in duration-500">
+        <div className="text-center space-y-2">
+          <h2 className="text-4xl font-bold font-headline">Select Manufacturer</h2>
+          <p className="text-slate-500">Choose the brand for this architectural takeoff.</p>
+        </div>
         <div className="grid grid-cols-1 gap-4">
           {manufacturers.map(m => (
             <button 
               key={m.id}
               onClick={() => { setSelectedManId(m.id); fetchManConfig(m.id); setStep('specifications'); }}
-              className="p-8 rounded-3xl border-2 border-slate-100 hover:border-sky-500 hover:bg-sky-50 transition-all flex items-center gap-6"
+              className="p-8 rounded-[2rem] border-2 border-slate-100 bg-white hover:border-sky-500 hover:bg-sky-50 transition-all flex items-center gap-6 shadow-sm group"
             >
-              <div className="w-14 h-14 rounded-2xl bg-sky-600 text-white flex items-center justify-center"><Factory /></div>
-              <span className="text-2xl font-bold">{m.name}</span>
+              <div className="w-14 h-14 rounded-2xl bg-sky-600 text-white flex items-center justify-center group-hover:scale-110 transition-transform"><Factory /></div>
+              <span className="text-2xl font-bold text-slate-900">{m.name}</span>
+              <ChevronRight className="ml-auto w-6 h-6 text-slate-300 group-hover:text-sky-500" />
             </button>
           ))}
         </div>
@@ -255,41 +265,65 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   }
 
   return (
-    <div className="max-w-5xl mx-auto py-20 space-y-12">
-      <h2 className="text-4xl font-bold text-center">Configure Specifications</h2>
+    <div className="max-w-5xl mx-auto py-20 space-y-12 animate-in fade-in duration-500">
+      <div className="text-center space-y-2">
+        <h2 className="text-4xl font-bold font-headline">Configure Specifications</h2>
+        <p className="text-slate-500">Apply Collection and Door Style to each area.</p>
+      </div>
+      
       <div className="grid grid-cols-1 gap-6">
         {rooms.map((room, rIdx) => (
-          <Card key={rIdx} className="p-8 rounded-[2.5rem] border-slate-100 shadow-sm flex items-center justify-between">
-            <h3 className="text-xl font-bold max-w-xs">{room.room_name}</h3>
-            <div className="flex gap-4">
-              <Select value={room.collection} onValueChange={(v) => handleUpdateRoomStyle(rIdx, 'collection', v)}>
-                <SelectTrigger className="w-64 h-12 rounded-xl">
-                  <SelectValue placeholder="Collection" />
-                </SelectTrigger>
-                <SelectContent className="bg-white">
-                  {dbConfigs[selectedManId]?.collections.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={room.door_style} onValueChange={(v) => handleUpdateRoomStyle(rIdx, 'door_style', v)} disabled={!room.collection}>
-                <SelectTrigger className="w-64 h-12 rounded-xl">
-                  <SelectValue placeholder="Door Style" />
-                </SelectTrigger>
-                <SelectContent className="bg-white">
-                  {dbConfigs[selectedManId]?.styles.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
+          <Card key={rIdx} className="p-8 rounded-[2.5rem] border-slate-100 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-white">
+            <h3 className="text-xl font-bold max-w-xs font-headline">{room.room_name}</h3>
+            <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+              <div className="space-y-1.5 flex-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Collection</span>
+                <Select value={room.collection} onValueChange={(v) => handleUpdateRoomStyle(rIdx, 'collection', v)}>
+                  <SelectTrigger className="w-full sm:w-64 h-12 rounded-xl border-slate-200">
+                    <SelectValue placeholder="Select Collection" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    {Object.keys(manMapping).map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-1.5 flex-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Door Style</span>
+                <Select 
+                  value={room.door_style} 
+                  onValueChange={(v) => handleUpdateRoomStyle(rIdx, 'door_style', v)} 
+                  disabled={!room.collection}
+                >
+                  <SelectTrigger className="w-full sm:w-64 h-12 rounded-xl border-slate-200">
+                    <SelectValue placeholder={!room.collection ? "Select Collection First" : "Select Style"} />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    {room.collection && manMapping[room.collection]?.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </Card>
         ))}
       </div>
-      <Button 
-        onClick={handleGenerateQuote} 
-        className="w-full h-16 gradient-button text-xl rounded-2xl" 
-        disabled={isProcessing}
-      >
-        {isProcessing ? <Loader2 className="animate-spin mr-2" /> : <CheckCircle2 className="mr-2" />}
-        Finalize Pricing
-      </Button>
+
+      <div className="flex gap-4">
+        <Button variant="ghost" onClick={() => setStep('manufacturer')} className="h-16 px-8 rounded-2xl font-bold text-slate-500">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
+        </Button>
+        <Button 
+          onClick={handleGenerateQuote} 
+          className="flex-1 h-16 gradient-button text-xl rounded-2xl shadow-sky-500/20" 
+          disabled={isProcessing}
+        >
+          {isProcessing ? <Loader2 className="animate-spin mr-2" /> : <CheckCircle2 className="mr-2" />}
+          {isProcessing ? 'Generating Final Pricing...' : 'Finalize Pricing & BOM'}
+        </Button>
+      </div>
     </div>
   );
 }

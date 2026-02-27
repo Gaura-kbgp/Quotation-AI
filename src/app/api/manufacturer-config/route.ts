@@ -3,8 +3,8 @@ import { createServerSupabase } from '@/lib/supabase-server';
 export const maxDuration = 30;
 
 /**
- * API to fetch distinct, cleaned Collections and Door Styles
- * for a specific manufacturer.
+ * API to fetch structured Collection -> Door Styles mapping
+ * for dynamic filtering in the UI.
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   try {
     const supabase = createServerSupabase();
     
-    // Fetch all distinct records from the pricing table
+    // Fetch distinct collection/style pairs
     const { data: pricing, error } = await supabase
       .from('manufacturer_pricing')
       .select('collection_name, door_style')
@@ -24,24 +24,31 @@ export async function GET(req: Request) {
     if (error) throw error;
 
     if (!pricing || pricing.length === 0) {
-      return Response.json({ collections: [], styles: [] });
+      return Response.json({ mapping: {} });
     }
 
-    const collectionSet = new Set<string>();
-    const styleSet = new Set<string>();
+    // Build the hierarchical mapping: Collection -> [Styles]
+    const mapping: Record<string, Set<string>> = {};
 
     pricing.forEach(record => {
       const c = String(record.collection_name || '').trim().toUpperCase();
       const st = String(record.door_style || '').trim().toUpperCase();
       
-      if (c && c.length > 1) collectionSet.add(c);
-      if (st && st.length > 1) styleSet.add(st);
+      if (c && c.length > 1 && st && st.length > 1) {
+        if (!mapping[c]) mapping[c] = new Set<string>();
+        mapping[c].add(st);
+      }
+    });
+
+    // Convert sets to sorted arrays for JSON response
+    const finalMapping: Record<string, string[]> = {};
+    Object.keys(mapping).sort().forEach(collection => {
+      finalMapping[collection] = Array.from(mapping[collection]).sort();
     });
 
     return Response.json({ 
-      collections: Array.from(collectionSet).sort((a, b) => a.localeCompare(b)), 
-      styles: Array.from(styleSet).sort((a, b) => a.localeCompare(b)),
-      count: pricing.length 
+      mapping: finalMapping,
+      collections: Object.keys(finalMapping)
     });
 
   } catch (err: any) {

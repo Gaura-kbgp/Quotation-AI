@@ -4,11 +4,11 @@ import { normalizeSku, calculateSimilarity } from '@/lib/utils';
 export const maxDuration = 120;
 
 /**
- * ENTERPRISE PRICING ENGINE (v21.0)
- * 1. Strict Spec Filtering (Collection + Style)
- * 2. Multi-Stage Matching (Exact -> Contains -> Fuzzy)
- * 3. Global Fallback Search (Crucial for Fillers/Accessories)
- * 4. Alphanumeric Normalization
+ * ENTERPRISE PRICING ENGINE (v22.0)
+ * Logic:
+ * 1. Strict Spec Filtering (Collection + Door Style)
+ * 2. Multi-Stage Matching (Exact -> Partial -> Global)
+ * 3. Handles Alphanumeric Normalization across all sheets
  */
 export async function POST(req: Request) {
   try {
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     const { projectId, manufacturerId } = body;
 
     if (!projectId || !manufacturerId) {
-      return Response.json({ success: false, error: "Missing required parameters." }, { status: 400 });
+      return Response.json({ success: false, error: "Missing parameters." }, { status: 400 });
     }
 
     const supabase = createServerSupabase();
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       supabase.from('manufacturers').select('*').eq('id', manufacturerId).single()
     ]);
 
-    if (pRes.error || !pRes.data) throw new Error('Project retrieval failed.');
+    if (pRes.error || !pRes.data) throw new Error('Project not found.');
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
@@ -37,8 +37,6 @@ export async function POST(req: Request) {
       .eq('manufacturer_id', manufacturerId);
 
     if (sError) throw new Error(`Database error: ${sError.message}`);
-    
-    console.log(`[Pricing Engine v21.0] Loaded ${allPricing?.length || 0} total records for matching.`);
 
     const bomItems: any[] = [];
     let matchedCount = 0;
@@ -73,7 +71,7 @@ export async function POST(req: Request) {
             matchType = 'EXACT';
           } 
           
-          // 2. Substring Match (within spec)
+          // 2. Partial/Substring Match (within spec)
           if (!match) {
             match = specFiltered.find(p => {
               const pNorm = normalizeSku(p.sku);
@@ -83,14 +81,11 @@ export async function POST(req: Request) {
           }
 
           // PHASE 2: GLOBAL FALLBACK (Search entire manufacturer catalog)
-          // This is essential for fillers (UF), base moldings, and general accessories
           if (!match && allPricing) {
-            // 3. Exact Global Match
             match = allPricing.find(p => normalizeSku(p.sku) === normInput);
             if (match) {
               matchType = 'GLOBAL_EXACT';
             } else {
-              // 4. Partial Global Match
               match = allPricing.find(p => {
                 const pNorm = normalizeSku(p.sku);
                 return pNorm.includes(normInput) || normInput.includes(pNorm);
@@ -117,7 +112,7 @@ export async function POST(req: Request) {
               created_at: new Date().toISOString()
             });
           } else {
-            // PHASE 3: FUZZY SUGGESTIONS (Not found, provide top 3)
+            // PHASE 3: SUGGESTIONS (Top 3 closest matches for auditing)
             const suggestions = allPricing
               ? allPricing
                   .map(p => ({ sku: p.sku, score: calculateSimilarity(normInput, p.sku) }))
@@ -126,8 +121,6 @@ export async function POST(req: Request) {
                   .map(c => c.sku)
                   .join(', ')
               : 'NONE';
-
-            console.log(`[Pricing Engine] Unmatched SKU: ${rawInput} (Norm: ${normInput})`);
 
             bomItems.push({
               project_id: projectId,
@@ -148,13 +141,10 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[Pricing Engine v21.0] Final Results: ${matchedCount}/${totalCount} matched.`);
-
     // Persist Results
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
-      const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
-      if (insertError) throw insertError;
+      await supabase.from('quotation_boms').insert(bomItems);
     }
 
     await supabase.from('quotation_projects').update({ 
@@ -165,7 +155,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount, total: totalCount });
 
   } catch (err: any) {
-    console.error('[Pricing Engine] Critical Error:', err);
+    console.error('[Pricing Engine] Error:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
