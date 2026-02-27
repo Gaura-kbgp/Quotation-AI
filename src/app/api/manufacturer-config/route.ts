@@ -1,8 +1,11 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 
 export const maxDuration = 30;
 
+/**
+ * API to fetch distinct, cleaned Collections and Door Styles
+ * for a specific manufacturer.
+ */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
@@ -12,6 +15,7 @@ export async function GET(req: Request) {
   try {
     const supabase = createServerSupabase();
     
+    // Fetch all distinct records from the pricing table
     const { data: pricing, error } = await supabase
       .from('manufacturer_pricing')
       .select('collection_name, door_style')
@@ -26,10 +30,9 @@ export async function GET(req: Request) {
     const collectionSet = new Set<string>();
     const styleSet = new Set<string>();
 
-    pricing.forEach(s => {
-      // Clean data to ensure no lingering combined strings or whitespace issues
-      const c = String(s.collection_name || '').trim();
-      const st = String(s.door_style || '').trim();
+    pricing.forEach(record => {
+      const c = String(record.collection_name || '').trim().toUpperCase();
+      const st = String(record.door_style || '').trim().toUpperCase();
       
       if (c && c.length > 1) collectionSet.add(c);
       if (st && st.length > 1) styleSet.add(st);
