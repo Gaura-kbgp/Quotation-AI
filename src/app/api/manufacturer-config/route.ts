@@ -4,7 +4,7 @@ export const maxDuration = 30;
 
 /**
  * API to fetch structured Collection -> Door Styles mapping
- * for dynamic filtering in the UI.
+ * Ensures unique, individual style strings are returned as a flat array.
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   try {
     const supabase = createServerSupabase();
     
-    // Fetch distinct collection/style pairs
+    // Fetch distinct collection/style pairs directly from the normalized records
     const { data: pricing, error } = await supabase
       .from('manufacturer_pricing')
       .select('collection_name, door_style')
@@ -24,10 +24,10 @@ export async function GET(req: Request) {
     if (error) throw error;
 
     if (!pricing || pricing.length === 0) {
-      return Response.json({ mapping: {} });
+      return Response.json({ mapping: {}, collections: [] });
     }
 
-    // Build the hierarchical mapping: Collection -> [Styles]
+    // Build the hierarchical mapping: Collection -> Array of UNIQUE Styles
     const mapping: Record<string, Set<string>> = {};
 
     pricing.forEach(record => {
@@ -40,15 +40,17 @@ export async function GET(req: Request) {
       }
     });
 
-    // Convert sets to sorted arrays for JSON response
+    // Convert sets to sorted arrays for final response
     const finalMapping: Record<string, string[]> = {};
-    Object.keys(mapping).sort().forEach(collection => {
+    const sortedCollections = Object.keys(mapping).sort();
+    
+    sortedCollections.forEach(collection => {
       finalMapping[collection] = Array.from(mapping[collection]).sort();
     });
 
     return Response.json({ 
       mapping: finalMapping,
-      collections: Object.keys(finalMapping)
+      collections: sortedCollections
     });
 
   } catch (err: any) {
