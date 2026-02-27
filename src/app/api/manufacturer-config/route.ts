@@ -1,11 +1,10 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 
 export const maxDuration = 30;
 
 /**
- * API to fetch structured Collection -> Door Styles mapping
- * Ensures unique, individual style strings are returned as a flat array.
+ * API to fetch structured Collection -> Door Styles mapping.
+ * Returns unique door styles for each specific collection.
  */
 export async function GET(req: Request) {
   try {
@@ -18,7 +17,7 @@ export async function GET(req: Request) {
 
     const supabase = createServerSupabase();
     
-    // Fetch distinct collection/style pairs directly from the normalized records
+    // Fetch distinct collection/style pairs
     const { data: pricing, error } = await supabase
       .from('manufacturer_pricing')
       .select('collection_name, door_style')
@@ -33,20 +32,20 @@ export async function GET(req: Request) {
       return Response.json({ mapping: {}, collections: [] });
     }
 
-    // Build the hierarchical mapping: Collection -> Array of UNIQUE Styles
+    // Build hierarchical map
     const mapping: Record<string, Set<string>> = {};
 
     pricing.forEach(record => {
       const c = String(record.collection_name || '').trim().toUpperCase();
       const st = String(record.door_style || '').trim().toUpperCase();
       
-      if (c && c.length > 1 && st && st.length > 1) {
+      if (c && st) {
         if (!mapping[c]) mapping[c] = new Set<string>();
         mapping[c].add(st);
       }
     });
 
-    // Convert sets to sorted arrays for final response
+    // Convert sets to sorted arrays
     const finalMapping: Record<string, string[]> = {};
     const sortedCollections = Object.keys(mapping).sort();
     

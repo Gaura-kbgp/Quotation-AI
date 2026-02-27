@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -71,28 +70,21 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
   const [manMapping, setManMapping] = useState<Record<string, string[]>>({});
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Fetch structured mapping: Collection -> [Styles]
   const fetchManConfig = useCallback(async (id: string) => {
     if (!id) return;
     try {
       const res = await fetch(`/api/manufacturer-config?id=${id}`);
+      if (!res.ok) throw new Error('Failed to load manufacturer data');
       
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`);
-      }
-      
-      const contentType = res.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Invalid server response format (expected JSON)");
-      }
-
       const data = await res.json();
       setManMapping(data.mapping || {});
     } catch (err: any) {
       console.error('Config Error:', err);
       toast({ 
         variant: 'destructive', 
-        title: 'Configuration Error', 
-        description: err.message || 'Could not load manufacturer specifications.' 
+        title: 'Error', 
+        description: 'Could not load manufacturer specifications.' 
       });
     }
   }, [toast]);
@@ -122,7 +114,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     const nr = [...rooms];
     if (field === 'collection') {
       nr[roomIdx].collection = value;
-      nr[roomIdx].door_style = ''; // Reset door style when collection changes
+      nr[roomIdx].door_style = ''; // RESET door style when collection changes
     } else {
       nr[roomIdx].door_style = value;
     }
@@ -133,8 +125,8 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     if (rooms.some(r => !r.collection || !r.door_style)) {
       toast({ 
         variant: 'destructive', 
-        title: 'Missing Specs', 
-        description: 'Please select both Collection and Door Style for all areas.' 
+        title: 'Missing Selection', 
+        description: 'Please select both Collection and Door Style for all rooms.' 
       });
       return;
     }
@@ -151,24 +143,15 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         body: JSON.stringify({ projectId: project.id, manufacturerId: selectedManId })
       });
       
-      if (!res.ok) {
-        throw new Error(`Pricing engine returned ${res.status}`);
-      }
-
-      const contentType = res.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Invalid response format from pricing engine.");
-      }
-
       const result = await res.json();
       if (result.success) {
-        toast({ title: 'Pricing Generated', description: 'Matched takeoffs to the price book.' });
+        toast({ title: 'Success', description: 'BOM generated and priced.' });
         router.push(`/quotation-ai/bom/${project.id}`);
       } else {
         throw new Error(result.error);
       }
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message || 'Failed to generate pricing.' });
+      toast({ variant: 'destructive', title: 'Error', description: err.message });
     } finally {
       setIsProcessing(false);
     }
@@ -301,18 +284,22 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
           <Card key={rIdx} className="p-8 rounded-[2.5rem] border-slate-100 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-white">
             <h3 className="text-xl font-bold max-w-xs font-headline break-words whitespace-normal leading-relaxed">{room.room_name}</h3>
             <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+              {/* Collection Dropdown */}
               <div className="space-y-1.5 flex-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Collection</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Collection Group</span>
                 <Select value={room.collection} onValueChange={(v) => handleUpdateRoomStyle(rIdx, 'collection', v)}>
                   <SelectTrigger className="w-full sm:w-64 h-12 rounded-xl border-slate-200">
                     <SelectValue placeholder="Select Collection" />
                   </SelectTrigger>
                   <SelectContent className="bg-white">
-                    {Object.keys(manMapping).map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {Object.keys(manMapping).map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               
+              {/* Door Style Dropdown - Dynamically Filtered */}
               <div className="space-y-1.5 flex-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Door Style</span>
                 <Select 
