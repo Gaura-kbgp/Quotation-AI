@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -74,12 +75,27 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     if (!id) return;
     try {
       const res = await fetch(`/api/manufacturer-config?id=${id}`);
+      
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
+      
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Invalid server response format (expected JSON)");
+      }
+
       const data = await res.json();
       setManMapping(data.mapping || {});
-    } catch (err) {
+    } catch (err: any) {
       console.error('Config Error:', err);
+      toast({ 
+        variant: 'destructive', 
+        title: 'Configuration Error', 
+        description: err.message || 'Could not load manufacturer specifications.' 
+      });
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     if (initialSyncRef.current) return;
@@ -135,6 +151,15 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         body: JSON.stringify({ projectId: project.id, manufacturerId: selectedManId })
       });
       
+      if (!res.ok) {
+        throw new Error(`Pricing engine returned ${res.status}`);
+      }
+
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Invalid response format from pricing engine.");
+      }
+
       const result = await res.json();
       if (result.success) {
         toast({ title: 'Pricing Generated', description: 'Matched takeoffs to the price book.' });
@@ -274,7 +299,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       <div className="grid grid-cols-1 gap-6">
         {rooms.map((room, rIdx) => (
           <Card key={rIdx} className="p-8 rounded-[2.5rem] border-slate-100 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-white">
-            <h3 className="text-xl font-bold max-w-xs font-headline">{room.room_name}</h3>
+            <h3 className="text-xl font-bold max-w-xs font-headline break-words whitespace-normal leading-relaxed">{room.room_name}</h3>
             <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
               <div className="space-y-1.5 flex-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Collection</span>

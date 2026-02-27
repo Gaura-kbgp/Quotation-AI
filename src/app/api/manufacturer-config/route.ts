@@ -1,3 +1,4 @@
+
 import { createServerSupabase } from '@/lib/supabase-server';
 
 export const maxDuration = 30;
@@ -7,12 +8,14 @@ export const maxDuration = 30;
  * Ensures unique, individual style strings are returned as a flat array.
  */
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get('id');
-
-  if (!id) return Response.json({ error: 'Missing Manufacturer ID' }, { status: 400 });
-
   try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return Response.json({ error: 'Missing Manufacturer ID' }, { status: 400 });
+    }
+
     const supabase = createServerSupabase();
     
     // Fetch distinct collection/style pairs directly from the normalized records
@@ -21,7 +24,10 @@ export async function GET(req: Request) {
       .select('collection_name, door_style')
       .eq('manufacturer_id', id);
 
-    if (error) throw error;
+    if (error) {
+      console.error('[API] Supabase Fetch Error:', error);
+      return Response.json({ error: `Database error: ${error.message}` }, { status: 500 });
+    }
 
     if (!pricing || pricing.length === 0) {
       return Response.json({ mapping: {}, collections: [] });
@@ -54,7 +60,7 @@ export async function GET(req: Request) {
     });
 
   } catch (err: any) {
-    console.error('[API] Config Error:', err.message);
-    return Response.json({ error: err.message }, { status: 500 });
+    console.error('[API] Config Handler Critical Error:', err);
+    return Response.json({ error: err.message || 'An unexpected server error occurred.' }, { status: 500 });
   }
 }
