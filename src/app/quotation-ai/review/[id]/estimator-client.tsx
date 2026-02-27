@@ -30,7 +30,8 @@ import {
   Package,
   ChevronRight,
   ArrowLeft,
-  FileSearch
+  FileSearch,
+  Box
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { updateProjectAction } from '../../actions';
@@ -94,6 +95,19 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     initialSyncRef.current = true;
   }, [project, fetchManConfig]);
 
+  // Live calculation of total cabinets across all rooms and sections
+  const totalUnits = useMemo(() => {
+    return rooms.reduce((acc, room) => {
+      let roomTotal = 0;
+      Object.values(room.sections).forEach((items) => {
+        (items as Cabinet[]).forEach((cab) => {
+          roomTotal += (Number(cab.qty) || 0);
+        });
+      });
+      return acc + roomTotal;
+    }, 0);
+  }, [rooms]);
+
   const handleUpdateRoomStyle = (roomIdx: number, field: 'collection' | 'door_style', value: string) => {
     const nr = [...rooms];
     if (field === 'collection') {
@@ -131,10 +145,17 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     return (
       <div className="max-w-7xl mx-auto space-y-12 pb-32">
         <div className="flex justify-between items-center bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
-           <div className="flex gap-12">
+           <div className="flex gap-16">
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Takeoff Areas</span>
                 <span className="text-4xl font-black text-slate-900">{rooms.length}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Units</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-black text-slate-900">{totalUnits}</span>
+                  <Box className="w-5 h-5 text-sky-500" />
+                </div>
               </div>
            </div>
            <Button onClick={() => setStep('manufacturer')} className="h-16 px-12 gradient-button text-lg">
@@ -180,7 +201,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                       value={cab.qty} 
                                       onChange={(e) => {
                                         const nr = [...rooms];
-                                        (nr[rIdx].sections[key] as Cabinet[])[cIdx].qty = parseInt(e.target.value);
+                                        (nr[rIdx].sections[key] as Cabinet[])[cIdx].qty = parseInt(e.target.value) || 0;
                                         setRooms(nr);
                                       }}
                                       className="w-12 h-8 text-center font-bold"
