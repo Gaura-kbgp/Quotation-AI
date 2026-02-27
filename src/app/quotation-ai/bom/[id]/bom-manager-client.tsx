@@ -30,6 +30,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { updateBomItemAction, updateProjectAction } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
 
 interface BomItem {
   id: string;
@@ -53,6 +54,7 @@ type WorkflowStep = 'pricing' | 'customer' | 'preview';
 
 export function BomManagerClient({ id, project, initialBom, manufacturerName }: BomManagerClientProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const [bom, setBom] = useState<BomItem[]>(initialBom);
   const [step, setStep] = useState<WorkflowStep>('pricing');
   
@@ -188,7 +190,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 step === 'preview' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
               )}
             >
-              3. Final Bill
+              3. Preview
             </button>
           </div>
           
