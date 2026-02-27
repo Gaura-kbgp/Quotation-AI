@@ -38,7 +38,8 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
     files = fRes.data || [];
     
     // Calculate Summary dynamically from the live pricing table
-    if (sRes.data && sRes.data.length > 0) {
+    // Only calculate if there are actually files present to avoid showing stray/orphan data
+    if (files.length > 0 && sRes.data && sRes.data.length > 0) {
       const collections = new Set(sRes.data.map(s => String(s.collection_name || "").trim()).filter(Boolean));
       const styles = new Set(sRes.data.map(s => String(s.door_style || "").trim()).filter(Boolean));
       const skus = new Set(sRes.data.map(s => String(s.sku || "").trim()).filter(Boolean));
@@ -48,6 +49,14 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
         styles: styles.size,
         skuCount: skus.size,
         totalRows: sRes.data.length
+      };
+    } else {
+      // If no files exist, force the summary to zero even if stray records remain
+      specsSummary = {
+        collections: 0,
+        styles: 0,
+        skuCount: 0,
+        totalRows: 0
       };
     }
   } catch (err: any) {

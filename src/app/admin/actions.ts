@@ -68,7 +68,7 @@ export async function deleteManufacturer(id: string) {
       }
     }
 
-    // 2. Delete ALL pricing records for this manufacturer
+    // 2. Delete ALL pricing records for this manufacturer (CRITICAL: Purge orphans)
     const { error: pricingError } = await supabase
       .from('manufacturer_pricing')
       .delete()
