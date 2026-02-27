@@ -1,4 +1,3 @@
-
 "use server";
 
 import { cookies } from 'next/headers';
@@ -46,6 +45,7 @@ export async function addManufacturer(name: string) {
 
 /**
  * Deletes a manufacturer from the database.
+ * Cascading deletion is handled by Postgres foreign keys for files and pricing.
  */
 export async function deleteManufacturer(id: string) {
   try {
@@ -67,14 +67,23 @@ export async function deleteManufacturer(id: string) {
 }
 
 /**
- * Deletes a manufacturer file and its associated storage.
+ * Deletes a manufacturer file and ALL its associated pricing data.
+ * Implements strict cleanup to ensure Extraction Summary stays accurate.
  */
 export async function deleteManufacturerFileAction(fileId: string, fileUrl: string, manufacturerId: string) {
   try {
     const supabase = createServerSupabase();
     
-    // Extract path from public URL for deletion
-    // Example: .../public/manufacturer-docs/uuid/spec-books/filename.pdf
+    // 1. Delete all extracted pricing records associated with this specific file
+    // This ensures that Collections, Door Styles, and SKUs in the summary are updated instantly.
+    const { error: pricingError } = await supabase
+      .from('manufacturer_pricing')
+      .delete()
+      .eq('raw_source_file_id', fileId);
+
+    if (pricingError) throw new Error(`Pricing cleanup failed: ${pricingError.message}`);
+    
+    // 2. Remove file from Physical Storage
     const pathParts = fileUrl.split('/public/manufacturer-docs/');
     const path = pathParts.length > 1 ? pathParts[1] : null;
     
@@ -82,12 +91,19 @@ export async function deleteManufacturerFileAction(fileId: string, fileUrl: stri
       await supabase.storage.from('manufacturer-docs').remove([path]);
     }
     
-    await supabase.from('manufacturer_files').delete().eq('id', fileId);
+    // 3. Delete File Record from DB
+    const { error: fileError } = await supabase
+      .from('manufacturer_files')
+      .delete()
+      .eq('id', fileId);
+
+    if (fileError) throw new Error(`File record deletion failed: ${fileError.message}`);
     
+    // 4. Force refresh of the Admin UI
     revalidatePath(`/admin/manufacturers/${manufacturerId}`);
     return { success: true };
   } catch (err: any) {
-    console.error('Delete File Error:', err);
+    console.error('[Cleanup Action] Critical Failure:', err);
     return { success: false, error: err.message };
   }
 }

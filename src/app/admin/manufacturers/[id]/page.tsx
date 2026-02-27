@@ -1,4 +1,3 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 import { ManufacturerDetailClient } from './manufacturer-detail-client';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -6,17 +5,27 @@ import { AlertCircle, ArrowLeft, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
+// Ensure the page is never cached to provide live extraction summaries
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function ManufacturerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   
   let manufacturer = null;
   let files: any[] = [];
-  let specsSummary = null;
+  let specsSummary = {
+    collections: 0,
+    styles: 0,
+    skuCount: 0,
+    totalRows: 0
+  };
   let error: string | null = null;
 
   try {
     const supabase = createServerSupabase();
     
+    // Fetch live data directly from database tables
     const [mRes, fRes, sRes] = await Promise.all([
       supabase.from('manufacturers').select('*').eq('id', id).single(),
       supabase.from('manufacturer_files').select('*').eq('manufacturer_id', id).order('created_at', { ascending: false }),
@@ -28,10 +37,11 @@ export default async function ManufacturerDetailPage({ params }: { params: Promi
     manufacturer = mRes.data;
     files = fRes.data || [];
     
-    if (sRes.data) {
-      const collections = new Set(sRes.data.map(s => s.collection_name));
-      const styles = new Set(sRes.data.map(s => s.door_style));
-      const skus = new Set(sRes.data.map(s => s.sku));
+    // Calculate Summary dynamically from the live pricing table
+    if (sRes.data && sRes.data.length > 0) {
+      const collections = new Set(sRes.data.map(s => String(s.collection_name || "").trim()).filter(Boolean));
+      const styles = new Set(sRes.data.map(s => String(s.door_style || "").trim()).filter(Boolean));
+      const skus = new Set(sRes.data.map(s => String(s.sku || "").trim()).filter(Boolean));
       
       specsSummary = {
         collections: collections.size,
