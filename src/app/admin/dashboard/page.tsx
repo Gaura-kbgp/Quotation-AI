@@ -3,7 +3,7 @@ import { Factory, BookOpen, Database, Quote, RefreshCcw, AlertCircle } from 'luc
 import { createServerSupabase } from '@/lib/supabase-server';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from '@/components/ui/button';
-import Link from 'link';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
