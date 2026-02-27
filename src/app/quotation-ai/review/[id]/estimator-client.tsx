@@ -213,7 +213,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
     setIsProcessing(true);
     
-    // FORCE SYNC: Ensure latest selections are saved before generating
     try {
       await updateProjectAction(project.id, { 
         extracted_data: { rooms },
@@ -447,22 +446,24 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         {rooms.map((room, rIdx) => (
           <div key={rIdx} className="space-y-6">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-4">
-                <div className="flex items-center gap-5">
-                   <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-lg shadow-slate-200">
+                <div className="flex items-center gap-5 flex-1 min-w-0">
+                   <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-lg shadow-slate-200 shrink-0">
                       <FileSearch className="w-6 h-6" />
                    </div>
-                   <Input 
+                   <textarea 
                       value={room.room_name} 
+                      rows={1}
                       onChange={(e) => {
                         const nr = [...rooms];
                         nr[rIdx].room_name = e.target.value;
                         setRooms(nr);
                       }}
-                      className="text-2xl font-black bg-transparent border-none focus-visible:ring-0 p-0 w-80 text-slate-900"
+                      className="text-2xl font-semibold bg-transparent border-none focus-visible:ring-0 p-0 w-full text-slate-900 whitespace-normal break-words resize-none"
+                      placeholder="Enter Room Title"
                    />
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 shrink-0">
                   <Button onClick={() => handleAddRoom()} variant="ghost" size="sm" className="h-10 rounded-xl text-sky-600 font-bold hover:bg-sky-50">
                     <Plus className="w-4 h-4 mr-2" /> Add Area
                   </Button>
