@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { 
   Table, 
   TableBody, 
@@ -52,10 +52,10 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const [view, setView] = useState<'edit' | 'customer'>('edit');
   
   // Surcharges & Overheads
-  const [discount, setDiscount] = useState(project.bom_data?.discount || 0); // %
+  const [discount, setDiscount] = useState(project.bom_data?.discount || 0);
   const [shipping, setShipping] = useState(project.bom_data?.shipping || 250);
   const [fuel, setFuel] = useState(project.bom_data?.fuel || 0);
-  const [taxRate, setTaxRate] = useState(project.bom_data?.taxRate || 8.25); // %
+  const [taxRate, setTaxRate] = useState(project.bom_data?.taxRate || 8.25);
 
   // Customer Details
   const [customer, setCustomer] = useState({
@@ -81,25 +81,36 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const taxAmount = (adjustedSubtotal + Number(shipping) + Number(fuel)) * (Number(taxRate) / 100);
   const grandTotal = adjustedSubtotal + Number(shipping) + Number(fuel) + taxAmount;
 
-  const handleUpdatePrice = (idx: number, newPrice: string) => {
-    const price = parseFloat(newPrice) || 0;
+  const handleUpdateItem = (idx: number, updates: Partial<BomItem>) => {
     const newBom = [...bom];
-    newBom[idx] = { 
-      ...newBom[idx], 
-      unit_price: price, 
-      line_total: price * newBom[idx].qty 
-    };
+    const item = { ...newBom[idx], ...updates };
+    
+    // Recalculate line total if price or qty changed
+    if ('unit_price' in updates || 'qty' in updates) {
+      item.line_total = (item.unit_price || 0) * (item.qty || 0);
+    }
+    
+    newBom[idx] = item;
     setBom(newBom);
+  };
+
+  const handleUpdateRoomName = (oldName: string, newName: string) => {
+    setBom(prev => prev.map(item => 
+      item.room === oldName ? { ...item, room: newName } : item
+    ));
   };
 
   const handleSaveAll = async () => {
     setIsSaving(true);
     try {
-      // 1. Bulk Update Line Items
+      // 1. Bulk Update Line Items (SKU, Qty, Price, Room)
       await Promise.all(bom.map(item => 
         updateBomItemAction(item.id, { 
+          sku: item.sku,
+          qty: item.qty,
           unit_price: item.unit_price, 
-          line_total: item.unit_price * item.qty 
+          line_total: item.unit_price * item.qty,
+          room: item.room
         })
       ));
 
@@ -118,7 +129,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         }
       });
 
-      toast({ title: 'Quotation Saved', description: 'All prices and surcharges have been updated.' });
+      toast({ title: 'Quotation Saved', description: 'All edits and surcharges have been persisted.' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Save Failed', description: err.message });
     } finally {
@@ -130,7 +141,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
   return (
     <main className="min-h-screen bg-slate-50 pb-32">
-      {/* Dynamic Workstation Header */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 h-20 flex items-center justify-between print:hidden">
         <div className="flex items-center gap-6">
           <Link href={`/quotation-ai/review/${id}`}>
@@ -184,10 +194,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         </div>
       </header>
 
-      {/* Main Content Area */}
       <div className="max-w-6xl mx-auto px-8 mt-12 space-y-12 print:mt-0 print:px-0">
         
-        {/* PRINT ONLY HEADER: Manufacturer on Top Left */}
         <div className="hidden print:flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
            <div className="space-y-2">
               <h2 className="text-3xl font-black text-slate-900">{manufacturerName}</h2>
@@ -195,6 +203,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
            </div>
            <div className="text-right space-y-1">
               <h1 className="text-2xl font-black text-slate-900">QUOTATION</h1>
+              {customer.name && <p className="text-xs text-slate-900 font-bold">Client: {customer.name}</p>}
               <p className="text-xs text-slate-500 font-medium">Project: {project.project_name}</p>
               <p className="text-xs text-slate-500 font-medium">Date: {new Date().toLocaleDateString()}</p>
            </div>
@@ -205,9 +214,13 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
             {rooms.map(room => (
               <section key={room} className="space-y-6">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                  <div className="flex items-center gap-3">
-                    <Layout className="w-5 h-5 text-slate-900" />
-                    <h3 className="text-lg font-black uppercase tracking-tight text-slate-900">{room}</h3>
+                  <div className="flex items-center gap-3 w-full max-w-sm">
+                    <Layout className="w-5 h-5 text-slate-900 shrink-0" />
+                    <Input 
+                      value={room}
+                      onChange={(e) => handleUpdateRoomName(room, e.target.value)}
+                      className="text-lg font-black uppercase tracking-tight text-slate-900 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-sky-100 p-0 h-auto"
+                    />
                   </div>
                 </div>
 
@@ -226,16 +239,27 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       return (
                         <TableRow key={item.id} className="h-20 hover:bg-white border-b border-slate-50">
                           <TableCell className="py-4">
-                             <p className="font-bold text-slate-900">{item.sku}</p>
+                             <Input 
+                               value={item.sku}
+                               onChange={(e) => handleUpdateItem(itemIdx, { sku: e.target.value.toUpperCase() })}
+                               className="font-bold text-slate-900 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-sky-100 p-0 h-auto"
+                             />
                              <p className="text-[9px] text-slate-400 font-bold">Ref: {item.matched_sku}</p>
                           </TableCell>
-                          <TableCell className="text-center font-bold">{item.qty}</TableCell>
+                          <TableCell className="text-center font-bold">
+                             <Input 
+                               type="number"
+                               value={item.qty}
+                               onChange={(e) => handleUpdateItem(itemIdx, { qty: parseInt(e.target.value) || 0 })}
+                               className="w-16 mx-auto text-center font-bold border-none bg-transparent focus-visible:ring-1 focus-visible:ring-sky-100 p-0 h-auto"
+                             />
+                          </TableCell>
                           <TableCell className="text-right">
                              <Input 
                                type="number" 
                                value={item.unit_price} 
-                               onChange={(e) => handleUpdatePrice(itemIdx, e.target.value)}
-                               className="w-24 ml-auto text-right font-mono font-bold bg-white h-9 rounded-lg border-slate-200 print:border-none print:bg-transparent"
+                               onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })}
+                               className="w-24 ml-auto text-right font-mono font-bold bg-white h-9 rounded-lg border-slate-200 print:border-none print:bg-transparent shadow-sm"
                              />
                           </TableCell>
                           <TableCell className="text-right font-black text-slate-900 pr-6 font-mono">
@@ -249,7 +273,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
               </section>
             ))}
 
-            {/* Surcharge & Calculation Workstation */}
             <section className="bg-white p-12 rounded-[2.5rem] border border-slate-200 shadow-xl space-y-12 print:border-none print:shadow-none print:p-0">
                <div className="grid grid-cols-1 md:grid-cols-4 gap-8 print:hidden">
                   <div className="space-y-2">
