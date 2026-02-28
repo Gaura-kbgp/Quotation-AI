@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,19 +22,18 @@ import {
   UserCircle, 
   Calculator,
   Save,
-  CheckCircle2,
   ArrowRight,
   ShieldCheck,
-  ChevronRight,
-  AlertCircle,
-  FileText,
+  Layers,
   Box,
-  Layers
+  Package,
+  ChevronDown
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { cn, detectCategory } from '@/lib/utils';
+import { cn, isPrimaryCabinet, detectCategory } from '@/lib/utils';
 import { updateBomItemAction, updateProjectAction } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 interface BomItem {
   id: string;
@@ -44,6 +44,7 @@ interface BomItem {
   line_total: number;
   room: string;
   precision_level: string;
+  is_billable?: boolean; // Local state for optional items
 }
 
 interface BomManagerClientProps {
@@ -58,7 +59,15 @@ type WorkflowStep = 'pricing' | 'customer' | 'preview';
 export function BomManagerClient({ id, project, initialBom, manufacturerName }: BomManagerClientProps) {
   const { toast } = useToast();
   const router = useRouter();
-  const [bom, setBom] = useState<BomItem[]>(initialBom);
+  
+  // Initialize BOM with billable flag based on SKU prefix
+  const [bom, setBom] = useState<BomItem[]>(() => 
+    initialBom.map(item => ({
+      ...item,
+      is_billable: item.is_billable ?? isPrimaryCabinet(item.sku)
+    }))
+  );
+
   const [step, setStep] = useState<WorkflowStep>('pricing');
   
   // Unique rooms from BOM
@@ -80,10 +89,10 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
   const [isSaving, setIsSaving] = useState(false);
 
-  // Financial Calculations
+  // Financial Calculations - STRICT FILTERING
   const financials = useMemo(() => {
     const subtotal = bom
-      .filter(item => selectedRooms.includes(item.room))
+      .filter(item => selectedRooms.includes(item.room) && item.is_billable)
       .reduce((acc, curr) => acc + (Number(curr.unit_price) * Number(curr.qty) || 0), 0);
 
     const discountAmt = subtotal * (Number(discount) / 100);
@@ -152,7 +161,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         }
       });
 
-      toast({ title: 'Quotation Saved', description: 'All changes and customer data synced.' });
+      toast({ title: 'Quotation Saved' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Save Failed', description: err.message });
     } finally {
@@ -165,7 +174,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
       toast({ 
         variant: 'destructive', 
         title: 'Selection Error', 
-        description: 'Please select at least one room to include in the quotation.' 
+        description: 'Select at least one room.' 
       });
       return false;
     }
@@ -193,41 +202,12 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         
         <div className="flex items-center gap-3">
           <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200 mr-4">
-            <button 
-              onClick={() => setStep('pricing')}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                step === 'pricing' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
-              )}
-            >
-              1. Pricing
-            </button>
-            <button 
-              onClick={() => { if(validateWorkflow()) setStep('customer') }}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                step === 'customer' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
-              )}
-            >
-              2. Customer
-            </button>
-            <button 
-              onClick={() => { if(validateWorkflow()) setStep('preview') }}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                step === 'preview' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
-              )}
-            >
-              3. Preview
-            </button>
+            <button onClick={() => setStep('pricing')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold", step === 'pricing' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400")}>1. Pricing</button>
+            <button onClick={() => { if(validateWorkflow()) setStep('customer') }} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold", step === 'customer' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400")}>2. Customer</button>
+            <button onClick={() => { if(validateWorkflow()) setStep('preview') }} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold", step === 'preview' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400")}>3. Preview</button>
           </div>
           
-          <Button 
-            variant="outline" 
-            className="rounded-xl h-11 px-5 border-slate-200 font-bold" 
-            onClick={handleSaveAll}
-            disabled={isSaving}
-          >
+          <Button variant="outline" className="rounded-xl h-11 px-5 border-slate-200 font-bold" onClick={handleSaveAll} disabled={isSaving}>
             {isSaving ? <Calculator className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
             Save Progress
           </Button>
@@ -240,7 +220,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
             <div className="flex justify-between items-end">
               <div>
                 <h2 className="text-3xl font-black text-slate-900 tracking-tight">Price Review</h2>
-                <p className="text-slate-500">Edit SKU, quantities, and pricing details. Toggle areas to include in the final quote.</p>
+                <p className="text-slate-500">Only Primary Cabinets affect the subtotal by default.</p>
               </div>
               <Button onClick={() => { if(validateWorkflow()) setStep('customer') }} className="gradient-button h-12 px-8 rounded-2xl group">
                 Customer Info
@@ -248,7 +228,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
               </Button>
             </div>
 
-            {/* Global Room Controls */}
             <div className="flex items-center justify-between bg-white px-8 py-4 rounded-2xl border border-slate-200 shadow-sm">
                <div className="flex items-center gap-3">
                   <Layers className="w-5 h-5 text-sky-500" />
@@ -259,7 +238,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                     id="global-select-all" 
                     checked={selectedRooms.length === allRooms.length}
                     onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
-                    className="w-5 h-5 rounded-md"
                   />
                   <Label htmlFor="global-select-all" className="text-xs font-black uppercase tracking-widest text-slate-500 cursor-pointer">
                     {selectedRooms.length === allRooms.length ? 'Unselect All' : 'Select All Areas'}
@@ -267,136 +245,168 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                </div>
             </div>
 
-            {allRooms.map(room => (
-              <section key={room} className={cn("space-y-6 transition-all duration-300", !selectedRooms.includes(room) && "opacity-40 grayscale")}>
-                <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                  <div className="flex items-center gap-4 w-full">
-                    <Checkbox 
-                      checked={selectedRooms.includes(room)} 
-                      onCheckedChange={() => handleToggleRoom(room)}
-                      className="w-6 h-6 rounded-lg border-2 data-[state=checked]:bg-sky-600 data-[state=checked]:border-sky-600"
-                    />
-                    <div className="flex items-center gap-3">
-                      <Layout className={cn("w-5 h-5 shrink-0", selectedRooms.includes(room) ? "text-sky-500" : "text-slate-300")} />
-                      <h3 className="text-xl font-black uppercase tracking-tight text-slate-900">{room}</h3>
+            {allRooms.map(room => {
+              const roomItems = bom.filter(i => i.room === room);
+              const primaryItems = roomItems.filter(i => isPrimaryCabinet(i.sku));
+              const otherItems = roomItems.filter(i => !isPrimaryCabinet(i.sku));
+
+              return (
+                <section key={room} className={cn("space-y-6 transition-all", !selectedRooms.includes(room) && "opacity-40 grayscale")}>
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                    <div className="flex items-center gap-4 w-full">
+                      <Checkbox checked={selectedRooms.includes(room)} onCheckedChange={() => handleToggleRoom(room)} />
+                      <div className="flex items-center gap-3">
+                        <Layout className={cn("w-5 h-5", selectedRooms.includes(room) ? "text-sky-500" : "text-slate-300")} />
+                        <h3 className="text-xl font-black uppercase tracking-tight text-slate-900">{room}</h3>
+                      </div>
                     </div>
                   </div>
-                  {!selectedRooms.includes(room) && (
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full shrink-0">Excluded from Total</span>
-                  )}
-                </div>
 
-                <div className={cn(!selectedRooms.includes(room) && "pointer-events-none")}>
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="h-12 border-b border-slate-200 hover:bg-transparent">
-                        <TableHead className="text-[10px] font-black uppercase text-slate-400 w-1/2">Cabinet Code</TableHead>
-                        <TableHead className="text-[10px] font-black uppercase text-slate-400 text-center">Qty</TableHead>
-                        <TableHead className="text-[10px] font-black uppercase text-slate-400 text-right">Unit Price ($)</TableHead>
-                        <TableHead className="text-[10px] font-black uppercase text-slate-400 text-right pr-6">Line Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {bom.filter(i => i.room === room).map((item) => {
-                        const itemIdx = bom.findIndex(b => b.id === item.id);
-                        return (
-                          <TableRow key={item.id} className="h-20 hover:bg-white border-b border-slate-50">
-                            <TableCell className="py-4">
-                               <Input 
-                                 value={item.sku}
-                                 onChange={(e) => handleUpdateItem(itemIdx, { sku: e.target.value.toUpperCase() })}
-                                 className="font-bold text-slate-900 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-sky-100 p-0 h-auto"
-                               />
-                               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Ref: {item.matched_sku}</p>
-                            </TableCell>
-                            <TableCell className="text-center font-bold">
-                               <Input 
-                                 type="number"
-                                 value={item.qty}
-                                 onChange={(e) => handleUpdateItem(itemIdx, { qty: parseInt(e.target.value) || 0 })}
-                                 className="w-16 mx-auto text-center font-bold border-none bg-slate-50 rounded-lg h-9 focus-visible:ring-1 focus-visible:ring-sky-500"
-                               />
-                            </TableCell>
-                            <TableCell className="text-right">
-                               <Input 
-                                 type="number" 
-                                 value={item.unit_price} 
-                                 onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })}
-                                 className="w-24 ml-auto text-right font-mono font-bold bg-white h-9 rounded-lg border-slate-200 shadow-sm"
-                               />
-                            </TableCell>
-                            <TableCell className="text-right font-black text-slate-900 pr-6 font-mono">
-                              ${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </section>
-            ))}
+                  <div className={cn(!selectedRooms.includes(room) && "pointer-events-none")}>
+                    {/* Billable Section */}
+                    <div className="space-y-2 mb-8">
+                      <div className="flex items-center gap-2 text-sky-600 font-bold text-xs uppercase tracking-widest ml-4 mb-2">
+                        <Box className="w-4 h-4" /> Billable Cabinets
+                      </div>
+                      <Table>
+                        <TableBody>
+                          {primaryItems.map((item) => {
+                            const itemIdx = bom.findIndex(b => b.id === item.id);
+                            return (
+                              <TableRow key={item.id} className="h-16 hover:bg-white border-b border-slate-50">
+                                <TableCell className="w-1/2">
+                                   <Input 
+                                     value={item.sku}
+                                     onChange={(e) => handleUpdateItem(itemIdx, { sku: e.target.value.toUpperCase() })}
+                                     className="font-bold text-slate-900 border-none bg-transparent h-auto p-0"
+                                   />
+                                   <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Ref: {item.matched_sku}</p>
+                                </TableCell>
+                                <TableCell className="text-center font-bold">
+                                   <Input 
+                                     type="number"
+                                     value={item.qty}
+                                     onChange={(e) => handleUpdateItem(itemIdx, { qty: parseInt(e.target.value) || 0 })}
+                                     className="w-16 mx-auto text-center font-bold border-none bg-slate-50 h-9"
+                                   />
+                                </TableCell>
+                                <TableCell className="text-right">
+                                   <Input 
+                                     type="number" 
+                                     value={item.unit_price} 
+                                     onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })}
+                                     className="w-24 ml-auto text-right font-mono font-bold bg-white h-9 border-slate-200"
+                                   />
+                                </TableCell>
+                                <TableCell className="text-right font-black text-slate-900 pr-6 font-mono">
+                                  ${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Accessories Accordion */}
+                    {otherItems.length > 0 && (
+                      <Accordion type="single" collapsible className="w-full">
+                        <AccordionItem value="other" className="border-none">
+                          <AccordionTrigger className="px-4 py-3 bg-slate-50 rounded-xl hover:no-underline group">
+                            <div className="flex items-center gap-3">
+                              <Package className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Other Items ({otherItems.length})</span>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="pt-4">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="hover:bg-transparent border-b border-slate-100">
+                                  <TableHead className="text-[9px] uppercase font-black pl-4">Charge</TableHead>
+                                  <TableHead className="text-[9px] uppercase font-black">SKU</TableHead>
+                                  <TableHead className="text-[9px] uppercase font-black text-center">Qty</TableHead>
+                                  <TableHead className="text-[9px] uppercase font-black text-right">Price</TableHead>
+                                  <TableHead className="text-[9px] uppercase font-black text-right pr-6">Total</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {otherItems.map((item) => {
+                                  const itemIdx = bom.findIndex(b => b.id === item.id);
+                                  return (
+                                    <TableRow key={item.id} className={cn("h-12 border-b border-slate-50/50", !item.is_billable && "text-slate-400")}>
+                                      <TableCell className="pl-4">
+                                        <Checkbox 
+                                          checked={item.is_billable} 
+                                          onCheckedChange={(checked) => handleUpdateItem(itemIdx, { is_billable: !!checked })}
+                                        />
+                                      </TableCell>
+                                      <TableCell className="font-bold">{item.sku}</TableCell>
+                                      <TableCell className="text-center font-mono">{item.qty}</TableCell>
+                                      <TableCell className="text-right">
+                                        <Input 
+                                          type="number" 
+                                          value={item.unit_price}
+                                          onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })}
+                                          className="w-20 ml-auto h-7 text-right text-xs font-mono"
+                                        />
+                                      </TableCell>
+                                      <TableCell className="text-right font-bold pr-6">
+                                        ${(item.unit_price * item.qty).toFixed(2)}
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
 
             <section className="bg-white p-12 rounded-[2.5rem] border border-slate-200 shadow-xl space-y-12">
                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Dealer Discount (%)</Label>
-                    <Input 
-                      type="number" 
-                      value={discount} 
-                      onChange={e => setDiscount(parseFloat(e.target.value) || 0)}
-                      className="h-12 rounded-xl font-bold bg-slate-50 border-none"
-                    />
+                    <Label className="text-[10px] font-black uppercase text-slate-400">Dealer Discount (%)</Label>
+                    <Input type="number" value={discount} onChange={e => setDiscount(parseFloat(e.target.value) || 0)} className="h-12 rounded-xl font-bold bg-slate-50 border-none" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Shipping Charge ($)</Label>
-                    <Input 
-                      type="number" 
-                      value={shipping} 
-                      onChange={e => setShipping(parseFloat(e.target.value) || 0)}
-                      className="h-12 rounded-xl font-bold bg-slate-50 border-none"
-                    />
+                    <Label className="text-[10px] font-black uppercase text-slate-400">Shipping Charge ($)</Label>
+                    <Input type="number" value={shipping} onChange={e => setShipping(parseFloat(e.target.value) || 0)} className="h-12 rounded-xl font-bold bg-slate-50 border-none" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fuel Surcharge ($)</Label>
-                    <Input 
-                      type="number" 
-                      value={fuel} 
-                      onChange={e => setFuel(parseFloat(e.target.value) || 0)}
-                      className="h-12 rounded-xl font-bold bg-slate-50 border-none"
-                    />
+                    <Label className="text-[10px] font-black uppercase text-slate-400">Fuel Surcharge ($)</Label>
+                    <Input type="number" value={fuel} onChange={e => setFuel(parseFloat(e.target.value) || 0)} className="h-12 rounded-xl font-bold bg-slate-50 border-none" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sales Tax Rate (%)</Label>
-                    <Input 
-                      type="number" 
-                      value={taxRate} 
-                      onChange={e => setTaxRate(parseFloat(e.target.value) || 0)}
-                      className="h-12 rounded-xl font-bold bg-slate-50 border-none"
-                    />
+                    <Label className="text-[10px] font-black uppercase text-slate-400">Sales Tax Rate (%)</Label>
+                    <Input type="number" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="h-12 rounded-xl font-bold bg-slate-50 border-none" />
                   </div>
                </div>
 
-               <div className="flex flex-col md:flex-row justify-between items-start gap-12 pt-8 border-t border-slate-100">
-                  <div className="w-full md:w-96 space-y-4 ml-auto">
+               <div className="flex justify-end pt-8 border-t border-slate-100">
+                  <div className="w-full md:w-96 space-y-4">
                      <div className="space-y-3">
                         <div className="flex justify-between items-center text-slate-500">
-                           <span className="text-[10px] font-bold uppercase tracking-widest">Subtotal ({selectedRooms.length} Areas)</span>
-                           <span className="font-mono text-lg font-bold text-slate-900">${financials.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                           <span className="text-[10px] font-bold uppercase">Material Subtotal</span>
+                           <span className="font-mono text-lg font-bold text-slate-900">${financials.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                         </div>
                         {discount > 0 && (
                           <div className="flex justify-between items-center text-emerald-600">
-                             <span className="text-[10px] font-bold uppercase tracking-widest">Dealer Discount ({discount}%)</span>
-                             <span className="font-mono text-lg font-bold">-${financials.discountAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                             <span className="text-[10px] font-bold uppercase">Discount ({discount}%)</span>
+                             <span className="font-mono text-lg font-bold">-${financials.discountAmt.toFixed(2)}</span>
                           </div>
                         )}
                         <div className="flex justify-between items-center text-slate-500">
-                           <span className="text-[10px] font-bold uppercase tracking-widest">Logistics Fees</span>
-                           <span className="font-mono text-lg font-bold text-slate-900">${financials.logisticsFees.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                           <span className="text-[10px] font-bold uppercase">Logistics Fees</span>
+                           <span className="font-mono text-lg font-bold text-slate-900">${financials.logisticsFees.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between items-center text-slate-500">
-                           <span className="text-[10px] font-bold uppercase tracking-widest">Taxes ({taxRate}%)</span>
-                           <span className="font-mono text-lg font-bold text-slate-900">${financials.taxes.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                           <span className="text-[10px] font-bold uppercase">Taxes ({taxRate}%)</span>
+                           <span className="font-mono text-lg font-bold text-slate-900">${financials.taxes.toFixed(2)}</span>
                         </div>
                      </div>
 
@@ -404,7 +414,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                         <div className="flex justify-between items-baseline">
                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-400">Total Investment</span>
                            <span className="text-4xl font-black font-mono tracking-tighter">
-                              ${financials.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              ${financials.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                            </span>
                         </div>
                      </div>
@@ -417,45 +427,23 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         {step === 'customer' && (
           <div className="max-w-3xl mx-auto py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
              <Card className="rounded-[3rem] p-12 border-slate-100 shadow-2xl bg-white text-center">
-                <div className="w-20 h-20 rounded-3xl bg-sky-50 flex items-center justify-center text-sky-600 mx-auto mb-6">
-                   <UserCircle className="w-12 h-12" />
-                </div>
+                <div className="w-20 h-20 rounded-3xl bg-sky-50 flex items-center justify-center text-sky-600 mx-auto mb-6"><UserCircle className="w-12 h-12" /></div>
                 <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Customer Intake</h2>
-                <p className="text-slate-500 mb-12">These details will appear on the final bill header.</p>
-
-                <div className="space-y-8 text-left">
+                <div className="space-y-8 text-left mt-12">
                    <div className="space-y-3">
-                      <Label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Client Name / Attention To</Label>
-                      <Input 
-                        placeholder="e.g. John & Jane Doe" 
-                        value={customer.name}
-                        onChange={e => setCustomer({...customer, name: e.target.value})}
-                        className="h-16 rounded-2xl bg-slate-50 border-none font-bold text-xl px-6 focus-visible:ring-sky-500"
-                      />
+                      <Label className="text-xs font-black uppercase text-slate-400">Client Name</Label>
+                      <Input placeholder="John & Jane Doe" value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-16 rounded-2xl bg-slate-50 border-none font-bold text-xl px-6" />
                    </div>
                    <div className="space-y-3">
-                      <Label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Project Site Address</Label>
-                      <Input 
-                        placeholder="e.g. 123 Cabinetry Way, Suite 400" 
-                        value={customer.address}
-                        onChange={e => setCustomer({...customer, address: e.target.value})}
-                        className="h-16 rounded-2xl bg-slate-50 border-none font-bold text-xl px-6 focus-visible:ring-sky-500"
-                      />
+                      <Label className="text-xs font-black uppercase text-slate-400">Site Address</Label>
+                      <Input placeholder="123 Cabinetry Way" value={customer.address} onChange={e => setCustomer({...customer, address: e.target.value})} className="h-16 rounded-2xl bg-slate-50 border-none font-bold text-xl px-6" />
                    </div>
                    <div className="space-y-3">
-                      <Label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Contact Phone</Label>
-                      <Input 
-                        placeholder="e.g. (555) 0123-4567" 
-                        value={customer.phone}
-                        onChange={e => setCustomer({...customer, phone: e.target.value})}
-                        className="h-16 rounded-2xl bg-slate-50 border-none font-bold text-xl px-6 focus-visible:ring-sky-500"
-                      />
+                      <Label className="text-xs font-black uppercase text-slate-400">Phone</Label>
+                      <Input placeholder="(555) 0123-4567" value={customer.phone} onChange={e => setCustomer({...customer, phone: e.target.value})} className="h-16 rounded-2xl bg-slate-50 border-none font-bold text-xl px-6" />
                    </div>
-
                    <div className="flex gap-4 pt-6">
-                     <Button variant="ghost" className="h-16 px-8 rounded-[2rem] font-bold text-slate-500" onClick={() => setStep('pricing')}>
-                        Back to Pricing
-                     </Button>
+                     <Button variant="ghost" className="h-16 px-8 rounded-[2rem] font-bold text-slate-500" onClick={() => setStep('pricing')}>Back</Button>
                      <Button className="flex-1 h-16 rounded-[2rem] gradient-button text-xl group" onClick={() => { if(validateWorkflow()) setStep('preview') }}>
                         Preview Final Bill
                         <ArrowRight className="w-6 h-6 ml-3 group-hover:translate-x-1 transition-transform" />
@@ -467,187 +455,102 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         )}
 
         {step === 'preview' && (
-          <div className="animate-in fade-in duration-500 print:bg-white print:p-0">
+          <div className="animate-in fade-in duration-500">
              <div className="flex justify-between items-center mb-6 print:hidden">
-                <Button variant="ghost" onClick={() => setStep('customer')} className="font-bold text-slate-500">
-                   <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                </Button>
+                <Button variant="ghost" onClick={() => setStep('customer')} className="font-bold text-slate-500"><ArrowLeft className="w-4 h-4 mr-2" /> Back</Button>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="rounded-lg font-bold" onClick={handleSaveAll}>
-                    <Save className="w-4 h-4 mr-2" /> Save
-                  </Button>
-                  <Button size="sm" className="gradient-button px-6 rounded-lg font-bold" onClick={() => window.print()}>
-                    <Printer className="w-4 h-4 mr-2" /> Print PDF (A4)
-                  </Button>
+                  <Button variant="outline" size="sm" className="rounded-lg font-bold" onClick={handleSaveAll}><Save className="w-4 h-4 mr-2" /> Save</Button>
+                  <Button size="sm" className="gradient-button px-6 rounded-lg font-bold" onClick={() => window.print()}><Printer className="w-4 h-4 mr-2" /> Print PDF</Button>
                 </div>
              </div>
 
              <div className="print-container bg-white font-body text-slate-900">
-                {/* PDF Header - Two Column Grid */}
                 <div className="grid grid-cols-2 gap-8 border-b-2 border-slate-900 pb-4 mb-6 items-start">
                    <div className="space-y-2">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-lg bg-slate-900 flex items-center justify-center text-white font-black text-2xl">
-                          {manufacturerName.charAt(0)}
-                        </div>
-                        <div>
-                          <h2 className="text-[16px] font-bold text-slate-900 uppercase tracking-tight">{manufacturerName} ORDER</h2>
-                          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-500">
-                             <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
-                             Authorized Facility
-                          </div>
-                        </div>
+                        <div className="w-12 h-12 rounded-lg bg-slate-900 flex items-center justify-center text-white font-black text-2xl">{manufacturerName.charAt(0)}</div>
+                        <h2 className="text-[16px] font-bold text-slate-900 uppercase">{manufacturerName} ORDER</h2>
                       </div>
                       <div className="pt-2">
-                         <h4 className="text-[10px] font-bold uppercase text-slate-400">Dealer Representative</h4>
                          <p className="text-[11px] font-bold text-slate-900">KABS Premium Cabinetry Co.</p>
                          <p className="text-[10px] text-slate-500">102 West Montgomery St, TX • (800) 555-0199</p>
                       </div>
                    </div>
-
                    <div className="text-right space-y-4">
-                      <div>
-                        <h1 className="text-[18px] font-black text-slate-900 uppercase">QUOTATION</h1>
-                        <div className="mt-1 flex flex-col items-end gap-1">
-                          <div className="flex gap-2 text-[10px] font-bold">
-                            <span className="text-slate-400 uppercase">Ref:</span>
-                            <span className="text-slate-900">{project.project_name}</span>
-                          </div>
-                          <div className="flex gap-2 text-[10px] font-bold">
-                            <span className="text-slate-400 uppercase">Date:</span>
-                            <span className="text-slate-900">{new Date().toLocaleDateString()}</span>
-                          </div>
-                          <div className="flex gap-2 text-[10px] font-bold">
-                            <span className="text-slate-400 uppercase">Type:</span>
-                            <span className="text-slate-900">Architectural Takeoff</span>
-                          </div>
-                        </div>
-                      </div>
-                      
+                      <h1 className="text-[18px] font-black text-slate-900 uppercase">QUOTATION</h1>
                       <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-left ml-auto max-w-[240px]">
-                         <h4 className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">Shipping Attention</h4>
-                         <p className="text-[11px] font-bold text-slate-900 uppercase">{customer.name || 'Valued Client'}</p>
-                         <p className="text-[10px] text-slate-600 leading-tight mt-0.5">{customer.address || 'Address Not Provided'}</p>
+                         <h4 className="text-[9px] font-bold uppercase text-slate-400">Bill To</h4>
+                         <p className="text-[11px] font-bold text-slate-900">{customer.name || 'Client'}</p>
+                         <p className="text-[10px] text-slate-600">{customer.address || 'N/A'}</p>
                       </div>
                    </div>
                 </div>
 
-                {/* Filtered Room Sections for PDF */}
                 {selectedRooms.map(room => {
-                  const roomItems = bom.filter(i => i.room === room);
-                  const categories = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets', 'Hinges & Hardware', 'Accessories'];
-                  const roomTotal = roomItems.reduce((acc, i) => acc + (i.unit_price * i.qty), 0);
+                  const billableItems = bom.filter(i => i.room === room && i.is_billable);
+                  const roomTotal = billableItems.reduce((acc, i) => acc + (i.unit_price * i.qty), 0);
+                  if (billableItems.length === 0) return null;
 
                   return (
                     <div key={room} className="mb-8 avoid-break">
-                      <div className="bg-slate-100 px-3 py-1.5 rounded flex justify-between items-center mb-3">
-                        <h3 className="text-[14px] font-bold text-slate-900 uppercase">{room}</h3>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase">Units: {roomItems.length}</div>
-                      </div>
-
-                      {categories.map(cat => {
-                        const catItems = roomItems.filter(i => detectCategory(i.sku) === cat);
-                        if (catItems.length === 0) return null;
-
-                        return (
-                          <div key={cat} className="mb-4 pl-2">
-                            <h4 className="text-[11px] font-bold uppercase text-sky-600 mb-1.5 border-l-2 border-sky-500 pl-2">{cat}</h4>
-                            <Table className="border-collapse">
-                              <TableHeader>
-                                <TableRow className="h-6 border-b-2 border-slate-200 hover:bg-transparent">
-                                  <TableHead className="font-bold text-slate-900 text-[11px] uppercase h-6 px-2 w-1/2">Product Code</TableHead>
-                                  <TableHead className="font-bold text-slate-900 text-[11px] uppercase h-6 px-2 text-center w-16">Qty</TableHead>
-                                  <TableHead className="font-bold text-slate-900 text-[11px] uppercase h-6 px-2 text-right">Unit Price</TableHead>
-                                  <TableHead className="font-bold text-slate-900 text-[11px] uppercase h-6 px-2 text-right">Total</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {catItems.map(item => (
-                                  <TableRow key={item.id} className="h-6 border-b border-slate-100 hover:bg-transparent">
-                                    <TableCell className="font-bold text-slate-800 py-1 px-2 text-[9.5px] uppercase">{item.sku}</TableCell>
-                                    <TableCell className="text-center font-bold text-slate-600 py-1 px-2 text-[9.5px]">{item.qty}</TableCell>
-                                    <TableCell className="text-right font-mono text-[9.5px] text-slate-500 py-1 px-2">${item.unit_price.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right font-mono font-bold text-slate-900 py-1 px-2 text-[9.5px]">${(item.unit_price * item.qty).toFixed(2)}</TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        );
-                      })}
-
+                      <h3 className="bg-slate-100 px-3 py-1.5 rounded text-[14px] font-bold text-slate-900 uppercase mb-3">{room}</h3>
+                      <Table className="border-collapse">
+                        <TableHeader>
+                          <TableRow className="h-6 border-b-2 border-slate-200 hover:bg-transparent">
+                            <TableHead className="font-bold text-slate-900 text-[11px] uppercase px-2 w-1/2">Product Code</TableHead>
+                            <TableHead className="font-bold text-slate-900 text-[11px] uppercase px-2 text-center w-16">Qty</TableHead>
+                            <TableHead className="font-bold text-slate-900 text-[11px] uppercase px-2 text-right">Price</TableHead>
+                            <TableHead className="font-bold text-slate-900 text-[11px] uppercase px-2 text-right">Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {billableItems.map(item => (
+                            <TableRow key={item.id} className="h-6 border-b border-slate-100 hover:bg-transparent">
+                              <TableCell className="font-bold text-slate-800 py-1 px-2 text-[9.5px] uppercase">{item.sku}</TableCell>
+                              <TableCell className="text-center font-bold text-slate-600 py-1 px-2 text-[9.5px]">{item.qty}</TableCell>
+                              <TableCell className="text-right font-mono text-[9.5px] text-slate-500 py-1 px-2">${item.unit_price.toFixed(2)}</TableCell>
+                              <TableCell className="text-right font-mono font-bold text-slate-900 py-1 px-2 text-[9.5px]">${(item.unit_price * item.qty).toFixed(2)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                       <div className="flex justify-end pt-2 border-t border-slate-200">
-                         <div className="text-right">
-                           <span className="text-[10px] font-bold uppercase text-slate-400 mr-4">Area Total</span>
-                           <span className="text-[12px] font-bold font-mono text-slate-900">${roomTotal.toFixed(2)}</span>
-                         </div>
+                         <span className="text-[10px] font-bold uppercase text-slate-400 mr-4">Area Total</span>
+                         <span className="text-[12px] font-bold font-mono text-slate-900">${roomTotal.toFixed(2)}</span>
                       </div>
                     </div>
                   );
                 })}
 
-                {/* Final Bill Summary */}
-                <div className="mt-12 pt-6 border-t-2 border-slate-900 avoid-break">
-                   <div className="flex justify-between items-start gap-12">
-                      <div className="flex-1">
-                         <div className="p-4 rounded-lg bg-sky-50 border border-sky-100 max-w-[340px]">
-                            <h4 className="text-[10px] font-bold text-sky-900 uppercase mb-1.5 flex items-center gap-2">
-                               <ShieldCheck className="w-4 h-4" /> Production Terms
-                            </h4>
-                            <p className="text-[9.5px] text-sky-700 leading-relaxed font-medium">
-                               This quote is generated based on architectural plans for {selectedRooms.length} areas. 
-                               All quantities must be field verified before ordering. 
-                               Prices are subject to adjustment after 30 days.
-                            </p>
-                         </div>
+                <div className="mt-12 pt-6 border-t-2 border-slate-900 avoid-break flex justify-end">
+                   <div className="w-72 space-y-3">
+                      <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase">
+                         <span>Subtotal</span>
+                         <span className="font-mono text-[11px]">${financials.subtotal.toFixed(2)}</span>
                       </div>
-
-                      <div className="w-72 space-y-3">
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold">
-                             <span className="uppercase tracking-tight">Project Subtotal</span>
-                             <span className="font-mono text-[11px]">${financials.subtotal.toFixed(2)}</span>
-                          </div>
-                          {discount > 0 && (
-                            <div className="flex justify-between items-center text-emerald-600 text-[10px] font-bold">
-                               <span className="uppercase tracking-tight">Dealer Discount ({discount}%)</span>
-                               <span className="font-mono text-[11px]">-${financials.discountAmt.toFixed(2)}</span>
-                            </div>
-                          )}
-                          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold">
-                             <span className="uppercase tracking-tight">Logistics & Fees</span>
-                             <span className="font-mono text-[11px]">${financials.logisticsFees.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold pb-2 border-b border-slate-100">
-                             <span className="uppercase tracking-tight">Tax ({taxRate}%)</span>
-                             <span className="font-mono text-[11px]">${financials.taxes.toFixed(2)}</span>
-                          </div>
+                      {discount > 0 && (
+                        <div className="flex justify-between items-center text-emerald-600 text-[10px] font-bold uppercase">
+                           <span>Discount ({discount}%)</span>
+                           <span className="font-mono text-[11px]">-${financials.discountAmt.toFixed(2)}</span>
                         </div>
-
-                        <div className="bg-slate-900 p-5 rounded-lg text-white">
-                           <div className="flex justify-between items-baseline">
-                              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-400">Grand Total</span>
-                              <span className="text-[18px] font-black font-mono">
-                                 ${financials.total.toFixed(2)}
-                              </span>
-                           </div>
-                           <p className="text-[8px] text-slate-500 font-bold text-right uppercase mt-1">Currency: USD</p>
-                        </div>
+                      )}
+                      <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase">
+                         <span>Logistics</span>
+                         <span className="font-mono text-[11px]">${financials.logisticsFees.toFixed(2)}</span>
+                      </div>
+                      <div className="bg-slate-900 p-5 rounded-lg text-white">
+                         <div className="flex justify-between items-baseline">
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-400">Grand Total</span>
+                            <span className="text-[18px] font-black font-mono">${financials.total.toFixed(2)}</span>
+                         </div>
                       </div>
                    </div>
                 </div>
-                
-                <div className="print-footer">
-                   Powered by KABS AI • Production Precision Engineering
-                </div>
+                <div className="print-footer">Powered by KABS AI</div>
              </div>
           </div>
         )}
       </div>
-
-      <footer className="mt-32 border-t border-slate-200 py-12 text-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 print:hidden">
-        &copy; {new Date().getFullYear()} KABS Inc. Precision Engineering.
-      </footer>
     </main>
   );
 }
