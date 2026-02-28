@@ -4,8 +4,8 @@ import { compressSku } from '@/lib/utils';
 export const maxDuration = 300;
 
 /**
- * ULTIMATE UNIVERSAL PRICING ENGINE (v44.0)
- * Scans ALL pricing records with recursive descriptor stripping and global fallback logic.
+ * ULTIMATE ENTERPRISE PRICING ENGINE (v45.0)
+ * Scans ALL pricing records with recursive variant stripping and global fallback logic.
  */
 export async function POST(req: Request) {
   try {
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // 1. EXHAUSTIVE CATALOG RETRIEVAL (Fetch 100% of data with stable pagination)
+    // 1. EXHAUSTIVE CATALOG RETRIEVAL (Recursive Paginated Fetch)
     let allPricing: any[] = [];
     let from = 0;
     const step = 2000;
@@ -50,7 +50,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2. BUILD HIGH-SPEED LOOKUP MAPS
+    console.log(`[Pricing Engine] Loaded ${allPricing.length} total pricing records for matching.`);
+
+    // 2. HIGH-SPEED INDEXING
     const localMap = new Map<string, any>(); 
     const globalSkuMap = new Map<string, any>(); 
     const compressedMap = new Map<string, any>(); 
@@ -64,8 +66,8 @@ export async function POST(req: Request) {
       const fullKey = `${sku}|${col}|${sty}`;
       if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Global fallback - prioritize entries that are explicitly "UNIVERSAL"
-      if (!globalSkuMap.has(sku) || sty === "UNIVERSAL") {
+      // Global fallback - prioritize UNIVERSAL and non-zero entries
+      if (!globalSkuMap.has(sku) || sty === "UNIVERSAL" || (p.price > 0 && !globalSkuMap.get(sku).price)) {
         globalSkuMap.set(sku, p);
       }
       
@@ -74,7 +76,7 @@ export async function POST(req: Request) {
 
     /**
      * RECURSIVE MATCHING ENGINE
-     * Implements Context-Aware Suffix Stripping (BUTT, H, L, R, FL)
+     * Implements Context-Aware Suffix Stripping for Production Codes
      */
     function findBestMatch(itemCode: string, collection: string, style: string) {
       const target = String(itemCode || "").trim().toUpperCase();
@@ -84,14 +86,14 @@ export async function POST(req: Request) {
       const sty = String(style || "").trim().toUpperCase();
       const targetComp = compressSku(target);
 
-      // Define recursive variants for matching
+      // Recursive variants for matching
       const variants = [
         target,
         target.replace(/\s+/g, ''), // No spaces
         target.replace(/\s*BUTT$/g, ''), // No BUTT
         target.replace(/\s*[HLR]$/g, ''), // No Handing (H, L, R)
         target.replace(/\s*FL$/g, ''), // No FL (Filler/Finish)
-        target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''), // Total Strip
+        target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''), // Multi-Strip
       ];
 
       const searchVariants = Array.from(new Set(variants.filter(Boolean)));
@@ -102,12 +104,11 @@ export async function POST(req: Request) {
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_EXACT' };
       }
 
-      // TIER 2: COMPRESSED LOCAL MATCH (Matches W36 24 to W3624)
+      // TIER 2: COMPRESSED LOCAL MATCH
       const compKey = `${targetComp}|${col}|${sty}`;
       if (compressedMap.has(compKey)) return { match: compressedMap.get(compKey), type: 'LOCAL_FUZZY' };
 
-      // TIER 3: GLOBAL CATALOG SEARCH (Checks all sheets/collections)
-      // High priority for items that start with UF (Fillers) or RR (Molding)
+      // TIER 3: GLOBAL CATALOG SEARCH (Search all sheets/collections)
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
@@ -187,7 +188,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Universal Pricing Engine] Critical Failure:', err);
+    console.error('[Pricing Engine] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
