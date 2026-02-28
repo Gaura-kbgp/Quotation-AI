@@ -322,26 +322,28 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         )}
 
         {step === 'manufacturer' && (
-          <div className="max-w-2xl mx-auto py-12 space-y-8 animate-in fade-in duration-500">
+          <div className="max-w-2xl mx-auto py-8 space-y-6 animate-in fade-in duration-500">
             <div className="text-center space-y-1">
-              <h2 className="text-2xl font-bold">Select Manufacturer</h2>
-              <p className="text-sm text-slate-500">Choose the brand for this architectural takeoff.</p>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">Select Manufacturer</h2>
+              <p className="text-xs text-slate-500">Choose the brand for this architectural takeoff.</p>
             </div>
             <div className="grid grid-cols-1 gap-3">
               {manufacturers.map(m => (
                 <button 
                   key={m.id}
                   onClick={() => { setSelectedManId(m.id); fetchManConfig(m.id); setStep('specifications'); }}
-                  className="p-6 rounded-2xl border border-slate-100 bg-white hover:border-sky-500 hover:bg-sky-50 transition-all flex items-center gap-4 shadow-sm group"
+                  className="p-4 rounded-xl border border-slate-100 bg-white hover:border-sky-500 hover:bg-sky-50 transition-all flex items-center gap-4 shadow-sm group"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-sky-600 text-white flex items-center justify-center group-hover:scale-105 transition-transform"><Factory className="w-6 h-6" /></div>
-                  <span className="text-xl font-bold text-slate-900">{m.name}</span>
-                  <ChevronRight className="ml-auto w-6 h-6 text-slate-300 group-hover:text-sky-500" />
+                  <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Factory className="w-5 h-5" />
+                  </div>
+                  <span className="text-base font-bold text-slate-900">{m.name}</span>
+                  <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-sky-500" />
                 </button>
               ))}
             </div>
-            <div className="flex justify-center pt-4">
-              <Button variant="ghost" onClick={() => setStep('review')} className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">
+            <div className="flex justify-center pt-2">
+              <Button variant="ghost" onClick={() => setStep('review')} className="text-slate-400 font-bold uppercase tracking-widest text-[9px]">
                 <ArrowLeft className="w-3 h-3 mr-2" />
                 Back to Review
               </Button>
@@ -350,48 +352,48 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         )}
 
         {step === 'specifications' && (
-          <div className="max-w-4xl mx-auto py-12 space-y-8 animate-in fade-in duration-500">
+          <div className="max-w-4xl mx-auto py-8 space-y-6 animate-in fade-in duration-500">
             <div className="text-center space-y-1">
-              <h2 className="text-2xl font-bold">Configure Specifications</h2>
-              <p className="text-sm text-slate-500">Apply Collection and Door Style to each area.</p>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">Configure Specifications</h2>
+              <p className="text-xs text-slate-500">Apply Collection and Door Style to each area.</p>
             </div>
             
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-3">
               {rooms.map((room, rIdx) => (
-                <Card key={rIdx} className="p-6 rounded-2xl border-slate-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 bg-white">
-                  <h3 className="text-lg font-bold w-full md:w-1/3 truncate">{room.room_name}</h3>
-                  <div className="flex gap-4 w-full md:w-auto">
+                <Card key={rIdx} className="p-4 rounded-xl border-slate-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 bg-white">
+                  <h3 className="text-sm font-bold w-full md:w-1/3 truncate text-slate-700">{room.room_name}</h3>
+                  <div className="flex gap-3 w-full md:w-auto">
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Collection</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Collection</span>
                       <Select value={room.collection} onValueChange={(v) => {
                         const nr = [...rooms];
                         nr[rIdx].collection = v;
                         nr[rIdx].door_style = '';
                         setRooms(nr);
                       }}>
-                        <SelectTrigger className="w-48 h-11 rounded-xl">
+                        <SelectTrigger className="w-40 h-9 rounded-lg text-xs">
                           <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
                           {Object.keys(manMapping).map(c => (
-                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                            <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Door Style</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Door Style</span>
                       <Select value={room.door_style} onValueChange={(v) => {
                         const nr = [...rooms];
                         nr[rIdx].door_style = v;
                         setRooms(nr);
                       }} disabled={!room.collection}>
-                        <SelectTrigger className="w-48 h-11 rounded-xl">
+                        <SelectTrigger className="w-40 h-9 rounded-lg text-xs">
                           <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
                           {room.collection && manMapping[room.collection]?.map(s => (
-                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                            <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -401,18 +403,18 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
               ))}
             </div>
 
-            <div className="flex gap-4 pt-8">
-              <Button variant="ghost" onClick={() => setStep('manufacturer')} className="h-14 px-8 rounded-2xl font-bold text-slate-500">
-                <ArrowLeft className="w-5 h-5 mr-2" />
+            <div className="flex gap-4 pt-6">
+              <Button variant="ghost" onClick={() => setStep('manufacturer')} className="h-12 px-6 rounded-xl font-bold text-slate-500">
+                <ArrowLeft className="w-4 h-4 mr-2" />
                 Back
               </Button>
               <Button 
                 onClick={handleGenerateQuote} 
-                className="flex-1 h-14 gradient-button text-lg rounded-2xl shadow-sky-500/10" 
+                className="flex-1 h-12 gradient-button text-base rounded-xl shadow-sky-500/10" 
                 disabled={isProcessing}
               >
-                {isProcessing ? <Loader2 className="animate-spin w-5 h-5 mr-3" /> : <CheckCircle2 className="w-5 h-5 mr-3" />}
-                {isProcessing ? 'Finalizing Pricing...' : 'Generate Final Quotation'}
+                {isProcessing ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                {isProcessing ? 'Processing...' : 'Generate Final Quotation'}
               </Button>
             </div>
           </div>
