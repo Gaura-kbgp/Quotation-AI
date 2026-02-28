@@ -1,12 +1,13 @@
 'use server';
 /**
- * @fileOverview High-Performance AI Flow for Architectural Cabinet Takeoff.
- * Implements strict room classification and laundry exclusion rules.
+ * @fileOverview High-Performance AI Flow for Deterministic Architectural Cabinet Takeoff.
+ * Implements strict pattern matching, keyword exclusions, and room-wise aggregation.
  * Uses Gemini 2.0 Flash for multi-page vision analysis.
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { normalizeSku, isValidCabinetSku, isExcludedItem, detectCategory } from '@/lib/utils';
 
 const AnalyzeDrawingInputSchema = z.object({
   pdfDataUri: z.string().describe("PDF data URI containing the full architectural set."),
@@ -32,155 +33,143 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow] Starting Blueprint Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow] Starting Deterministic Analysis for: ${input.projectName}`);
 
-  let attempts = 0;
-  const maxAttempts = 3;
-  let lastError = null;
-
-  while (attempts < maxAttempts) {
-    try {
-      const response = await ai.generate({
-        model: 'googleai/gemini-2.0-flash',
-        prompt: [
-          { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-          { text: `You are a professional architectural estimator specializing in cabinetry takeoffs.
+  const response = await ai.generate({
+    model: 'googleai/gemini-2.0-flash',
+    prompt: [
+      { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
+      { text: `You are a professional architectural estimator. 
       
       TASK:
-      Analyze the provided PDF. It contains multiple pages (Floor Plans, Cabinet Schedules, Elevations).
+      Extract EVERY cabinet SKU from the drawings.
       
-      CRITICAL ROOM CLASSIFICATION RULES:
-      1. ONLY PROCESS these room types:
-         - KITCHEN
-         - BATH
-         - OWNERS BATH
-         - BATH 2
-         - BATH 3 UPSTAIRS
+      STEP 1: ROOM ISOLATION
+      Parse document SECTION-BY-SECTION. Do NOT scan globally.
+      Identify valid rooms: KITCHEN, BATH, OWNERS BATH, BATH 2, POWDER.
       
-      2. ABSOLUTELY IGNORE (DO NOT EXTRACT ANYTHING FROM THESE):
-         - LAUNDRY
-         - OPT LAUNDRY
-         - TRIM LIST
-         - INSTALLATION NOTE
-         - HARDWARE (as a room)
-         - PERIMETER (as a room)
+      STEP 2: SKU EXTRACTION RULES
+      Only extract items matching these patterns:
+      - Wall: W followed by numbers (e.g. W3024)
+      - Base: B or SB followed by numbers (e.g. B30, SB36)
+      - Vanity: V, VSB, or VS followed by numbers (e.g. V30, VSB36)
+      - Tall: TP, PANTRY, OVEN, or OVD followed by numbers
+      - Accessories: RR, UF
       
-      3. LAUNDRY CONFLICT RULE:
-         If a page header mentions a valid room (e.g., "BATH 3 UPSTAIRS") but the page content or sub-headers mention "OPT LAUNDRY" or "LAUNDRY", you MUST IGNORE the entire page. It is a residual header from a template.
+      STEP 3: EXCLUSIONS
+      IGNORE any line containing: HOOD, RANGE, MICRO, FRIDGE, DISH, SINK, LIGHT, ELECTRICAL, PRICING, MARCH, SHEET.
       
-      4. ROOM TITLE FORMAT:
-         Extract the exact full title from the page header.
-         Format: ${input.projectName} – <Exact Room Title From Header>
-         Example: ${input.projectName} – STANDARD OWNERS BATH
-      
-      CABINET EXTRACTION RULES:
-      - Extract cabinet codes EXACTLY as written (e.g., "W3042 BUTT").
-      - Group items by the EXACT FULL ROOM TITLE extracted.
-      
-      OUTPUT:
+      STEP 4: OUTPUT FORMAT
       Return ONLY a raw JSON array of objects.
-      Format: [ { "room": "Full Room Title", "section": "wall", "code": "W3042 BUTT", "qty": 1 } ]
-      
-      Valid sections: wall, base, tall, vanity, hardware.` }
-        ],
-        config: {
-          safetySettings: [
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
-          ],
-        },
-      });
+      Format: [ { "room": "Room Name", "code": "SKU", "qty": 1 } ]` }
+    ],
+    config: {
+      safetySettings: [
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+      ],
+    },
+  });
 
-      const text = response.text;
-      
-      if (!text || text.trim() === '') {
-        return getEmptyResult('AI analysis produced no results.');
-      }
+  const text = response.text;
+  if (!text) return getEmptyResult('AI produced no text.');
 
-      let items: any[] = [];
-      try {
-        const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const firstBracket = cleanedText.indexOf('[');
-        const lastBracket = cleanedText.lastIndexOf(']');
-        if (firstBracket !== -1 && lastBracket !== -1) {
-          items = JSON.parse(cleanedText.substring(firstBracket, lastBracket + 1));
-        } else {
-          items = JSON.parse(cleanedText);
-        }
-      } catch (e) {
-        console.error('[AI Parser] JSON Parse Error:', e);
-        return getEmptyResult('Failed to parse AI response structure.');
-      }
-
-      // Filter out ignored rooms just in case the AI missed any
-      const ignoredKeywords = ['LAUNDRY', 'TRIM LIST', 'INSTALLATION', 'PERIMETER'];
-      const filteredItems = items.filter(item => {
-        const r = String(item.room || '').toUpperCase();
-        return !ignoredKeywords.some(kw => r.includes(kw));
-      });
-
-      const roomsMap = new Map<string, any>();
-
-      filteredItems.forEach((item) => {
-        const roomKey = item.room || 'Project Area';
-        
-        if (!roomsMap.has(roomKey)) {
-          roomsMap.set(roomKey, {
-            room_name: roomKey,
-            room_type: classifyRoomType(roomKey),
-            sections: {
-              'Wall Cabinets': [],
-              'Base Cabinets': [],
-              'Tall Cabinets': [],
-              'Vanity Cabinets': [],
-              'Hardware': []
-            }
-          });
-        }
-
-        const room = roomsMap.get(roomKey);
-        const sectionLabel = mapSectionToLabel(item.section);
-        const normalizedCode = String(item.code).toUpperCase().trim();
-        
-        const existing = room.sections[sectionLabel].find((c: any) => c.code === normalizedCode);
-        if (existing) {
-          existing.qty += (Number(item.qty) || 1);
-        } else {
-          room.sections[sectionLabel].push({ 
-            code: normalizedCode, 
-            qty: (Number(item.qty) || 1), 
-            type: sectionLabel 
-          });
-        }
-      });
-
-      const roomsList = Array.from(roomsMap.values());
-
-      return {
-        rooms: roomsList.length > 0 ? roomsList : [getEmptyResult('No valid rooms detected.').rooms[0]],
-        summary: `Extracted ${filteredItems.length} units across ${roomsMap.size} valid areas for ${input.projectName}.`
-      };
-
-    } catch (err: any) {
-      console.error(`[AI Flow] Attempt ${attempts + 1} failed:`, err.message);
-      lastError = err;
-      if (err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED')) {
-        attempts++;
-        if (attempts < maxAttempts) {
-          const delay = Math.pow(2, attempts) * 1000;
-          console.log(`[AI Flow] Rate limit hit. Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-      }
-      throw err;
+  let rawItems: any[] = [];
+  try {
+    const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const start = cleanedText.indexOf('[');
+    const end = cleanedText.lastIndexOf(']');
+    if (start !== -1 && end !== -1) {
+      rawItems = JSON.parse(cleanedText.substring(start, end + 1));
     }
+  } catch (e) {
+    console.error('[AI Flow] Parse Error:', e);
+    return getEmptyResult('Failed to parse AI output.');
   }
 
-  throw lastError || new Error('AI analysis failed after multiple retries.');
+  // --- DETERMINISTIC POST-PROCESSING (Steps 4, 5, 6) ---
+  
+  const roomsMap = new Map<string, any>();
+  let totalScanned = rawItems.length;
+  let validCount = 0;
+  let excludedCount = 0;
+  let duplicatesMerged = 0;
+
+  rawItems.forEach((item) => {
+    const rawCode = String(item.code || '');
+    const roomName = String(item.room || 'General Area').toUpperCase().trim();
+    
+    // Step 3 & 4: Exclude and Normalize
+    if (isExcludedItem(rawCode) || !isValidCabinetSku(rawCode)) {
+      excludedCount++;
+      return;
+    }
+
+    const normCode = normalizeSku(rawCode);
+    validCount++;
+
+    if (!roomsMap.has(roomName)) {
+      roomsMap.set(roomName, {
+        room_name: roomName,
+        room_type: roomName.includes('BATH') || roomName.includes('POWDER') ? 'Bathroom' : 'Kitchen',
+        sections: {
+          'Wall Cabinets': new Map<string, number>(),
+          'Base Cabinets': new Map<string, number>(),
+          'Tall Cabinets': new Map<string, number>(),
+          'Vanity Cabinets': new Map<string, number>(),
+          'Hardware': new Map<string, number>()
+        }
+      });
+    }
+
+    const room = roomsMap.get(roomName);
+    const category = mapToCategory(normCode);
+    
+    // Step 5: Duplicate Handling (Sum quantities)
+    const currentQty = room.sections[category].get(normCode) || 0;
+    const newQty = currentQty + (Number(item.qty) || 1);
+    if (currentQty > 0) duplicatesMerged++;
+    room.sections[category].set(normCode, newQty);
+  });
+
+  // Step 6: Final Aggregation (Convert Maps back to Arrays)
+  const finalRooms = Array.from(roomsMap.values()).map(room => {
+    const formattedSections: any = {};
+    Object.keys(room.sections).forEach(cat => {
+      formattedSections[cat] = Array.from(room.sections[cat].entries()).map(([code, qty]) => ({
+        code,
+        qty,
+        type: cat
+      }));
+    });
+    return { ...room, sections: formattedSections };
+  });
+
+  // Step 8: Debug Logging
+  console.log(`[Takeoff Audit] 
+    - Lines Scanned: ${totalScanned}
+    - Valid Cabinets: ${validCount}
+    - Non-Cabinetry Excluded: ${excludedCount}
+    - Duplicates Merged: ${duplicatesMerged}
+    - Final Unique SKUs: ${validCount - duplicatesMerged}
+  `);
+
+  // Step 7: Validation
+  const kitchen = finalRooms.find(r => r.room_type === 'Kitchen');
+  let summaryPrefix = "";
+  if (kitchen && validCount < 10) {
+    summaryPrefix = "Warning: Extraction incomplete (< 10 units). ";
+  }
+
+  return {
+    rooms: finalRooms.length > 0 ? finalRooms : getEmptyResult('No valid cabinetry detected.').rooms,
+    summary: `${summaryPrefix}Successfully extracted ${validCount} units across ${finalRooms.length} rooms.`
+  };
+}
+
+function mapToCategory(sku: string): string {
+  const cat = detectCategory(sku);
+  if (cat === 'Hinges & Hardware') return 'Hardware';
+  return cat;
 }
 
 function getEmptyResult(message: string): AnalyzeDrawingOutput {
@@ -198,19 +187,4 @@ function getEmptyResult(message: string): AnalyzeDrawingOutput {
     }],
     summary: message
   };
-}
-
-function mapSectionToLabel(section: string): string {
-  const s = String(section || '').toLowerCase();
-  if (s.includes('wall')) return 'Wall Cabinets';
-  if (s.includes('base')) return 'Base Cabinets';
-  if (s.includes('tall')) return 'Tall Cabinets';
-  if (s.includes('vanity')) return 'Vanity Cabinets';
-  return 'Hardware';
-}
-
-function classifyRoomType(name: string): string {
-  const n = name.toUpperCase();
-  if (n.includes('BATH') || n.includes('POWDER')) return 'Bathroom';
-  return 'Kitchen';
 }

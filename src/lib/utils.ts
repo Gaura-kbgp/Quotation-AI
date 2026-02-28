@@ -7,27 +7,66 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * ENTERPRISE SKU NORMALIZATION (v21.0)
+ * DETERMINISTIC SKU NORMALIZATION (v25.0)
  * 1. Convert to uppercase
- * 2. Remove noise tokens: {L}, {R}, X [number] DP
- * 3. Remove spaces, dashes, and special characters
+ * 2. Remove tokens: {L}, {R}, X 24 DP, X 12 DP
+ * 3. Remove duplicate spaces
+ * 4. Trim
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
   let s = String(sku).toUpperCase();
   
-  // Remove noise patterns
+  // Remove noise tokens
   s = s.replace(/\{L\}|\{R\}/g, '');
-  s = s.replace(/X\s*\d+\s*DP/g, '');
-  s = s.replace(/BUTT|BASE|WALL|DP/g, ''); 
+  s = s.replace(/X\s*24\s*DP/g, '');
+  s = s.replace(/X\s*12\s*DP/g, '');
   
-  // Keep only alphanumeric
-  return s.replace(/[^A-Z0-9]/g, '').trim();
+  // Remove duplicate spaces
+  s = s.replace(/\s+/g, ' ');
+  
+  return s.trim();
+}
+
+/**
+ * STRICT CABINET PATTERN VALIDATION
+ * Checks if a string matches valid cabinet SKU patterns
+ */
+export function isValidCabinetSku(sku: string): boolean {
+  const s = normalizeSku(sku);
+  if (!s) return false;
+
+  // Patterns from requirements
+  const wallPattern = /^W\d+/;
+  const basePattern = /^(B|SB)\d+/;
+  const vanityPattern = /^V(SB|S)?\d+/;
+  const tallPattern = /^(TP|PANTRY|OVEN|OVD)\d+/;
+  const accessoryPattern = /^(RR|UF)/;
+
+  return (
+    wallPattern.test(s) || 
+    basePattern.test(s) || 
+    vanityPattern.test(s) || 
+    tallPattern.test(s) || 
+    accessoryPattern.test(s)
+  );
+}
+
+/**
+ * EXCLUSION KEYWORD CHECK
+ */
+export function isExcludedItem(text: string): boolean {
+  const s = String(text).toUpperCase();
+  const exclusions = [
+    'HOOD', 'RANGE', 'MICRO', 'FRIDGE', 'DISH', 'SINK', 
+    'LIGHT', 'ELECTRICAL', 'PRICING', 'MARCH', 'SHEET', 
+    'ACCESSORY PRICING'
+  ];
+  return exclusions.some(kw => s.includes(kw));
 }
 
 /**
  * INTELLIGENT PREFIX MAPPING for PDF Categorization
- * Maps specific prefixes to generalized production categories
  */
 export function detectCategory(sku: string): string {
   if (!sku) return 'Accessories';
@@ -40,37 +79,6 @@ export function detectCategory(sku: string): string {
   if (s.includes('HINGE') || s.includes('PULL') || s.startsWith('F')) return 'Hinges & Hardware';
   
   return 'Accessories';
-}
-
-/**
- * STRIPPED MODEL EXTRACTION
- * Removes trailing numbers to find the base family
- */
-export function extractBaseModel(sku: string): string {
-  const norm = normalizeSku(sku);
-  return norm.replace(/[0-9]+$/g, ''); 
-}
-
-/**
- * LEVENSHTEIN DISTANCE for similarity fallback
- */
-export function getLevenshteinDistance(a: string, b: string): number {
-  const matrix: number[][] = [];
-  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
-        );
-      }
-    }
-  }
-  return matrix[b.length][a.length];
 }
 
 /**
