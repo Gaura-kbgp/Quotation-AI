@@ -4,12 +4,12 @@ import { normalizeSku } from '@/lib/utils';
 export const maxDuration = 120;
 
 /**
- * SMART PRICING ENGINE (v31.0)
- * Implements multi-stage fallback matching:
- * 1. Exact Match
- * 2. Remove " BUTT"
- * 3. Remove trailing "H"
- * 4. Remove " X ..." (Dimensional text)
+ * ENTERPRISE PRICING ENGINE (v32.0)
+ * Implements recursive multi-stage fallback matching:
+ * 1. Exact Match in Spec
+ * 2. Fallbacks in Spec (BUTT -> H -> Dimensions)
+ * 3. Global Exact Match (Any collection)
+ * 4. Global Fallbacks (Any collection)
  */
 export async function POST(req: Request) {
   try {
@@ -39,15 +39,23 @@ export async function POST(req: Request) {
 
     if (sError) throw new Error(`Database error: ${sError.message}`);
 
-    // Build EXACT lookup map
+    // Build hierarchical lookup maps for performance
     const pricingMap = new Map<string, any>();
+    const globalSkuMap = new Map<string, any>();
+
     allPricing?.forEach(p => {
       const skuKey = String(p.sku || "").toUpperCase().trim();
       const colKey = String(p.collection_name || "").toUpperCase().trim();
       const styKey = String(p.door_style || "").toUpperCase().trim();
       
+      // Spec-specific key
       const key = `${skuKey}|${colKey}|${styKey}`;
       pricingMap.set(key, p);
+
+      // Global SKU index (first occurrence wins)
+      if (!globalSkuMap.has(skuKey)) {
+        globalSkuMap.set(skuKey, p);
+      }
     });
 
     const bomItems: any[] = [];
@@ -55,7 +63,7 @@ export async function POST(req: Request) {
     let totalCount = 0;
 
     /**
-     * Smart Matcher with Fallbacks
+     * Recursive Matcher with Deep Fallbacks
      */
     function findBestMatch(cabinetSKU: string, collection: string, style: string) {
       const normalized = cabinetSKU.trim().toUpperCase();
@@ -63,9 +71,9 @@ export async function POST(req: Request) {
       const st = style.trim().toUpperCase();
 
       // Define Fallback Chain
-      const noButt = normalized.replace(" BUTT", "");
-      const noH = noButt.replace(/H$/, "");
-      const cleaned = noH.replace(/ X .*$/, "");
+      const noButt = normalized.replace(/\s?BUTT$/i, "").trim();
+      const noH = noButt.replace(/H$/, "").trim();
+      const cleaned = noH.replace(/ X .*$/, "").trim();
 
       const variants = [
         { s: normalized, type: 'EXACT' },
@@ -74,7 +82,7 @@ export async function POST(req: Request) {
         { s: cleaned, type: 'FALLBACK_CLEAN' }
       ];
 
-      // 1. Try fallbacks within the selected spec (STRICT)
+      // STAGE 1: Check variants within the specific selected room spec
       for (const variant of variants) {
         if (!variant.s) continue;
         const key = `${variant.s}|${col}|${st}`;
@@ -82,10 +90,12 @@ export async function POST(req: Request) {
         if (match) return { match, type: variant.type };
       }
 
-      // 2. Try Global Exact fallback (If not found in specific spec, check whole catalog)
-      if (allPricing) {
-        const globalMatch = allPricing.find(p => p.sku.toUpperCase().trim() === normalized);
-        if (globalMatch) return { match: globalMatch, type: 'GLOBAL_EXACT' };
+      // STAGE 2: Global Fallback Search
+      // Many items (fillers, vanities) might be in a different collection section
+      for (const variant of variants) {
+        if (!variant.s) continue;
+        const match = globalSkuMap.get(variant.s);
+        if (match) return { match, type: `GLOBAL_${variant.type}` };
       }
 
       return null;
@@ -121,12 +131,11 @@ export async function POST(req: Request) {
             room: room.room_name,
             collection: room.collection || match.collection_name,
             door_style: room.door_style || match.door_style,
-            price_source: `Guide (${type})`,
+            price_source: `Auto (${type})`,
             precision_level: type,
             created_at: new Date().toISOString()
           });
         } else {
-          // NO MATCH FOUND
           bomItems.push({
             project_id: projectId,
             sku: cab.code,
@@ -145,7 +154,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Persist Results
+    // Purge old BOM and save new results
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
       const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
