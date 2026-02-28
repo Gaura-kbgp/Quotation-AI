@@ -7,10 +7,10 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * DETERMINISTIC SKU NORMALIZATION (v26.0)
+ * DETERMINISTIC SKU NORMALIZATION (v27.0)
  * 1. Convert to uppercase
  * 2. Remove tokens: {L}, {R}, X 24 DP, X 12 DP
- * 3. Remove duplicate spaces
+ * 3. Remove internal spaces in the code
  * 4. Trim
  */
 export function normalizeSku(sku: string | any): string {
@@ -22,47 +22,35 @@ export function normalizeSku(sku: string | any): string {
   s = s.replace(/X\s*24\s*DP/g, '');
   s = s.replace(/X\s*12\s*DP/g, '');
   
-  // Remove duplicate spaces
-  s = s.replace(/\s+/g, ' ');
+  // Remove spaces inside the code (e.g. "W 30 24" -> "W3024")
+  s = s.replace(/\s+/g, '');
   
   return s.trim();
 }
 
 /**
- * STRICT CABINET PATTERN VALIDATION
- * Checks if a string matches valid cabinet SKU patterns
+ * STRICT CABINET CLASSIFICATION
+ * Primary Cabinets must start with specific prefixes.
  */
-export function isValidCabinetSku(sku: string): boolean {
+export function isPrimaryCabinet(sku: string): boolean {
   const s = normalizeSku(sku);
   if (!s) return false;
 
-  // Patterns from requirements
-  const wallPattern = /^W\d+/;
-  const basePattern = /^(B|SB|DB)\d+/;
-  const vanityPattern = /^V(SB|S)?\d+/;
-  const tallPattern = /^(TP|PANTRY|OVEN|OVD|P|T|OC)\d+/;
-  const accessoryPattern = /^(RR|UF|BTK|SM|F)/;
-
-  return (
-    wallPattern.test(s) || 
-    basePattern.test(s) || 
-    vanityPattern.test(s) || 
-    tallPattern.test(s) || 
-    accessoryPattern.test(s)
-  );
+  const primaryPrefixes = ['W', 'B', 'SB', 'VSB', 'UF', 'RR', 'OVD', 'TP'];
+  return primaryPrefixes.some(p => s.startsWith(p));
 }
 
 /**
- * EXCLUSION KEYWORD CHECK
+ * OTHER ITEMS KEYWORD CHECK
  */
-export function isExcludedItem(text: string): boolean {
+export function isOtherItem(text: string): boolean {
   const s = String(text).toUpperCase();
-  const exclusions = [
-    'HOOD', 'RANGE', 'MICRO', 'FRIDGE', 'DISH', 'SINK', 
-    'LIGHT', 'ELECTRICAL', 'PRICING', 'MARCH', 'SHEET', 
-    'ACCESSORY PRICING', 'DIMENSIONS'
+  const otherKeywords = [
+    'HOOD', 'RANGE', 'MICRO', 'FRIDGE', 'SINK', 'LIGHT', 
+    'TRIM', 'CROWN', 'HARDWARE', 'PANEL', 'FILLER', 
+    'SM8', 'BTK8', 'PRICING', 'DIMENSIONS', 'SHEET'
   ];
-  return exclusions.some(kw => s.includes(kw));
+  return otherKeywords.some(kw => s.includes(kw));
 }
 
 /**
@@ -70,13 +58,12 @@ export function isExcludedItem(text: string): boolean {
  */
 export function detectCategory(sku: string): string {
   if (!sku) return 'Accessories';
-  const s = String(sku).toUpperCase();
+  const s = normalizeSku(sku);
   
   if (s.startsWith('W')) return 'Wall Cabinets';
-  if (s.startsWith('SB') || s.startsWith('B') || s.startsWith('DB')) return 'Base Cabinets';
+  if (s.startsWith('SB') || s.startsWith('B')) return 'Base Cabinets';
   if (s.startsWith('V')) return 'Vanity Cabinets';
-  if (s.startsWith('T') || s.startsWith('P') || s.startsWith('OC')) return 'Tall Cabinets';
-  if (s.includes('HINGE') || s.includes('PULL') || s.startsWith('F')) return 'Hardware';
+  if (s.startsWith('T') || s.startsWith('P') || s.startsWith('O')) return 'Tall Cabinets';
   
   return 'Accessories';
 }
