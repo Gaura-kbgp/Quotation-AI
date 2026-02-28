@@ -89,8 +89,8 @@ export default function QuotationAiPage() {
         </div>
 
         <div className="text-center space-y-4">
-          <h1 className="text-5xl font-extrabold tracking-tight text-slate-900">
-            Intelligent <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 to-sky-600">Quotation Engine</span>
+          <h1 className="text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
+            Upload Drawing <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 to-sky-600">Engine</span>
           </h1>
         </div>
 
@@ -127,8 +127,8 @@ export default function QuotationAiPage() {
                     <div className="w-20 h-20 rounded-2xl bg-sky-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                       <UploadCloud className="w-10 h-10 text-sky-500" />
                     </div>
-                    <p className="text-2xl font-bold text-slate-900">Drop Architectural PDF</p>
-                    <p className="text-slate-500 mt-3">Select drawing to begin analysis</p>
+                    <p className="text-2xl font-bold text-slate-900">Drop Architectural Drawing</p>
+                    <p className="text-slate-500 mt-3">Select PDF to begin extraction</p>
                   </>
                 )}
               </label>
