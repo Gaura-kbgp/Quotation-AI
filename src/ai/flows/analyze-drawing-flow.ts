@@ -25,6 +25,7 @@ const AnalyzeDrawingOutputSchema = z.object({
       'Tall Cabinets': z.array(z.object({ code: z.string(), qty: z.number(), type: z.string() })),
       'Vanity Cabinets': z.array(z.object({ code: z.string(), qty: z.number(), type: z.string() })),
       'Hardware': z.array(z.object({ code: z.string(), qty: z.number(), type: z.string() })),
+      'Accessories': z.array(z.object({ code: z.string(), qty: z.number(), type: z.string() })),
     }),
   })),
   summary: z.string(),
@@ -116,7 +117,8 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
           'Base Cabinets': new Map<string, number>(),
           'Tall Cabinets': new Map<string, number>(),
           'Vanity Cabinets': new Map<string, number>(),
-          'Hardware': new Map<string, number>()
+          'Hardware': new Map<string, number>(),
+          'Accessories': new Map<string, number>()
         }
       });
     }
@@ -125,6 +127,11 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     const category = mapToCategory(normCode);
     
     // Step 5: Duplicate Handling (Sum quantities)
+    // Ensure category exists in the sections map
+    if (!room.sections[category]) {
+      room.sections[category] = new Map<string, number>();
+    }
+
     const currentQty = room.sections[category].get(normCode) || 0;
     const newQty = currentQty + (Number(item.qty) || 1);
     if (currentQty > 0) duplicatesMerged++;
@@ -169,6 +176,15 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 function mapToCategory(sku: string): string {
   const cat = detectCategory(sku);
   if (cat === 'Hinges & Hardware') return 'Hardware';
+  // Ensure the category matches the keys in the initialization
+  if (cat !== 'Wall Cabinets' && 
+      cat !== 'Base Cabinets' && 
+      cat !== 'Tall Cabinets' && 
+      cat !== 'Vanity Cabinets' && 
+      cat !== 'Hardware' && 
+      cat !== 'Accessories') {
+    return 'Accessories';
+  }
   return cat;
 }
 
@@ -182,7 +198,8 @@ function getEmptyResult(message: string): AnalyzeDrawingOutput {
         'Base Cabinets': [],
         'Tall Cabinets': [],
         'Vanity Cabinets': [],
-        'Hardware': []
+        'Hardware': [],
+        'Accessories': []
       }
     }],
     summary: message
