@@ -5,7 +5,7 @@ export const maxDuration = 120;
 
 /**
  * SMART PRICING ENGINE (v28.0)
- * Implements recursive matching logic to ensure no valid cabinet is missed.
+ * Implements full-catalog lookup and recursive matching.
  */
 export async function POST(req: Request) {
   try {
@@ -27,13 +27,20 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // Fetch ALL pricing once for performance
+    // Fetch ALL pricing records for this manufacturer across all sheets
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
       .eq('manufacturer_id', manufacturerId);
 
     if (sError) throw new Error(`Database error: ${sError.message}`);
+
+    // Build Global SKU -> Price Map for O(1) matching
+    const pricingMap = new Map<string, any>();
+    allPricing?.forEach(p => {
+      const key = `${normalizeSku(p.sku)}|${String(p.collection_name || "").toUpperCase()}|${String(p.door_style || "").toUpperCase()}`;
+      pricingMap.set(key, p);
+    });
 
     const bomItems: any[] = [];
     let matchedCount = 0;
@@ -42,7 +49,10 @@ export async function POST(req: Request) {
     for (const room of rooms) {
       const selectedCollection = (room.collection || "").trim().toUpperCase();
       const selectedStyle = (room.door_style || "").trim().toUpperCase();
-      const sections = room.sections || {};
+      const sections = {
+        'Wall Cabinets': room.primaryCabinets || [],
+        'Other Items': room.otherItems || []
+      };
 
       for (const [sectionName, items] of Object.entries(sections)) {
         const cabinetItems = items as any[];
@@ -54,53 +64,36 @@ export async function POST(req: Request) {
           const normInput = normalizeSku(rawInput);
           const baseInput = getBaseSku(rawInput);
           
-          console.log(`[Pricing Engine] Matching: ${rawInput} (${normInput}) in ${selectedCollection}`);
-
-          // STAGE 1: SPEC-SPECIFIC FILTERING
-          const specFiltered = allPricing?.filter(p => 
-            String(p.collection_name || "").toUpperCase() === selectedCollection && 
-            String(p.door_style || "").toUpperCase() === selectedStyle
-          ) || [];
-
           let match = null;
           let matchType = 'NOT_FOUND';
 
-          // 1.1: Exact Normalized Match
-          match = specFiltered.find(p => normalizeSku(p.sku) === normInput);
-          if (match) matchType = 'EXACT';
-
-          // 1.2: Base SKU Match (within spec)
-          if (!match) {
-            match = specFiltered.find(p => normalizeSku(p.sku) === baseInput);
-            if (match) matchType = 'BASE_EXACT';
+          // 1. Target Specification Match (Exact)
+          const specKey = `${normInput}|${selectedCollection}|${selectedStyle}`;
+          match = pricingMap.get(specKey);
+          
+          if (match) {
+            matchType = 'EXACT_SPEC';
+          } else {
+            // 2. Target Specification Match (Base SKU)
+            const baseSpecKey = `${baseInput}|${selectedCollection}|${selectedStyle}`;
+            match = pricingMap.get(baseSpecKey);
+            if (match) matchType = 'BASE_SPEC';
           }
 
-          // 1.3: Partial/Substring Match
-          if (!match) {
-            match = specFiltered.find(p => {
-              const pNorm = normalizeSku(p.sku);
-              return pNorm.includes(normInput) || normInput.includes(pNorm);
-            });
-            if (match) matchType = 'PARTIAL';
-          }
-
-          // STAGE 2: GLOBAL FALLBACK (Entire Manufacturer Catalog)
+          // 3. Global Fallback (Entire Catalog Search)
           if (!match && allPricing) {
-            // 2.1: Global Exact
-            match = allPricing.find(p => normalizeSku(p.sku) === normInput);
-            if (match) {
-              matchType = 'GLOBAL_EXACT';
-            } else {
-              // 2.2: Global Base
-              match = allPricing.find(p => normalizeSku(p.sku) === baseInput);
-              if (match) matchType = 'GLOBAL_BASE';
-            }
+             match = allPricing.find(p => normalizeSku(p.sku) === normInput);
+             if (match) {
+               matchType = 'GLOBAL_EXACT';
+             } else {
+               match = allPricing.find(p => normalizeSku(p.sku) === baseInput);
+               if (match) matchType = 'GLOBAL_BASE';
+             }
           }
 
           if (match) {
             matchedCount++;
             const price = Number(match.price) || 0;
-            console.log(`[Pricing Engine] Found Match: ${match.sku} @ $${price} (${matchType})`);
             
             bomItems.push({
               project_id: projectId,
@@ -112,35 +105,23 @@ export async function POST(req: Request) {
               room: room.room_name,
               collection: room.collection || match.collection_name,
               door_style: room.door_style || match.door_style,
-              price_source: `Price Book (${matchType})`,
+              price_source: `Catalog (${matchType})`,
               precision_level: matchType,
               created_at: new Date().toISOString()
             });
           } else {
-            console.warn(`[Pricing Engine] No price found for: ${rawInput}`);
-            
-            // PHASE 3: AUDIT SUGGESTIONS
-            const suggestions = allPricing
-              ? allPricing
-                  .map(p => ({ sku: p.sku, score: calculateSimilarity(normInput, p.sku) }))
-                  .sort((a, b) => b.score - a.score)
-                  .slice(0, 3)
-                  .filter(s => s.score > 0.4)
-                  .map(c => c.sku)
-                  .join(', ')
-              : 'NONE';
-
+            // Price Not Found
             bomItems.push({
               project_id: projectId,
               sku: rawInput,
-              matched_sku: suggestions ? `SUGGEST: ${suggestions}` : 'PRICE NOT FOUND',
+              matched_sku: 'PRICE NOT FOUND',
               qty: Number(cab.qty) || 1,
               unit_price: 0,
               line_total: 0,
               room: room.room_name,
               collection: room.collection || 'N/A',
               door_style: room.door_style || 'N/A',
-              price_source: 'NOT FOUND',
+              price_source: 'MISSING',
               precision_level: 'NOT_FOUND',
               created_at: new Date().toISOString()
             });

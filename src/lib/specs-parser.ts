@@ -1,33 +1,24 @@
 import * as XLSX from 'xlsx';
 
 /**
- * Intelligent String Splitter (v25.0)
+ * Intelligent String Splitter (v28.0)
  * Handles multi-value cells in Excel (Newlines, Commas, and concatenated strings).
- * Corrects the issue where multiple styles were merged into a single dropdown option.
  */
 function smartSplit(raw: string): string[] {
   if (!raw) return [];
   
-  // 1. Standardize and split by explicit delimiters (Newline, Carriage Return, Comma)
-  // This handles cells where styles are listed vertically or separated by commas.
   let initialParts = String(raw).split(/[\n\r,]+/)
     .map(s => s.trim())
     .filter(Boolean);
 
-  // 2. Secondary split for "jammed" strings without clear delimiters
-  // We use common cabinetry prefixes and brand keywords as split points.
   const boundaryKeywords = [
     "ELITE", "PREMIUM", "PRIME", "BASE", "CHOICE", "DURAFORM", 
     "CANYON", "DURANGO", "ELDERIDGE", "BANDERA", "DENVER", "COOPER", 
     "OXFORD", "ALPINE", "SNOWBOUND", "ABILENE", "LUBBOCK", "COLORADO",
-    "SELECT", "CLASSIC", "DESIGNER", "ULTRA", "ELITE", "PRIME"
+    "SELECT", "CLASSIC", "DESIGNER", "ULTRA"
   ];
   
   const keywordPattern = boundaryKeywords.join('|');
-  
-  // Regex Logic: Look for a keyword that is preceded by a space.
-  // This allows "CANYON CHERRY" to stay together, but splits "CHERRY CANYON"
-  // into ["CHERRY", "CANYON"] if they were jammed in one cell.
   const jammedRegex = new RegExp(`(?<=\\s)(?=${keywordPattern})`, 'gi');
 
   let results: string[] = [];
@@ -38,93 +29,111 @@ function smartSplit(raw: string): string[] {
     results.push(...subParts);
   });
 
-  // 3. Final clean: Remove duplicates and return unique items
   return Array.from(new Set(results));
 }
 
 /**
- * Enterprise Matrix Extraction Engine (v25.0)
- * Specifically tuned for multi-row headers and merged multi-value cells.
+ * Enterprise Matrix Extraction Engine (v28.0)
+ * Specifically tuned for multi-sheet workbooks and dynamic column discovery.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const pricing: any[] = [];
   
-  // 1. Target the specific production sheet
-  const targetSheetName = workbook.SheetNames.find(n => n.includes('March 2025 SKU Pricing')) || workbook.SheetNames[0];
-  const sheet = workbook.Sheets[targetSheetName];
-  
-  if (!sheet) return [];
+  console.log(`[Specs Parser] Scanning workbook with ${workbook.SheetNames.length} sheets...`);
 
-  const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
-  if (rawData.length < 4) return [];
+  // STEP 1: Loop through ALL sheets
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
 
-  // 2. Identify Header Rows
-  const collectionRow = rawData[0] || [];
-  const styleRow = rawData[1] || [];
-  const skuRowLabels = rawData[2] || [];
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
+    if (rawData.length < 2) continue;
 
-  let skuColIdx = skuRowLabels.findIndex(cell => {
-    const val = String(cell || "").toUpperCase().trim();
-    return val === "SKU" || val === "MODEL";
-  });
-  if (skuColIdx === -1) skuColIdx = 0;
+    // STEP 2: Detect SKU Column Dynamically
+    let skuColIdx = -1;
+    let headerRowIdx = -1;
 
-  // 3. Pre-process Headers with Merged-Cell Fill Forward
-  const normalizedCollections: string[] = [];
-  let currentCollection = "";
-  for (let c = 0; c < collectionRow.length; c++) {
-    const val = String(collectionRow[c] || "").trim();
-    if (val && val.length > 1) currentCollection = val;
-    normalizedCollections[c] = currentCollection;
-  }
+    for (let r = 0; r < Math.min(15, rawData.length); r++) {
+      const row = rawData[r];
+      const idx = row.findIndex(cell => {
+        const val = String(cell || "").toUpperCase().trim();
+        return ["SKU", "ITEM CODE", "CABINET CODE", "PRODUCT CODE", "MODEL", "PART #"].includes(val);
+      });
+      if (idx !== -1) {
+        skuColIdx = idx;
+        headerRowIdx = r;
+        break;
+      }
+    }
 
-  const normalizedStyles: string[] = [];
-  let currentStyle = "";
-  for (let c = 0; c < styleRow.length; c++) {
-    const val = String(styleRow[c] || "").trim();
-    if (val && val.length > 1) currentStyle = val;
-    normalizedStyles[c] = currentStyle;
-  }
+    // Fallback if no header found
+    if (skuColIdx === -1) {
+      skuColIdx = 0;
+      headerRowIdx = 0;
+    }
 
-  // 4. Process Data Rows (Starting at row index 3)
-  for (let r = 3; r < rawData.length; r++) {
-    const row = rawData[r];
-    const rawSku = String(row[skuColIdx] || "").trim();
-    
-    if (!rawSku || rawSku.toUpperCase() === "SKU") continue;
+    console.log(`[Specs Parser] Processing sheet: "${sheetName}" | SKU Column: ${skuColIdx} | Header Row: ${headerRowIdx}`);
 
-    for (let c = skuColIdx + 1; c < row.length; c++) {
-      const rawPrice = row[c];
-      if (rawPrice === null || rawPrice === undefined || rawPrice === "") continue;
+    // STEP 3: Header Normalization (Merged Cell Fill-Forward)
+    const collectionRow = rawData[Math.max(0, headerRowIdx - 2)] || [];
+    const styleRow = rawData[Math.max(0, headerRowIdx - 1)] || [];
+    const mainHeaderRow = rawData[headerRowIdx] || [];
 
-      const priceNum = parseFloat(String(rawPrice).replace(/[^0-9.]/g, ""));
-      if (isNaN(priceNum) || priceNum <= 0) continue;
+    const normalizedCollections: string[] = [];
+    let currentCollection = "";
+    for (let c = 0; c < collectionRow.length; c++) {
+      const val = String(collectionRow[c] || "").trim();
+      if (val && val.length > 1) currentCollection = val;
+      normalizedCollections[c] = currentCollection;
+    }
 
-      // Extract and split potentially multi-value headers
-      const colCell = normalizedCollections[c];
-      const styleCell = normalizedStyles[c];
+    const normalizedStyles: string[] = [];
+    let currentStyle = "";
+    for (let c = 0; c < styleRow.length; c++) {
+      const val = String(styleRow[c] || "").trim();
+      if (val && val.length > 1) currentStyle = val;
+      normalizedStyles[c] = currentStyle;
+    }
 
-      const collections = smartSplit(colCell);
-      const styles = smartSplit(styleCell);
+    // STEP 4: Full Row Scan
+    for (let r = headerRowIdx + 1; r < rawData.length; r++) {
+      const row = rawData[r];
+      const rawSku = String(row[skuColIdx] || "").trim();
+      
+      if (!rawSku || ["SKU", "TOTAL", "PAGE"].includes(rawSku.toUpperCase())) continue;
 
-      // Create Cartesian product entries (Collection x Style)
-      // This ensures "Elite Cherry, Elite Maple" becomes two separate searchable entries.
-      for (const colName of collections) {
-        for (const styleName of styles) {
-          pricing.push({
-            manufacturer_id: manufacturerId,
-            collection_name: colName.toUpperCase().trim(),
-            door_style: styleName.toUpperCase().trim(),
-            sku: rawSku.toUpperCase().trim(),
-            price: priceNum,
-            raw_source_file_id: fileId,
-            created_at: new Date().toISOString()
-          });
+      // Scan all columns for numeric prices
+      for (let c = skuColIdx + 1; c < row.length; c++) {
+        const rawPrice = row[c];
+        if (rawPrice === null || rawPrice === undefined || rawPrice === "") continue;
+
+        const priceNum = parseFloat(String(rawPrice).replace(/[^0-9.]/g, ""));
+        if (isNaN(priceNum) || priceNum <= 0) continue;
+
+        const colCell = normalizedCollections[c] || sheetName;
+        const styleCell = normalizedStyles[c] || mainHeaderRow[c] || "STANDARD";
+
+        const collections = smartSplit(colCell);
+        const styles = smartSplit(styleCell);
+
+        for (const colName of collections) {
+          for (const styleName of styles) {
+            pricing.push({
+              manufacturer_id: manufacturerId,
+              collection_name: colName.toUpperCase().trim(),
+              door_style: styleName.toUpperCase().trim(),
+              sku: rawSku.toUpperCase().trim(),
+              price: priceNum,
+              raw_source_file_id: fileId,
+              created_at: new Date().toISOString()
+            });
+          }
         }
       }
     }
   }
 
+  console.log(`[Specs Parser] Total records extracted across all sheets: ${pricing.length}`);
   return pricing;
 }

@@ -7,11 +7,25 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * DETERMINISTIC SKU NORMALIZATION (v28.0)
+ * SKU CLEANING FOR DISPLAY
+ * Removes tokens like {L}, {R}, but keeps "BUTT" and sizes for the final invoice.
+ */
+export function cleanSkuForDisplay(sku: string | any): string {
+  if (!sku) return '';
+  let s = String(sku).toUpperCase();
+  s = s.replace(/\{L\}|\{R\}/g, '');
+  s = s.replace(/X\s*24\s*DP/g, '');
+  s = s.replace(/X\s*12\s*DP/g, '');
+  s = s.replace(/\s\s+/g, ' ');
+  return s.trim();
+}
+
+/**
+ * DETERMINISTIC SKU NORMALIZATION FOR MATCHING (v28.0)
+ * Used for database lookups and pricing engine matching.
  * 1. Convert to uppercase
- * 2. Remove tokens: {L}, {R}, X 24 DP, X 12 DP, BUTT
- * 3. Remove internal spaces in the code
- * 4. Trim
+ * 2. Remove tokens: {L}, {R}, X 24 DP, BUTT
+ * 3. Remove all internal spaces
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
@@ -21,9 +35,9 @@ export function normalizeSku(sku: string | any): string {
   s = s.replace(/\{L\}|\{R\}/g, '');
   s = s.replace(/X\s*24\s*DP/g, '');
   s = s.replace(/X\s*12\s*DP/g, '');
-  s = s.replace(/\s*BUTT\b/g, ''); // Strip trailing "BUTT" modifier
+  s = s.replace(/\s*BUTT\b/g, ''); 
   
-  // Remove spaces inside the code (e.g. "W 30 24" -> "W3024")
+  // Remove all internal spaces for a stable key
   s = s.replace(/\s+/g, '');
   
   return s.trim();
@@ -36,7 +50,7 @@ export function normalizeSku(sku: string | any): string {
  */
 export function getBaseSku(sku: string): string {
   const norm = normalizeSku(sku);
-  // Match prefix and digits, ignore trailing letters often used for handing or variants
+  // Match prefix and digits, ignore trailing letters often used for variants
   const match = norm.match(/^([A-Z]+[0-9]+)/);
   return match ? match[1] : norm;
 }
@@ -49,21 +63,8 @@ export function isPrimaryCabinet(sku: string): boolean {
   const s = normalizeSku(sku);
   if (!s) return false;
 
-  const primaryPrefixes = ['W', 'B', 'SB', 'VSB', 'UF', 'RR', 'OVD', 'TP'];
+  const primaryPrefixes = ['W', 'B', 'SB', 'VSB', 'UF', 'RR', 'OVD', 'TP', 'PANTRY', 'OVEN'];
   return primaryPrefixes.some(p => s.startsWith(p));
-}
-
-/**
- * OTHER ITEMS KEYWORD CHECK
- */
-export function isOtherItem(text: string): boolean {
-  const s = String(text).toUpperCase();
-  const otherKeywords = [
-    'HOOD', 'RANGE', 'MICRO', 'FRIDGE', 'SINK', 'LIGHT', 
-    'TRIM', 'CROWN', 'HARDWARE', 'PANEL', 'FILLER', 
-    'SM8', 'BTK8', 'PRICING', 'DIMENSIONS', 'SHEET'
-  ];
-  return otherKeywords.some(kw => s.includes(kw));
 }
 
 /**
