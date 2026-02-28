@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Table, 
   TableBody, 
@@ -21,13 +22,10 @@ import {
   Calculator,
   Save,
   CheckCircle2,
-  ChevronRight,
   ArrowRight,
   ShieldCheck,
-  Building2,
-  Phone,
-  MapPin,
-  CalendarDays,
+  ChevronRight,
+  AlertCircle,
   FileText,
   Box
 } from 'lucide-react';
@@ -62,6 +60,12 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const [bom, setBom] = useState<BomItem[]>(initialBom);
   const [step, setStep] = useState<WorkflowStep>('pricing');
   
+  // Unique rooms from BOM
+  const allRooms = useMemo(() => Array.from(new Set(bom.map(i => i.room))), [bom]);
+  
+  // Selection state
+  const [selectedRooms, setSelectedRooms] = useState<string[]>(project.bom_data?.selectedRooms || allRooms);
+  
   const [discount, setDiscount] = useState(project.bom_data?.discount || 0);
   const [shipping, setShipping] = useState(project.bom_data?.shipping || 0);
   const [fuel, setFuel] = useState(project.bom_data?.fuel || 0);
@@ -75,19 +79,29 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
   const [isSaving, setIsSaving] = useState(false);
 
-  const materialSubtotal = useMemo(() => 
-    bom.reduce((acc, curr) => acc + (Number(curr.unit_price) * Number(curr.qty) || 0), 0),
-    [bom]
-  );
+  // Financial Calculations
+  const financials = useMemo(() => {
+    const subtotal = bom
+      .filter(item => selectedRooms.includes(item.room))
+      .reduce((acc, curr) => acc + (Number(curr.unit_price) * Number(curr.qty) || 0), 0);
 
-  const discountAmount = useMemo(() => 
-    materialSubtotal * (Number(discount) / 100),
-    [materialSubtotal, discount]
-  );
+    const discountAmt = subtotal * (Number(discount) / 100);
+    const afterDiscount = subtotal - discountAmt;
+    const logisticsFees = Number(shipping) + Number(fuel);
+    const taxableAmount = afterDiscount + logisticsFees;
+    const taxes = taxableAmount * (Number(taxRate) / 100);
+    const total = taxableAmount + taxes;
 
-  const adjustedSubtotal = materialSubtotal - discountAmount;
-  const taxAmount = (adjustedSubtotal + Number(shipping) + Number(fuel)) * (Number(taxRate) / 100);
-  const grandTotal = adjustedSubtotal + Number(shipping) + Number(fuel) + taxAmount;
+    return {
+      subtotal,
+      discountAmt,
+      afterDiscount,
+      logisticsFees,
+      taxableAmount,
+      taxes,
+      total
+    };
+  }, [bom, selectedRooms, discount, shipping, fuel, taxRate]);
 
   const handleUpdateItem = (idx: number, updates: Partial<BomItem>) => {
     const newBom = [...bom];
@@ -99,10 +113,14 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     setBom(newBom);
   };
 
-  const handleUpdateRoomName = (oldName: string, newName: string) => {
-    setBom(prev => prev.map(item => 
-      item.room === oldName ? { ...item, room: newName } : item
-    ));
+  const handleToggleRoom = (room: string) => {
+    setSelectedRooms(prev => 
+      prev.includes(room) ? prev.filter(r => r !== room) : [...prev, room]
+    );
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSelectedRooms(checked ? allRooms : []);
   };
 
   const handleSaveAll = async () => {
@@ -127,8 +145,9 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           customerName: customer.name,
           customerAddress: customer.address,
           customerPhone: customer.phone,
-          materialSubtotal,
-          grandTotal
+          selectedRooms,
+          materialSubtotal: financials.subtotal,
+          grandTotal: financials.total
         }
       });
 
@@ -140,7 +159,17 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     }
   };
 
-  const rooms = Array.from(new Set(bom.map(i => i.room)));
+  const validateWorkflow = () => {
+    if (selectedRooms.length === 0) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Selection Error', 
+        description: 'Please select at least one room to include in the quotation.' 
+      });
+      return false;
+    }
+    return true;
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 pb-32 print:bg-white print:pb-0">
@@ -173,7 +202,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
               1. Pricing
             </button>
             <button 
-              onClick={() => setStep('customer')}
+              onClick={() => { if(validateWorkflow()) setStep('customer') }}
               className={cn(
                 "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
                 step === 'customer' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
@@ -182,7 +211,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
               2. Customer
             </button>
             <button 
-              onClick={() => setStep('preview')}
+              onClick={() => { if(validateWorkflow()) setStep('preview') }}
               className={cn(
                 "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
                 step === 'preview' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
@@ -212,23 +241,51 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 <h2 className="text-3xl font-black text-slate-900 tracking-tight">Price Review</h2>
                 <p className="text-slate-500">Edit SKU, quantities, and pricing details for each project area.</p>
               </div>
-              <Button onClick={() => setStep('customer')} className="gradient-button h-12 px-8 rounded-2xl group">
+              <Button onClick={() => { if(validateWorkflow()) setStep('customer') }} className="gradient-button h-12 px-8 rounded-2xl group">
                 Customer Info
                 <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
             </div>
 
-            {rooms.map(room => (
-              <section key={room} className="space-y-6">
+            {/* Project Scope Filter */}
+            <Card className="p-6 rounded-[2rem] border-slate-200 shadow-sm bg-white">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                  <Box className="w-4 h-4" />
+                  Project Scope
+                </h3>
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="select-all" 
+                    checked={selectedRooms.length === allRooms.length}
+                    onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+                  />
+                  <Label htmlFor="select-all" className="text-xs font-bold cursor-pointer">Select All Areas</Label>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                {allRooms.map(room => (
+                  <div key={room} className={cn(
+                    "flex items-center gap-3 px-4 py-2 rounded-xl border transition-all cursor-pointer",
+                    selectedRooms.includes(room) ? "bg-sky-50 border-sky-200" : "bg-white border-slate-100 grayscale opacity-60"
+                  )} onClick={() => handleToggleRoom(room)}>
+                    <Checkbox checked={selectedRooms.includes(room)} />
+                    <span className="text-sm font-bold">{room}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {allRooms.map(room => (
+              <section key={room} className={cn("space-y-6", !selectedRooms.includes(room) && "opacity-40 grayscale pointer-events-none")}>
                 <div className="flex items-center justify-between border-b border-slate-200 pb-4">
                   <div className="flex items-center gap-3 w-full max-w-sm">
-                    <Layout className="w-5 h-5 text-sky-500 shrink-0" />
-                    <Input 
-                      value={room}
-                      onChange={(e) => handleUpdateRoomName(room, e.target.value)}
-                      className="text-xl font-black uppercase tracking-tight text-slate-900 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-sky-100 p-0 h-auto no-truncate"
-                    />
+                    <Layout className={cn("w-5 h-5 shrink-0", selectedRooms.includes(room) ? "text-sky-500" : "text-slate-300")} />
+                    <h3 className="text-xl font-black uppercase tracking-tight text-slate-900">{room}</h3>
                   </div>
+                  {!selectedRooms.includes(room) && (
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full">Excluded from Total</span>
+                  )}
                 </div>
 
                 <Table>
@@ -324,22 +381,22 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                   <div className="w-full md:w-96 space-y-4 ml-auto">
                      <div className="space-y-3">
                         <div className="flex justify-between items-center text-slate-500">
-                           <span className="text-[10px] font-bold uppercase tracking-widest">Subtotal</span>
-                           <span className="font-mono text-lg font-bold text-slate-900">${materialSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                           <span className="text-[10px] font-bold uppercase tracking-widest">Subtotal ({selectedRooms.length} Areas)</span>
+                           <span className="font-mono text-lg font-bold text-slate-900">${financials.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                         {discount > 0 && (
                           <div className="flex justify-between items-center text-emerald-600">
-                             <span className="text-[10px] font-bold uppercase tracking-widest">Discount ({discount}%)</span>
-                             <span className="font-mono text-lg font-bold">-${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                             <span className="text-[10px] font-bold uppercase tracking-widest">Dealer Discount ({discount}%)</span>
+                             <span className="font-mono text-lg font-bold">-${financials.discountAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                         )}
                         <div className="flex justify-between items-center text-slate-500">
                            <span className="text-[10px] font-bold uppercase tracking-widest">Logistics Fees</span>
-                           <span className="font-mono text-lg font-bold text-slate-900">${(Number(shipping) + Number(fuel)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                           <span className="font-mono text-lg font-bold text-slate-900">${financials.logisticsFees.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                         <div className="flex justify-between items-center text-slate-500">
                            <span className="text-[10px] font-bold uppercase tracking-widest">Taxes ({taxRate}%)</span>
-                           <span className="font-mono text-lg font-bold text-slate-900">${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                           <span className="font-mono text-lg font-bold text-slate-900">${financials.taxes.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                      </div>
 
@@ -347,7 +404,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                         <div className="flex justify-between items-baseline">
                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-400">Total Investment</span>
                            <span className="text-4xl font-black font-mono tracking-tighter">
-                              ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              ${financials.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                            </span>
                         </div>
                      </div>
@@ -399,7 +456,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                      <Button variant="ghost" className="h-16 px-8 rounded-[2rem] font-bold text-slate-500" onClick={() => setStep('pricing')}>
                         Back to Pricing
                      </Button>
-                     <Button className="flex-1 h-16 rounded-[2rem] gradient-button text-xl group" onClick={() => setStep('preview')}>
+                     <Button className="flex-1 h-16 rounded-[2rem] gradient-button text-xl group" onClick={() => { if(validateWorkflow()) setStep('preview') }}>
                         Preview Final Bill
                         <ArrowRight className="w-6 h-6 ml-3 group-hover:translate-x-1 transition-transform" />
                      </Button>
@@ -428,7 +485,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
              <div className="print-container bg-white font-body text-slate-900">
                 {/* PDF Header - Two Column Grid */}
                 <div className="grid grid-cols-2 gap-8 border-b-2 border-slate-900 pb-4 mb-6 items-start">
-                   {/* Left Side: Brand & Dealer */}
                    <div className="space-y-2">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-lg bg-slate-900 flex items-center justify-center text-white font-black text-2xl">
@@ -449,7 +505,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       </div>
                    </div>
 
-                   {/* Right Side: Quote Metadata */}
                    <div className="text-right space-y-4">
                       <div>
                         <h1 className="text-[18px] font-black text-slate-900 uppercase">QUOTATION</h1>
@@ -477,8 +532,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                    </div>
                 </div>
 
-                {/* Room Sections */}
-                {rooms.map(room => {
+                {/* Filtered Room Sections for PDF */}
+                {selectedRooms.map(room => {
                   const roomItems = bom.filter(i => i.room === room);
                   const categories = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets', 'Hinges & Hardware', 'Accessories'];
                   const roomTotal = roomItems.reduce((acc, i) => acc + (i.unit_price * i.qty), 0);
@@ -509,7 +564,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                               <TableBody>
                                 {catItems.map(item => (
                                   <TableRow key={item.id} className="h-6 border-b border-slate-100 hover:bg-transparent">
-                                    <TableCell className="font-bold text-slate-800 py-1 px-2 text-[9.5px]">{item.sku}</TableCell>
+                                    <TableCell className="font-bold text-slate-800 py-1 px-2 text-[9.5px] uppercase">{item.sku}</TableCell>
                                     <TableCell className="text-center font-bold text-slate-600 py-1 px-2 text-[9.5px]">{item.qty}</TableCell>
                                     <TableCell className="text-right font-mono text-[9.5px] text-slate-500 py-1 px-2">${item.unit_price.toFixed(2)}</TableCell>
                                     <TableCell className="text-right font-mono font-bold text-slate-900 py-1 px-2 text-[9.5px]">${(item.unit_price * item.qty).toFixed(2)}</TableCell>
@@ -523,7 +578,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
                       <div className="flex justify-end pt-2 border-t border-slate-200">
                          <div className="text-right">
-                           <span className="text-[10px] font-bold uppercase text-slate-400 mr-4">Area Investment Total</span>
+                           <span className="text-[10px] font-bold uppercase text-slate-400 mr-4">Area Total</span>
                            <span className="text-[12px] font-bold font-mono text-slate-900">${roomTotal.toFixed(2)}</span>
                          </div>
                       </div>
@@ -540,8 +595,9 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                                <ShieldCheck className="w-4 h-4" /> Production Terms
                             </h4>
                             <p className="text-[9.5px] text-sky-700 leading-relaxed font-medium">
-                               This quote is generated based on architectural plans. All quantities must be field verified before ordering. 
-                               Prices are subject to manufacturer adjustment after 30 days from date of issue.
+                               This quote is generated based on architectural plans for {selectedRooms.length} areas. 
+                               All quantities must be field verified before ordering. 
+                               Prices are subject to adjustment after 30 days.
                             </p>
                          </div>
                       </div>
@@ -549,22 +605,22 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       <div className="w-72 space-y-3">
                         <div className="space-y-1.5">
                           <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold">
-                             <span className="uppercase tracking-tight">Material Subtotal</span>
-                             <span className="font-mono text-[11px]">${materialSubtotal.toFixed(2)}</span>
+                             <span className="uppercase tracking-tight">Project Subtotal</span>
+                             <span className="font-mono text-[11px]">${financials.subtotal.toFixed(2)}</span>
                           </div>
                           {discount > 0 && (
                             <div className="flex justify-between items-center text-emerald-600 text-[10px] font-bold">
                                <span className="uppercase tracking-tight">Dealer Discount ({discount}%)</span>
-                               <span className="font-mono text-[11px]">-${discountAmount.toFixed(2)}</span>
+                               <span className="font-mono text-[11px]">-${financials.discountAmt.toFixed(2)}</span>
                             </div>
                           )}
                           <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold">
-                             <span className="uppercase tracking-tight">Logistics & Handling</span>
-                             <span className="font-mono text-[11px]">${(Number(shipping) + Number(fuel)).toFixed(2)}</span>
+                             <span className="uppercase tracking-tight">Logistics & Fees</span>
+                             <span className="font-mono text-[11px]">${financials.logisticsFees.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold pb-2 border-b border-slate-100">
                              <span className="uppercase tracking-tight">Tax ({taxRate}%)</span>
-                             <span className="font-mono text-[11px]">${taxAmount.toFixed(2)}</span>
+                             <span className="font-mono text-[11px]">${financials.taxes.toFixed(2)}</span>
                           </div>
                         </div>
 
@@ -572,7 +628,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                            <div className="flex justify-between items-baseline">
                               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-400">Grand Total</span>
                               <span className="text-[18px] font-black font-mono">
-                                 ${grandTotal.toFixed(2)}
+                                 ${financials.total.toFixed(2)}
                               </span>
                            </div>
                            <p className="text-[8px] text-slate-500 font-bold text-right uppercase mt-1">Currency: USD</p>
@@ -581,7 +637,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                    </div>
                 </div>
                 
-                {/* Print Footer */}
                 <div className="print-footer">
                    Powered by KABS AI • Production Precision Engineering
                 </div>
