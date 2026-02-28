@@ -17,13 +17,12 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * SKU NORMALIZATION (v36.0)
+ * SKU NORMALIZATION (v37.0)
  * Standard normalization for matching.
- * Preserves words but ensures consistent casing and trimming.
+ * Strictly trims and uppercases as per catalog standards.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  // Convert to upper and trim. We keep spaces to allow "SB36 BUTT" exact matches.
   return String(sku).toUpperCase().trim();
 }
 
@@ -37,7 +36,7 @@ export function isPrimaryCabinet(sku: string): boolean {
 
   const primaryPrefixes = [
     'W', 'B', 'SB', 'VSB', 'UF', 'RR', 'OVD', 'TP', 'PANTRY', 
-    'OVEN', 'REF', 'DW', 'MICRO', 'DRW', 'TALL', 'UTIL', 'WALL', 'BASE', 'V'
+    'OVEN', 'REF', 'DW', 'MICRO', 'DRW', 'TALL', 'UTIL', 'WALL', 'BASE', 'V', 'SV', 'VB'
   ];
   return primaryPrefixes.some(p => s.startsWith(p));
 }
