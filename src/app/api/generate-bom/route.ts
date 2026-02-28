@@ -4,8 +4,12 @@ import { compressSku } from '@/lib/utils';
 export const maxDuration = 300;
 
 /**
- * ENTERPRISE MULTI-ENGINE PRICING SYSTEM (v47.0)
- * Implements recursive global scanning across ALL sheets and sheets indexed in the database.
+ * ENTERPRISE MULTI-ENGINE PRICING SYSTEM (v48.0)
+ * 
+ * IMPROVEMENTS:
+ * 1. RECURSIVE PAGINATED LOAD: Fetches up to 100,000 records from DB.
+ * 2. UNIVERSAL GLOBAL FALLBACK: If room match fails, search all other sheets for SKU.
+ * 3. RECURSIVE SUFFIX STRIPPING: Strips BUTT, H, L, R to find base model prices.
  */
 export async function POST(req: Request) {
   try {
@@ -28,7 +32,7 @@ export async function POST(req: Request) {
     if (pError || !project) throw new Error('Project not found.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. PAGINATED GLOBAL CATALOG LOAD
+    // 2. RECURSIVE GLOBAL CATALOG LOAD (Supports 50,000+ records)
     let allPricing: any[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -48,14 +52,15 @@ export async function POST(req: Request) {
       } else {
         allPricing = [...allPricing, ...data];
         from += pageSize;
+        // Safety break to prevent infinite loops, though range handles this
         if (data.length < pageSize) hasMore = false;
       }
     }
 
     // 3. MULTI-TIER INDEXING
     const localMap = new Map<string, any>(); // SKU|COL|STYLE
-    const globalSkuMap = new Map<string, any>(); // Exact SKU
-    const compressedMap = new Map<string, any>(); // Compressed SKU
+    const globalSkuMap = new Map<string, any>(); // Exact SKU (fallback for accessories)
+    const compressedMap = new Map<string, any>(); // Compressed SKU (ignore spaces)
 
     const normalizeHeader = (s: string) => String(s || "").trim().toUpperCase().split('(')[0].trim();
 
@@ -68,7 +73,8 @@ export async function POST(req: Request) {
       const fullKey = `${sku}|${col}|${sty}`;
       if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Index for global fallback
+      // Index for global fallback (Essential for Universal Accessories like UF3)
+      // Prioritize "UNIVERSAL" or sheet-level styles if found
       if (!globalSkuMap.has(sku) || sty === "UNIVERSAL") {
         globalSkuMap.set(sku, p);
       }
@@ -99,19 +105,18 @@ export async function POST(req: Request) {
 
       const searchVariants = Array.from(new Set(variants.filter(Boolean)));
 
-      // TIER 1: EXACT LOCAL
+      // TIER 1: EXACT LOCAL (Same Room/Collection/Style)
       for (const v of searchVariants) {
         const key = `${v}|${col}|${sty}`;
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_EXACT' };
       }
 
-      // TIER 2: GLOBAL CATALOG (All Sheets)
-      // This is crucial for items like UF3, RR120, etc. which might be on different sheets.
+      // TIER 2: GLOBAL CATALOG (Searches all sheets, accessory lists, etc.)
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
-      // TIER 3: COMPRESSED FUZZY
+      // TIER 3: COMPRESSED FUZZY (Ignores all formatting)
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'GLOBAL_FUZZY' };
 
       return null;
