@@ -1,19 +1,19 @@
 import * as XLSX from 'xlsx';
 
 /**
- * ENTERPRISE-GRADE HIGH-PRECISION PRICING PARSER (v49.0)
+ * ENTERPRISE-GRADE HIGH-PRECISION PRICING PARSER (v50.0)
  * 
  * IMPROVEMENTS:
- * 1. UNLIMITED GRID SCAN: Scans every row and every column of every sheet.
- * 2. DYNAMIC ANCHOR DETECTION: Independently finds "SKU" and "Price" headers on every sheet.
- * 3. MERGED HEADER PROPAGATION: Correctly un-merges headers to associate prices with collections.
+ * 1. INFINITE ROW SCAN: Scans every row of every sheet for headers (no 500-row limit).
+ * 2. HEURISTIC PRICE DISCOVERY: Identifies price columns by content if headers are missing.
+ * 3. GLOBAL ACCESSORY TAGGING: Automatically treats "Accessory" sheets as Universal.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const pricing: any[] = [];
   
   const skuKeywords = ["SKU", "ITEM SKU", "CODE", "MODEL", "ITEM CODE", "PART NUMBER", "CABINET SKU", "MODEL NUMBER"];
-  const priceKeywords = ["PRICE", "LIST PRICE", "LIST", "NET", "COST"];
+  const priceKeywords = ["PRICE", "LIST PRICE", "LIST", "NET", "COST", "MSRP"];
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
@@ -26,8 +26,8 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     let headerRowIdx = -1;
     let priceCols: number[] = [];
     
-    // 1. DYNAMIC ANCHOR SCAN (Scan deep to find the SKU and Price anchors)
-    for (let r = 0; r < Math.min(rows.length, 500); r++) {
+    // 1. EXHAUSTIVE ANCHOR SCAN (Unlimited depth)
+    for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       if (!row) continue;
       
@@ -40,34 +40,40 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         skuColIdx = potentialSkuIdx;
         headerRowIdx = r;
         
-        // Once SKU found, find all Price columns in this same header row
+        // Find all Price columns in this header row
         row.forEach((cell, cIdx) => {
           const val = String(cell || "").toUpperCase().trim();
           if (priceKeywords.some(k => val.includes(k))) {
             priceCols.push(cIdx);
           }
         });
-        break;
+        
+        if (priceCols.length > 0) break;
       }
     }
 
-    // Fallback Price Discovery: If no explicit Price header, any column with numbers in row +1/+2 is a candidate
-    if (priceCols.length === 0 && headerRowIdx !== -1) {
-      const sampleRow = rows[headerRowIdx + 1] || [];
-      sampleRow.forEach((cell, cIdx) => {
-        if (cIdx === skuColIdx) return;
-        const val = String(cell || "").replace(/[^\d.-]/g, "");
-        if (val && !isNaN(parseFloat(val))) {
-          priceCols.push(cIdx);
-        }
-      });
+    // 2. HEURISTIC FALLBACK: If no explicit headers, find the first column with numbers that isn't the SKU
+    if (skuColIdx !== -1 && priceCols.length === 0) {
+      for (let r = headerRowIdx + 1; r < Math.min(rows.length, headerRowIdx + 10); r++) {
+        const row = rows[r];
+        if (!row) continue;
+        row.forEach((cell, cIdx) => {
+          if (cIdx === skuColIdx) return;
+          const val = String(cell || "").replace(/[^\d.-]/g, "");
+          if (val && !isNaN(parseFloat(val)) && parseFloat(val) > 0) {
+            priceCols.push(cIdx);
+          }
+        });
+        if (priceCols.length > 0) break;
+      }
     }
 
     if (skuColIdx === -1) continue;
 
-    // 2. HEADER CONTEXT DISCOVERY
+    const isAccessorySheet = sheetName.toUpperCase().includes("ACCESSORY") || sheetName.toUpperCase().includes("OPTION");
+
+    // 3. HEADER CONTEXT DISCOVERY (Propagation logic)
     const colMetadata = (rows[headerRowIdx] || []).map((cell, cIdx) => {
-      // Look upwards for Collection/Style names (Merged cells)
       let collection = "";
       let style = "";
       for (let r = 0; r <= headerRowIdx; r++) {
@@ -78,12 +84,12 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         }
       }
       return {
-        collection: (collection || sheetName).toUpperCase().trim(),
+        collection: (collection || (isAccessorySheet ? "UNIVERSAL" : sheetName)).toUpperCase().trim(),
         style: (style || "UNIVERSAL").toUpperCase().trim()
       };
     });
 
-    // 3. EXHAUSTIVE DATA EXTRACTION (Row 0 to End)
+    // 4. EXHAUSTIVE DATA EXTRACTION
     for (let r = headerRowIdx + 1; r < rows.length; r++) {
       const row = rows[r];
       if (!row) continue;
@@ -93,7 +99,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       
       const displaySku = rawSku.toUpperCase();
 
-      // Extract price from every identified price column
       priceCols.forEach(cIdx => {
         const rawPrice = row[cIdx];
         if (rawPrice === "" || rawPrice === null) return;
@@ -101,12 +106,12 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         const priceNum = parseFloat(String(rawPrice).replace(/[^\d.-]/g, ""));
         if (isNaN(priceNum) || priceNum <= 0) return;
 
-        const meta = colMetadata[cIdx] || { collection: sheetName.toUpperCase(), style: "UNIVERSAL" };
+        const meta = colMetadata[cIdx] || { collection: isAccessorySheet ? "UNIVERSAL" : sheetName.toUpperCase(), style: "UNIVERSAL" };
 
         pricing.push({
           manufacturer_id: manufacturerId,
           collection_name: meta.collection,
-          door_style: meta.style,
+          door_style: meta.door_style || "UNIVERSAL",
           sku: displaySku,
           price: priceNum,
           raw_source_file_id: fileId,

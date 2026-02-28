@@ -4,12 +4,12 @@ import { compressSku } from '@/lib/utils';
 export const maxDuration = 300;
 
 /**
- * ENTERPRISE MULTI-ENGINE PRICING SYSTEM (v49.0)
+ * ENTERPRISE MULTI-ENGINE PRICING SYSTEM (v50.0)
  * 
  * IMPROVEMENTS:
- * 1. UNLIMITED RECURSIVE LOAD: Fetches every single record in the database.
- * 2. UNIVERSAL GLOBAL FALLBACK: If room match fails, search all other sheets for SKU.
- * 3. SUPER-COMPRESSED MATCHING: Strips spaces/special chars for accessory matching (UF3, UF342).
+ * 1. RECURSIVE CATALOG LOAD: Fetches all records from Supabase using pagination.
+ * 2. AGGRESSIVE GLOBAL FALLBACK: If collection match fails, search all sheets for the SKU.
+ * 3. COMPRESSED KEY MATCHING: Strips all symbols/spaces for universal accessory matching (UF3, UF342, RR120FL).
  */
 export async function POST(req: Request) {
   try {
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     if (pError || !project) throw new Error('Project not found.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // RECURSIVE FULL CATALOG LOAD
+    // 1. FULL CATALOG INDEXING (Paginated Load)
     let allPricing: any[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -54,24 +54,24 @@ export async function POST(req: Request) {
       }
     }
 
-    // MULTI-TIER INDEXING
+    // 2. MULTI-TIER INDEXING
     const localMap = new Map<string, any>(); 
     const globalSkuMap = new Map<string, any>();
     const compressedMap = new Map<string, any>();
 
-    const normalizeKey = (s: string) => String(s || "").trim().toUpperCase();
+    const normalizeKey = (s: string) => String(s || "").trim().toUpperCase().replace(/\s+/g, ' ');
 
     allPricing.forEach(p => {
       const sku = normalizeKey(p.sku);
       const col = normalizeKey(p.collection_name);
-      const sty = normalizeKey(p.door_style);
+      const sty = normalizeKey(p.door_style || "UNIVERSAL");
       const comp = compressSku(sku);
       
       const fullKey = `${sku}|${col}|${sty}`;
       if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Global fallback (Prioritize accessory sheets if possible)
-      if (!globalSkuMap.has(sku) || sty === "UNIVERSAL") {
+      // Global fallback (Prioritize universal/accessory sheet entries)
+      if (!globalSkuMap.has(sku) || col === "UNIVERSAL" || col.includes("ACCESSORY")) {
         globalSkuMap.set(sku, p);
       }
       
@@ -86,29 +86,28 @@ export async function POST(req: Request) {
       const sty = normalizeKey(style);
       const targetComp = compressSku(target);
 
-      const variants = [
+      // Priority variants to try
+      const searchVariants = [
         target,
         target.replace(/\s+/g, ''),
         target.replace(/\s*BUTT$/g, ''),
         target.replace(/\s*[HLR]$/g, ''),
         target.replace(/\s*FL$/g, ''),
         target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''),
-      ];
+      ].filter((v, i, self) => v && self.indexOf(v) === i);
 
-      const searchVariants = Array.from(new Set(variants.filter(Boolean)));
-
-      // TIER 1: EXACT LOCAL
+      // TIER 1: EXACT LOCAL (Room specific)
       for (const v of searchVariants) {
         const key = `${v}|${col}|${sty}`;
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_EXACT' };
       }
 
-      // TIER 2: GLOBAL CATALOG (Crucial for UF3, UF342 from second sheet)
+      // TIER 2: GLOBAL CATALOG (Crucial for items like UF3, UF342 from different sheets)
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
-      // TIER 3: SUPER COMPRESSED FUZZY
+      // TIER 3: SUPER COMPRESSED FUZZY (Handles symbols and formatting mismatches)
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'GLOBAL_FUZZY' };
 
       return null;
