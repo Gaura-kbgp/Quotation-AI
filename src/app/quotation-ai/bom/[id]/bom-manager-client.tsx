@@ -27,7 +27,8 @@ import {
   ChevronRight,
   AlertCircle,
   FileText,
-  Box
+  Box,
+  Layers
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn, detectCategory } from '@/lib/utils';
@@ -239,7 +240,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
             <div className="flex justify-between items-end">
               <div>
                 <h2 className="text-3xl font-black text-slate-900 tracking-tight">Price Review</h2>
-                <p className="text-slate-500">Edit SKU, quantities, and pricing details for each project area.</p>
+                <p className="text-slate-500">Edit SKU, quantities, and pricing details. Toggle areas to include in the final quote.</p>
               </div>
               <Button onClick={() => { if(validateWorkflow()) setStep('customer') }} className="gradient-button h-12 px-8 rounded-2xl group">
                 Customer Info
@@ -247,93 +248,92 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
               </Button>
             </div>
 
-            {/* Project Scope Filter */}
-            <Card className="p-6 rounded-[2rem] border-slate-200 shadow-sm bg-white">
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                  <Box className="w-4 h-4" />
-                  Project Scope
-                </h3>
-                <div className="flex items-center gap-2">
+            {/* Global Room Controls */}
+            <div className="flex items-center justify-between bg-white px-8 py-4 rounded-2xl border border-slate-200 shadow-sm">
+               <div className="flex items-center gap-3">
+                  <Layers className="w-5 h-5 text-sky-500" />
+                  <span className="text-sm font-bold text-slate-700">Project Areas ({allRooms.length})</span>
+               </div>
+               <div className="flex items-center gap-3">
                   <Checkbox 
-                    id="select-all" 
+                    id="global-select-all" 
                     checked={selectedRooms.length === allRooms.length}
                     onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+                    className="w-5 h-5 rounded-md"
                   />
-                  <Label htmlFor="select-all" className="text-xs font-bold cursor-pointer">Select All Areas</Label>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-4">
-                {allRooms.map(room => (
-                  <div key={room} className={cn(
-                    "flex items-center gap-3 px-4 py-2 rounded-xl border transition-all cursor-pointer",
-                    selectedRooms.includes(room) ? "bg-sky-50 border-sky-200" : "bg-white border-slate-100 grayscale opacity-60"
-                  )} onClick={() => handleToggleRoom(room)}>
-                    <Checkbox checked={selectedRooms.includes(room)} />
-                    <span className="text-sm font-bold">{room}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
+                  <Label htmlFor="global-select-all" className="text-xs font-black uppercase tracking-widest text-slate-500 cursor-pointer">
+                    {selectedRooms.length === allRooms.length ? 'Unselect All' : 'Select All Areas'}
+                  </Label>
+               </div>
+            </div>
 
             {allRooms.map(room => (
-              <section key={room} className={cn("space-y-6", !selectedRooms.includes(room) && "opacity-40 grayscale pointer-events-none")}>
+              <section key={room} className={cn("space-y-6 transition-all duration-300", !selectedRooms.includes(room) && "opacity-40 grayscale")}>
                 <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                  <div className="flex items-center gap-3 w-full max-w-sm">
-                    <Layout className={cn("w-5 h-5 shrink-0", selectedRooms.includes(room) ? "text-sky-500" : "text-slate-300")} />
-                    <h3 className="text-xl font-black uppercase tracking-tight text-slate-900">{room}</h3>
+                  <div className="flex items-center gap-4 w-full">
+                    <Checkbox 
+                      checked={selectedRooms.includes(room)} 
+                      onCheckedChange={() => handleToggleRoom(room)}
+                      className="w-6 h-6 rounded-lg border-2 data-[state=checked]:bg-sky-600 data-[state=checked]:border-sky-600"
+                    />
+                    <div className="flex items-center gap-3">
+                      <Layout className={cn("w-5 h-5 shrink-0", selectedRooms.includes(room) ? "text-sky-500" : "text-slate-300")} />
+                      <h3 className="text-xl font-black uppercase tracking-tight text-slate-900">{room}</h3>
+                    </div>
                   </div>
                   {!selectedRooms.includes(room) && (
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full">Excluded from Total</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full shrink-0">Excluded from Total</span>
                   )}
                 </div>
 
-                <Table>
-                  <TableHeader>
-                    <TableRow className="h-12 border-b border-slate-200 hover:bg-transparent">
-                      <TableHead className="text-[10px] font-black uppercase text-slate-400 w-1/2">Cabinet Code</TableHead>
-                      <TableHead className="text-[10px] font-black uppercase text-slate-400 text-center">Qty</TableHead>
-                      <TableHead className="text-[10px] font-black uppercase text-slate-400 text-right">Unit Price ($)</TableHead>
-                      <TableHead className="text-[10px] font-black uppercase text-slate-400 text-right pr-6">Line Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bom.filter(i => i.room === room).map((item) => {
-                      const itemIdx = bom.findIndex(b => b.id === item.id);
-                      return (
-                        <TableRow key={item.id} className="h-20 hover:bg-white border-b border-slate-50">
-                          <TableCell className="py-4">
-                             <Input 
-                               value={item.sku}
-                               onChange={(e) => handleUpdateItem(itemIdx, { sku: e.target.value.toUpperCase() })}
-                               className="font-bold text-slate-900 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-sky-100 p-0 h-auto"
-                             />
-                             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Ref: {item.matched_sku}</p>
-                          </TableCell>
-                          <TableCell className="text-center font-bold">
-                             <Input 
-                               type="number"
-                               value={item.qty}
-                               onChange={(e) => handleUpdateItem(itemIdx, { qty: parseInt(e.target.value) || 0 })}
-                               className="w-16 mx-auto text-center font-bold border-none bg-slate-50 rounded-lg h-9 focus-visible:ring-1 focus-visible:ring-sky-500"
-                             />
-                          </TableCell>
-                          <TableCell className="text-right">
-                             <Input 
-                               type="number" 
-                               value={item.unit_price} 
-                               onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })}
-                               className="w-24 ml-auto text-right font-mono font-bold bg-white h-9 rounded-lg border-slate-200 shadow-sm"
-                             />
-                          </TableCell>
-                          <TableCell className="text-right font-black text-slate-900 pr-6 font-mono">
-                            ${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                <div className={cn(!selectedRooms.includes(room) && "pointer-events-none")}>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="h-12 border-b border-slate-200 hover:bg-transparent">
+                        <TableHead className="text-[10px] font-black uppercase text-slate-400 w-1/2">Cabinet Code</TableHead>
+                        <TableHead className="text-[10px] font-black uppercase text-slate-400 text-center">Qty</TableHead>
+                        <TableHead className="text-[10px] font-black uppercase text-slate-400 text-right">Unit Price ($)</TableHead>
+                        <TableHead className="text-[10px] font-black uppercase text-slate-400 text-right pr-6">Line Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bom.filter(i => i.room === room).map((item) => {
+                        const itemIdx = bom.findIndex(b => b.id === item.id);
+                        return (
+                          <TableRow key={item.id} className="h-20 hover:bg-white border-b border-slate-50">
+                            <TableCell className="py-4">
+                               <Input 
+                                 value={item.sku}
+                                 onChange={(e) => handleUpdateItem(itemIdx, { sku: e.target.value.toUpperCase() })}
+                                 className="font-bold text-slate-900 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-sky-100 p-0 h-auto"
+                               />
+                               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Ref: {item.matched_sku}</p>
+                            </TableCell>
+                            <TableCell className="text-center font-bold">
+                               <Input 
+                                 type="number"
+                                 value={item.qty}
+                                 onChange={(e) => handleUpdateItem(itemIdx, { qty: parseInt(e.target.value) || 0 })}
+                                 className="w-16 mx-auto text-center font-bold border-none bg-slate-50 rounded-lg h-9 focus-visible:ring-1 focus-visible:ring-sky-500"
+                               />
+                            </TableCell>
+                            <TableCell className="text-right">
+                               <Input 
+                                 type="number" 
+                                 value={item.unit_price} 
+                                 onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })}
+                                 className="w-24 ml-auto text-right font-mono font-bold bg-white h-9 rounded-lg border-slate-200 shadow-sm"
+                               />
+                            </TableCell>
+                            <TableCell className="text-right font-black text-slate-900 pr-6 font-mono">
+                              ${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               </section>
             ))}
 
