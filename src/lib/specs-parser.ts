@@ -3,10 +3,12 @@ import * as XLSX from 'xlsx';
 /**
  * Intelligent String Splitter
  * Splits multiple door styles/collections while preserving exact names.
+ * Optimized for vertical/stacked text in Excel cells.
  */
 function smartSplit(raw: string): string[] {
   if (!raw) return [];
   
+  // First split by common delimiters including line breaks which are common in vertical Excel blocks
   let initialParts = String(raw).split(/[\n\r,]+/)
     .map(s => s.trim())
     .filter(Boolean);
@@ -15,7 +17,7 @@ function smartSplit(raw: string): string[] {
     "ELITE", "PREMIUM", "PRIME", "BASE", "CHOICE", "DURAFORM", 
     "CANYON", "DURANGO", "ELDERIDGE", "BANDERA", "DENVER", "COOPER", 
     "OXFORD", "ALPINE", "SNOWBOUND", "ABILENE", "LUBBOCK", "COLORADO",
-    "SELECT", "CLASSIC", "DESIGNER", "ULTRA"
+    "SELECT", "CLASSIC", "DESIGNER", "ULTRA", "BOERNE", "HARDWOOD"
   ];
   
   const keywordPattern = boundaryKeywords.join('|');
@@ -23,6 +25,7 @@ function smartSplit(raw: string): string[] {
 
   let results: string[] = [];
   initialParts.forEach(part => {
+    // Check if the part itself has jammed keywords with no spaces (rare but possible in OCR/conversions)
     const subParts = part.split(jammedRegex)
       .map(s => s.trim())
       .filter(Boolean);
@@ -33,9 +36,9 @@ function smartSplit(raw: string): string[] {
 }
 
 /**
- * HIGH-PRECISION PRICING PARSER (v32.0)
- * Scans ALL sheets and EVERY row.
- * Fuzzy SKU column detection.
+ * HIGH-PRECISION PRICING PARSER (v33.0)
+ * Scans ALL sheets and EVERY row without arbitrary limits.
+ * Propagates merged headers correctly.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -50,7 +53,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
     if (rawData.length < 2) continue;
 
-    // Detect SKU Column fuzzily (Handles "ITEM SKU", "MODEL", "CODE", etc.)
+    // Detect SKU Column fuzzily
     let skuColIdx = -1;
     let headerRowIdx = -1;
 
@@ -72,15 +75,15 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       continue;
     }
 
-    // Capture context headers
+    // Capture context headers from rows above the SKU header
     const collectionRow = rawData[Math.max(0, headerRowIdx - 2)] || [];
     const styleRow = rawData[Math.max(0, headerRowIdx - 1)] || [];
     const mainHeaderRow = rawData[headerRowIdx] || [];
 
-    // Pre-calculate merged header values
+    // Pre-calculate merged header values (propagation)
     const normalizedCollections: string[] = [];
     let currentCollection = "";
-    for (let c = 0; c < collectionRow.length; c++) {
+    for (let c = 0; c < Math.max(collectionRow.length, mainHeaderRow.length); c++) {
       const val = String(collectionRow[c] || "").trim();
       if (val && val.length > 1) currentCollection = val;
       normalizedCollections[c] = currentCollection;
@@ -88,13 +91,13 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
     const normalizedStyles: string[] = [];
     let currentStyle = "";
-    for (let c = 0; c < styleRow.length; c++) {
+    for (let c = 0; c < Math.max(styleRow.length, mainHeaderRow.length); c++) {
       const val = String(styleRow[c] || "").trim();
       if (val && val.length > 1) currentStyle = val;
       normalizedStyles[c] = currentStyle;
     }
 
-    // SCAN ALL ROWS
+    // SCAN ALL ROWS starting from after the header
     for (let r = headerRowIdx + 1; r < rawData.length; r++) {
       const row = rawData[r];
       const excelSKU = String(row[skuColIdx] || "").trim().toUpperCase();
@@ -112,6 +115,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         const priceNum = parseFloat(String(rawPrice).replace(/[^0-9.]/g, ""));
         if (isNaN(priceNum)) continue;
 
+        // Use the propagated headers
         const colCell = normalizedCollections[c] || sheetName;
         const styleCell = normalizedStyles[c] || mainHeaderRow[c] || "STANDARD";
 

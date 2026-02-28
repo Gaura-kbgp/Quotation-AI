@@ -4,12 +4,9 @@ import { normalizeSku } from '@/lib/utils';
 export const maxDuration = 120;
 
 /**
- * ENTERPRISE PRICING ENGINE (v32.0)
- * Implements recursive multi-stage fallback matching:
- * 1. Exact Match in Spec
- * 2. Fallbacks in Spec (BUTT -> H -> Dimensions)
- * 3. Global Exact Match (Any collection)
- * 4. Global Fallbacks (Any collection)
+ * ENTERPRISE PRICING ENGINE (v33.0)
+ * Implements recursive multi-stage fallback matching and paginated data fetching.
+ * Fixes the 1000-record limit issue for large catalogs.
  */
 export async function POST(req: Request) {
   try {
@@ -31,28 +28,47 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // Fetch ALL pricing records for this manufacturer
-    const { data: allPricing, error: sError } = await supabase
-      .from('manufacturer_pricing')
-      .select('*')
-      .eq('manufacturer_id', manufacturerId);
+    // PAGINATED FETCH: Supabase defaults to 1000 records. 
+    // We must fetch ALL pricing records for this manufacturer recursively.
+    let allPricing: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
 
-    if (sError) throw new Error(`Database error: ${sError.message}`);
+    while (hasMore) {
+      const { data, error: sError } = await supabase
+        .from('manufacturer_pricing')
+        .select('*')
+        .eq('manufacturer_id', manufacturerId)
+        .range(from, from + step - 1);
+
+      if (sError) throw new Error(`Database error: ${sError.message}`);
+      
+      if (!data || data.length === 0) {
+        hasMore = false;
+      } else {
+        allPricing = [...allPricing, ...data];
+        from += step;
+        if (data.length < step) hasMore = false;
+      }
+    }
+
+    console.log(`[Pricing Engine] Loaded ${allPricing.length} price points for lookup.`);
 
     // Build hierarchical lookup maps for performance
     const pricingMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
 
-    allPricing?.forEach(p => {
+    allPricing.forEach(p => {
       const skuKey = String(p.sku || "").toUpperCase().trim();
       const colKey = String(p.collection_name || "").toUpperCase().trim();
       const styKey = String(p.door_style || "").toUpperCase().trim();
       
-      // Spec-specific key
+      // Spec-specific key (Primary)
       const key = `${skuKey}|${colKey}|${styKey}`;
       pricingMap.set(key, p);
 
-      // Global SKU index (first occurrence wins)
+      // Global SKU index (Fallback - first occurrence wins)
       if (!globalSkuMap.has(skuKey)) {
         globalSkuMap.set(skuKey, p);
       }
@@ -90,8 +106,7 @@ export async function POST(req: Request) {
         if (match) return { match, type: variant.type };
       }
 
-      // STAGE 2: Global Fallback Search
-      // Many items (fillers, vanities) might be in a different collection section
+      // STAGE 2: Global Fallback Search (Across all collections)
       for (const variant of variants) {
         if (!variant.s) continue;
         const match = globalSkuMap.get(variant.s);
