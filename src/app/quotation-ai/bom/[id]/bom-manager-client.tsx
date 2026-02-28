@@ -205,7 +205,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
       </header>
 
       <div className="max-w-5xl mx-auto px-8 mt-12 space-y-12 print:mt-0 print:px-0 print:max-w-none">
-        
         {step === 'pricing' && (
           <div className="space-y-12 animate-in fade-in duration-500">
             <div className="flex justify-between items-end">
@@ -322,14 +321,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                </div>
 
                <div className="flex flex-col md:flex-row justify-between items-start gap-12 pt-8 border-t border-slate-100">
-                  <div className="flex-1 space-y-4 max-w-md">
-                     <h4 className="text-sm font-black uppercase tracking-widest text-slate-900">Live Recalculation</h4>
-                     <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                        Material subtotal is adjusted by dealer discount before logistics and taxes are applied.
-                     </p>
-                  </div>
-
-                  <div className="w-full md:w-96 space-y-4">
+                  <div className="w-full md:w-96 space-y-4 ml-auto">
                      <div className="space-y-3">
                         <div className="flex justify-between items-center text-slate-500">
                            <span className="text-[10px] font-bold uppercase tracking-widest">Subtotal</span>
@@ -433,63 +425,69 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 </div>
              </div>
 
-             <div className="bg-white print:p-0 font-body text-slate-900 max-w-none">
-                <div className="flex justify-between items-start gap-8 border-b-2 border-slate-900 pb-4 mb-4">
-                   <div className="space-y-2 flex-1">
-                      <div className="flex items-center gap-3 mb-2">
+             <div className="print-container bg-white font-body text-slate-900">
+                {/* PDF Header - Two Column Grid */}
+                <div className="grid grid-cols-2 gap-8 border-b-2 border-slate-900 pb-4 mb-6 items-start">
+                   {/* Left Side: Brand & Dealer */}
+                   <div className="space-y-2">
+                      <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-lg bg-slate-900 flex items-center justify-center text-white font-black text-2xl">
                           {manufacturerName.charAt(0)}
                         </div>
                         <div>
-                          <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight">{manufacturerName} ORDER</h2>
-                          <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase text-slate-500">
-                             <ShieldCheck className="w-3 h-3 text-sky-600" />
+                          <h2 className="text-[16px] font-bold text-slate-900 uppercase tracking-tight">{manufacturerName} ORDER</h2>
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-500">
+                             <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
                              Authorized Facility
                           </div>
                         </div>
                       </div>
-                      <div className="space-y-0.5">
-                         <h4 className="text-[10px] font-bold uppercase text-slate-900">Dealer</h4>
-                         <p className="text-[11px] font-medium text-slate-700">KABS Premium Cabinetry Co.</p>
+                      <div className="pt-2">
+                         <h4 className="text-[10px] font-bold uppercase text-slate-400">Dealer Representative</h4>
+                         <p className="text-[11px] font-bold text-slate-900">KABS Premium Cabinetry Co.</p>
                          <p className="text-[10px] text-slate-500">102 West Montgomery St, TX • (800) 555-0199</p>
                       </div>
                    </div>
 
-                   <div className="text-right space-y-4 flex-1">
+                   {/* Right Side: Quote Metadata */}
+                   <div className="text-right space-y-4">
                       <div>
-                        <h1 className="text-2xl font-black text-slate-900 uppercase">QUOTATION</h1>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-normal">Ref: {project.project_name}</p>
+                        <h1 className="text-[18px] font-black text-slate-900 uppercase">QUOTATION</h1>
+                        <div className="mt-1 flex flex-col items-end gap-1">
+                          <div className="flex gap-2 text-[10px] font-bold">
+                            <span className="text-slate-400 uppercase">Ref:</span>
+                            <span className="text-slate-900">{project.project_name}</span>
+                          </div>
+                          <div className="flex gap-2 text-[10px] font-bold">
+                            <span className="text-slate-400 uppercase">Date:</span>
+                            <span className="text-slate-900">{new Date().toLocaleDateString()}</span>
+                          </div>
+                          <div className="flex gap-2 text-[10px] font-bold">
+                            <span className="text-slate-400 uppercase">Type:</span>
+                            <span className="text-slate-900">Architectural Takeoff</span>
+                          </div>
+                        </div>
                       </div>
                       
-                      <div className="flex justify-end gap-6">
-                        <div className="text-left">
-                          <h4 className="text-[9px] font-bold uppercase text-slate-400">Date</h4>
-                          <p className="text-[11px] font-bold text-slate-900">{new Date().toLocaleDateString()}</p>
-                        </div>
-                        <div className="text-left">
-                          <h4 className="text-[9px] font-bold uppercase text-slate-400">Project Type</h4>
-                          <p className="text-[11px] font-bold text-slate-900">Takeoff</p>
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 text-left ml-auto max-w-[240px]">
-                         <h4 className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">Ship To / Attention</h4>
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-left ml-auto max-w-[240px]">
+                         <h4 className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">Shipping Attention</h4>
                          <p className="text-[11px] font-bold text-slate-900 uppercase">{customer.name || 'Valued Client'}</p>
-                         <p className="text-[10px] text-slate-600 leading-tight mt-0.5">{customer.address || 'Address N/A'}</p>
+                         <p className="text-[10px] text-slate-600 leading-tight mt-0.5">{customer.address || 'Address Not Provided'}</p>
                       </div>
                    </div>
                 </div>
 
+                {/* Room Sections */}
                 {rooms.map(room => {
                   const roomItems = bom.filter(i => i.room === room);
                   const categories = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets', 'Hinges & Hardware', 'Accessories'];
                   const roomTotal = roomItems.reduce((acc, i) => acc + (i.unit_price * i.qty), 0);
 
                   return (
-                    <div key={room} className="mb-6 avoid-break">
-                      <div className="bg-slate-100 px-3 py-1.5 rounded flex justify-between items-center mb-2">
-                        <h3 className="text-sm font-bold text-slate-900 uppercase">{room}</h3>
-                        <div className="text-[9px] font-bold text-slate-500 uppercase">Units: {roomItems.length}</div>
+                    <div key={room} className="mb-8 avoid-break">
+                      <div className="bg-slate-100 px-3 py-1.5 rounded flex justify-between items-center mb-3">
+                        <h3 className="text-[14px] font-bold text-slate-900 uppercase">{room}</h3>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase">Units: {roomItems.length}</div>
                       </div>
 
                       {categories.map(cat => {
@@ -497,24 +495,24 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                         if (catItems.length === 0) return null;
 
                         return (
-                          <div key={cat} className="mb-3 pl-2">
-                            <h4 className="text-[10px] font-bold uppercase text-sky-600 mb-1 border-l-2 border-sky-500 pl-2">{cat}</h4>
+                          <div key={cat} className="mb-4 pl-2">
+                            <h4 className="text-[11px] font-bold uppercase text-sky-600 mb-1.5 border-l-2 border-sky-500 pl-2">{cat}</h4>
                             <Table className="border-collapse">
                               <TableHeader>
                                 <TableRow className="h-6 border-b-2 border-slate-200 hover:bg-transparent">
-                                  <TableHead className="font-bold text-slate-900 text-[9px] uppercase h-6 px-2 w-1/2">Product Description</TableHead>
-                                  <TableHead className="font-bold text-slate-900 text-[9px] uppercase h-6 px-2 text-center w-16">Qty</TableHead>
-                                  <TableHead className="font-bold text-slate-900 text-[9px] uppercase h-6 px-2 text-right">Unit Price</TableHead>
-                                  <TableHead className="font-bold text-slate-900 text-[9px] uppercase h-6 px-2 text-right">Total</TableHead>
+                                  <TableHead className="font-bold text-slate-900 text-[11px] uppercase h-6 px-2 w-1/2">Product Code</TableHead>
+                                  <TableHead className="font-bold text-slate-900 text-[11px] uppercase h-6 px-2 text-center w-16">Qty</TableHead>
+                                  <TableHead className="font-bold text-slate-900 text-[11px] uppercase h-6 px-2 text-right">Unit Price</TableHead>
+                                  <TableHead className="font-bold text-slate-900 text-[11px] uppercase h-6 px-2 text-right">Total</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
                                 {catItems.map(item => (
                                   <TableRow key={item.id} className="h-6 border-b border-slate-100 hover:bg-transparent">
-                                    <TableCell className="font-bold text-slate-800 py-1 px-2 text-[10px]">{item.sku}</TableCell>
-                                    <TableCell className="text-center font-bold text-slate-600 py-1 px-2 text-[10px]">{item.qty}</TableCell>
-                                    <TableCell className="text-right font-mono text-[10px] text-slate-500 py-1 px-2">${item.unit_price.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right font-mono font-bold text-slate-900 py-1 px-2 text-[10px]">${(item.unit_price * item.qty).toFixed(2)}</TableCell>
+                                    <TableCell className="font-bold text-slate-800 py-1 px-2 text-[9.5px]">{item.sku}</TableCell>
+                                    <TableCell className="text-center font-bold text-slate-600 py-1 px-2 text-[9.5px]">{item.qty}</TableCell>
+                                    <TableCell className="text-right font-mono text-[9.5px] text-slate-500 py-1 px-2">${item.unit_price.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-mono font-bold text-slate-900 py-1 px-2 text-[9.5px]">${(item.unit_price * item.qty).toFixed(2)}</TableCell>
                                   </TableRow>
                                 ))}
                               </TableBody>
@@ -523,67 +521,69 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                         );
                       })}
 
-                      <div className="flex justify-end pt-1 border-t border-slate-200">
+                      <div className="flex justify-end pt-2 border-t border-slate-200">
                          <div className="text-right">
-                           <span className="text-[9px] font-bold uppercase text-slate-400 mr-3">Area Total ({room})</span>
-                           <span className="text-[11px] font-bold font-mono text-slate-900">${roomTotal.toFixed(2)}</span>
+                           <span className="text-[10px] font-bold uppercase text-slate-400 mr-4">Area Investment Total</span>
+                           <span className="text-[12px] font-bold font-mono text-slate-900">${roomTotal.toFixed(2)}</span>
                          </div>
                       </div>
                     </div>
                   );
                 })}
 
-                <div className="mt-8 pt-4 border-t-2 border-slate-900 avoid-break">
-                   <div className="flex justify-between items-start gap-8">
+                {/* Final Bill Summary */}
+                <div className="mt-12 pt-6 border-t-2 border-slate-900 avoid-break">
+                   <div className="flex justify-between items-start gap-12">
                       <div className="flex-1">
                          <div className="p-4 rounded-lg bg-sky-50 border border-sky-100 max-w-[340px]">
-                            <h4 className="text-[10px] font-bold text-sky-900 uppercase mb-1 flex items-center gap-2">
-                               <ShieldCheck className="w-4 h-4" /> Terms
+                            <h4 className="text-[10px] font-bold text-sky-900 uppercase mb-1.5 flex items-center gap-2">
+                               <ShieldCheck className="w-4 h-4" /> Production Terms
                             </h4>
-                            <p className="text-[9px] text-sky-700 leading-tight font-medium">
-                               Generated by KABS AI v24.0 based on blueprints. 
-                               Verify field measurements before order. Prices valid 30 days.
+                            <p className="text-[9.5px] text-sky-700 leading-relaxed font-medium">
+                               This quote is generated based on architectural plans. All quantities must be field verified before ordering. 
+                               Prices are subject to manufacturer adjustment after 30 days from date of issue.
                             </p>
                          </div>
                       </div>
 
-                      <div className="w-64 space-y-2">
-                        <div className="space-y-1">
+                      <div className="w-72 space-y-3">
+                        <div className="space-y-1.5">
                           <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold">
-                             <span className="uppercase">Material Subtotal</span>
-                             <span className="font-mono">${materialSubtotal.toFixed(2)}</span>
+                             <span className="uppercase tracking-tight">Material Subtotal</span>
+                             <span className="font-mono text-[11px]">${materialSubtotal.toFixed(2)}</span>
                           </div>
                           {discount > 0 && (
                             <div className="flex justify-between items-center text-emerald-600 text-[10px] font-bold">
-                               <span className="uppercase">Discount ({discount}%)</span>
-                               <span className="font-mono">-${discountAmount.toFixed(2)}</span>
+                               <span className="uppercase tracking-tight">Dealer Discount ({discount}%)</span>
+                               <span className="font-mono text-[11px]">-${discountAmount.toFixed(2)}</span>
                             </div>
                           )}
                           <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold">
-                             <span className="uppercase">Logistics</span>
-                             <span className="font-mono">${(Number(shipping) + Number(fuel)).toFixed(2)}</span>
+                             <span className="uppercase tracking-tight">Logistics & Handling</span>
+                             <span className="font-mono text-[11px]">${(Number(shipping) + Number(fuel)).toFixed(2)}</span>
                           </div>
-                          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold pb-2">
-                             <span className="uppercase">Sales Tax ({taxRate}%)</span>
-                             <span className="font-mono">${taxAmount.toFixed(2)}</span>
+                          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold pb-2 border-b border-slate-100">
+                             <span className="uppercase tracking-tight">Tax ({taxRate}%)</span>
+                             <span className="font-mono text-[11px]">${taxAmount.toFixed(2)}</span>
                           </div>
                         </div>
 
-                        <div className="bg-slate-900 p-4 rounded-lg text-white">
+                        <div className="bg-slate-900 p-5 rounded-lg text-white">
                            <div className="flex justify-between items-baseline">
-                              <span className="text-[9px] font-bold uppercase text-sky-400">Grand Total</span>
-                              <span className="text-xl font-bold font-mono">
+                              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-400">Grand Total</span>
+                              <span className="text-[18px] font-black font-mono">
                                  ${grandTotal.toFixed(2)}
                               </span>
                            </div>
-                           <p className="text-[8px] text-slate-500 font-bold text-right uppercase mt-1">USD</p>
+                           <p className="text-[8px] text-slate-500 font-bold text-right uppercase mt-1">Currency: USD</p>
                         </div>
                       </div>
                    </div>
                 </div>
                 
-                <div className="mt-8 text-center">
-                   <p className="text-[8px] text-slate-300 font-bold uppercase">Powered by KABS AI • Production Precision</p>
+                {/* Print Footer */}
+                <div className="print-footer">
+                   Powered by KABS AI • Production Precision Engineering
                 </div>
              </div>
           </div>

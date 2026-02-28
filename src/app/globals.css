@@ -58,33 +58,48 @@
 @media print {
   @page {
     size: A4;
-    margin: 15mm;
+    margin: 10mm; /* Outer margin for the page border */
   }
+
   body {
     background: white !important;
-    font-size: 10pt;
     margin: 0;
     padding: 0;
+    -webkit-print-color-adjust: exact;
   }
+
   .print\:hidden {
     display: none !important;
   }
+
+  .print-container {
+    border: 1px solid #e2e8f0;
+    min-height: calc(297mm - 20mm);
+    padding: 15mm;
+    margin: 0 auto;
+    position: relative;
+    box-sizing: border-box;
+  }
+
   .avoid-break {
+    break-inside: avoid;
     page-break-inside: avoid;
   }
-  .shadow-2xl, .shadow-xl, .shadow-md, .shadow-sm {
-    box-shadow: none !important;
+
+  .print-footer {
+    position: fixed;
+    bottom: 5mm;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 8px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
   }
-  .rounded-none {
-    border-radius: 0 !important;
-  }
-  .bg-slate-50, .bg-slate-100 {
-    background-color: #f8fafc !important;
-    -webkit-print-color-adjust: exact;
-  }
-  .bg-slate-900 {
-    background-color: #0f172a !important;
-    -webkit-print-color-adjust: exact;
-    color: white !important;
+
+  /* Reset default headers/footers in some browsers */
+  header, footer {
+    display: none;
   }
 }
