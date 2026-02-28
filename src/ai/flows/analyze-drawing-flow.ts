@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview Comprehensive Extraction Flow (v28.0).
- * Implements strict classification and preserves "BUTT" for display while normalising for processing.
+ * @fileOverview High-Precision Extraction Flow (v35.0).
+ * Improved instruction set for accessory detection and alphanumeric integrity.
  */
 
 import { ai } from '@/ai/genkit';
@@ -28,29 +28,29 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow] Starting Full Classification Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow] Starting High-Precision Analysis for: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.0-flash',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator.
+      { text: `You are a professional architectural estimator specialized in cabinetry takeoffs.
       
-      TASK:
-      Extract EVERY single SKU-like code from the layout drawings.
+      GOAL:
+      Extract EVERY single SKU-like code from the drawings.
       
-      STEP 1: ROOM ISOLATION
-      Extract room titles ONLY from the main blueprint header block (the line between project name and garage info).
-      Valid Rooms: STD 42 Kitchen, OPT Gourmet Kitchen, Owners Bath, Bath 2, Bath 3 Upstairs.
+      STRICT SKU RULES:
+      - Extract the EXACT code (e.g. W3042, SB36, UF3, UF342, RR120FL).
+      - Look for Fillers (UF), oven Cabinets (OVD), and molding (RR) in schedules and floor plans.
+      - MERGE multi-line vertical text (e.g. "U" over "F" over "3" becomes "UF3").
+      - PRESERVE "BUTT" as part of the code if it appears next to a SKU.
+      - DO NOT add extra spaces within codes.
       
-      STEP 2: EXTRACT SKUs
-      - Find every alphanumeric code (e.g. W3024, B15, SB36, FILLER, PANEL).
-      - MERGE vertical text (U, F, 3 becomes UF3).
-      - PRESERVE "BUTT" as part of the code if present (e.g. W3042 BUTT).
+      ROOM ISOLATION:
+      Identify rooms like "STD 42 Kitchen", "Owners Bath", "Bath 2".
       
-      STEP 3: OUTPUT
-      Return a JSON array of objects:
-      [ { "room": "Room Name", "code": "SKU", "qty": 1 } ]` }
+      OUTPUT:
+      Return a JSON array: [ { "room": "Room Name", "code": "SKU", "qty": 1 } ]` }
     ],
     config: {
       temperature: 0,
@@ -58,7 +58,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   });
 
   const text = response.text;
-  if (!text) return getEmptyResult('No output.');
+  if (!text) return getEmptyResult('No output from AI.');
 
   let rawItems: any[] = [];
   try {
@@ -69,8 +69,8 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       rawItems = JSON.parse(cleanedText.substring(start, end + 1));
     }
   } catch (e) {
-    console.error('[AI Flow] Parse Error:', e);
-    return getEmptyResult('Failed to parse AI output.');
+    console.error('[AI Flow] JSON Parse Error:', e);
+    return getEmptyResult('Failed to parse AI takeoff.');
   }
 
   const roomsMap = new Map<string, any>();
@@ -78,13 +78,13 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   let totalOther = 0;
 
   rawItems.forEach((item) => {
-    const rawCode = String(item.code || '');
+    const rawCode = String(item.code || '').trim();
+    if (!rawCode) return;
+
     const displayCode = cleanSkuForDisplay(rawCode);
     const roomName = String(item.room || 'General Area').toUpperCase().trim();
     const normCode = normalizeSku(rawCode);
     
-    if (!normCode) return;
-
     if (!roomsMap.has(roomName)) {
       roomsMap.set(roomName, {
         room_name: roomName,
@@ -96,7 +96,8 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     const room = roomsMap.get(roomName);
     const qty = Number(item.qty) || 1;
 
-    if (isPrimaryCabinet(normCode)) {
+    // Use isPrimaryCabinet to decide which list it goes into
+    if (isPrimaryCabinet(rawCode)) {
       const existing = room.primaryMap.get(normCode);
       if (existing) {
         existing.qty += qty;
@@ -123,7 +124,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Extracted ${totalPrimary} primary units and ${totalOther} other items.`,
+    summary: `Takeoff complete: ${totalPrimary} primary units, ${totalOther} accessories.`,
     totalPrimary,
     totalOther
   };

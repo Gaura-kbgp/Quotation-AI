@@ -8,7 +8,6 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * SKU CLEANING FOR DISPLAY
  * Minimal cleaning for the final invoice.
- * Preserves suffixes like BUTT for professional documentation.
  */
 export function cleanSkuForDisplay(sku: string | any): string {
   if (!sku) return '';
@@ -18,35 +17,28 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * SKU NORMALIZATION (v34.0)
- * Aggressive normalization that removes ALL internal spaces.
- * This ensures "UF 342" matches "UF342".
+ * SKU NORMALIZATION (v35.0)
+ * Extremely aggressive normalization for matching keys.
+ * Removes all internal spaces and special delimiters.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  return String(sku).toUpperCase().replace(/\s+/g, '');
-}
-
-/**
- * BASE SKU EXTRACTION
- * Strips known suffixes for classification.
- */
-export function getBaseSku(sku: string): string {
-  const norm = normalizeSku(sku);
-  // Remove common suffixes for categorization purposes
-  let base = norm.replace("BUTT", "").replace(/[LRH]$/, "");
-  return base.trim();
+  // Strip everything except letters and numbers for the matching index
+  return String(sku).toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 /**
  * CABINET CLASSIFICATION
- * Uses standard industry prefixes.
+ * Updated with expanded prefix list for architectural sets.
  */
 export function isPrimaryCabinet(sku: string): boolean {
   const s = normalizeSku(sku);
   if (!s) return false;
 
-  const primaryPrefixes = ['W', 'B', 'SB', 'VSB', 'UF', 'RR', 'OVD', 'TP', 'PANTRY', 'OVEN'];
+  const primaryPrefixes = [
+    'W', 'B', 'SB', 'VSB', 'UF', 'RR', 'OVD', 'TP', 'PANTRY', 
+    'OVEN', 'REF', 'DW', 'MICRO', 'DRW', 'TALL', 'UTIL', 'WALL', 'BASE'
+  ];
   return primaryPrefixes.some(p => s.startsWith(p));
 }
 

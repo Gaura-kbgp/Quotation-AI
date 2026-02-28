@@ -16,7 +16,8 @@ function smartSplit(raw: string): string[] {
     "ELITE", "PREMIUM", "PRIME", "BASE", "CHOICE", "DURAFORM", 
     "CANYON", "DURANGO", "ELDERIDGE", "BANDERA", "DENVER", "COOPER", 
     "OXFORD", "ALPINE", "SNOWBOUND", "ABILENE", "LUBBOCK", "COLORADO",
-    "SELECT", "CLASSIC", "DESIGNER", "ULTRA", "BOERNE", "HARDWOOD"
+    "SELECT", "CLASSIC", "DESIGNER", "ULTRA", "BOERNE", "HARDWOOD",
+    "ACCESSORY", "MOULDING", "HARDWARE"
   ];
   
   const keywordPattern = boundaryKeywords.join('|');
@@ -34,8 +35,8 @@ function smartSplit(raw: string): string[] {
 }
 
 /**
- * HIGH-PRECISION PRICING PARSER (v34.0)
- * Uses compressed normalization for SKUs to ensure cross-sheet matching.
+ * HIGH-PRECISION PRICING PARSER (v35.0)
+ * Optimized for Accessory Sheets and Universal Part Extraction.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -51,11 +52,12 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     let skuColIdx = -1;
     let headerRowIdx = -1;
 
+    // Scan for SKU column header
     for (let r = 0; r < Math.min(100, rawData.length); r++) {
       const row = rawData[r];
       const idx = row.findIndex(cell => {
         const val = String(cell || "").toUpperCase().trim().replace(/[^A-Z]/g, "");
-        return ["SKU", "ITEMSKU", "CODE", "MODEL", "ITEMCODE"].includes(val); 
+        return ["SKU", "ITEMSKU", "CODE", "MODEL", "ITEMCODE", "CATALOGCODE"].includes(val); 
       });
       if (idx !== -1) {
         skuColIdx = idx;
@@ -64,10 +66,14 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       }
     }
 
+    // Default to column A if no header found
     if (skuColIdx === -1) {
       skuColIdx = 0;
       headerRowIdx = 0;
     }
+
+    // Accessory sheets usually have sheet names as the collection identifier
+    const defaultCollection = sheetName.replace(/\d+/g, "").replace("Pricing", "").trim().toUpperCase();
 
     const collectionRow = headerRowIdx >= 2 ? (rawData[headerRowIdx - 2] || []) : [];
     const styleRow = headerRowIdx >= 1 ? (rawData[headerRowIdx - 1] || []) : [];
@@ -75,7 +81,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
     const normalizedCollections: string[] = [];
     let currentCollection = "";
-    for (let c = 0; c < 100; c++) {
+    for (let c = 0; c < 200; c++) {
       const val = String(collectionRow[c] || "").trim();
       if (val && val.length > 1) currentCollection = val;
       normalizedCollections[c] = currentCollection;
@@ -83,7 +89,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
     const normalizedStyles: string[] = [];
     let currentStyle = "";
-    for (let c = 0; c < 100; c++) {
+    for (let c = 0; c < 200; c++) {
       const val = String(styleRow[c] || "").trim();
       if (val && val.length > 1) currentStyle = val;
       normalizedStyles[c] = currentStyle;
@@ -94,10 +100,10 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       const rawExcelSKU = String(row[skuColIdx] || "").trim();
       if (!rawExcelSKU) continue;
 
-      // COMPRESSED NORMALIZATION: Remove all internal spaces for indexing
+      // COMPRESSED NORMALIZATION: Standardize keys for matching
       const indexedSKU = normalizeSku(rawExcelSKU);
       
-      if (!indexedSKU || ["SKU", "TOTAL", "PAGE", "SUBTOTAL", "FOOTER"].includes(indexedSKU)) continue;
+      if (!indexedSKU || ["SKU", "TOTAL", "PAGE", "SUBTOTAL", "FOOTER", "GRAND"].includes(indexedSKU)) continue;
 
       for (let c = skuColIdx + 1; c < row.length; c++) {
         const rawPrice = row[c];
@@ -109,7 +115,8 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         let colCell = normalizedCollections[c] || "";
         let styleCell = normalizedStyles[c] || mainHeaderRow[c] || "";
 
-        if (!colCell) colCell = sheetName.replace(/\d{4}/g, "").replace("Pricing", "").trim();
+        // Fallback for accessory sheets
+        if (!colCell) colCell = defaultCollection;
         if (!styleCell) styleCell = "STANDARD";
 
         const collections = smartSplit(colCell);
@@ -121,7 +128,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
               manufacturer_id: manufacturerId,
               collection_name: colName.toUpperCase().trim(),
               door_style: styleName.toUpperCase().trim(),
-              sku: indexedSKU, // STORE COMPRESSED
+              sku: indexedSKU,
               price: priceNum,
               raw_source_file_id: fileId,
               created_at: new Date().toISOString()

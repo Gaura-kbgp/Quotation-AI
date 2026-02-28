@@ -4,8 +4,8 @@ import { normalizeSku } from '@/lib/utils';
 export const maxDuration = 120;
 
 /**
- * ENTERPRISE PRICING ENGINE (v34.0)
- * Optimized for compressed SKU matching and directional fallbacks.
+ * ENTERPRISE PRICING ENGINE (v35.0)
+ * Optimized for Accessory Fallbacks and Recursive Suffix Stripping.
  */
 export async function POST(req: Request) {
   try {
@@ -51,18 +51,19 @@ export async function POST(req: Request) {
       }
     }
 
-    // Build hierarchical lookup maps using COMPRESSED keys
+    // Build hierarchical lookup maps using SUPER-COMPRESSED keys
     const pricingMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
 
     allPricing.forEach(p => {
       const skuKey = normalizeSku(p.sku);
-      const colKey = String(p.collection_name || "").toUpperCase().trim();
-      const styKey = String(p.door_style || "").toUpperCase().trim();
+      const colKey = normalizeSku(p.collection_name);
+      const styKey = normalizeSku(p.door_style);
       
       const key = `${skuKey}|${colKey}|${styKey}`;
       pricingMap.set(key, p);
 
+      // Keep the highest price found globally for this SKU (fallback)
       if (!globalSkuMap.has(skuKey) || p.price > (globalSkuMap.get(skuKey)?.price || 0)) {
         globalSkuMap.set(skuKey, p);
       }
@@ -72,26 +73,30 @@ export async function POST(req: Request) {
     let matchedCount = 0;
 
     /**
-     * Advanced Recursive Matcher (v34.0)
+     * Advanced Recursive Matcher (v35.0)
+     * Handles Handing (L/R/H), BUTT, and Dimensional Suffixes (DP/FL).
      */
     function findBestMatch(cabinetSKU: string, collection: string, style: string) {
       const normalized = normalizeSku(cabinetSKU);
-      const col = collection.trim().toUpperCase();
-      const st = style.trim().toUpperCase();
+      if (!normalized) return null;
 
-      // Fallback Chain
-      const noButt = normalized.replace(/BUTT$/i, "");
-      const noHand = noButt.replace(/[LRH]$/, "");
-      const cleaned = noHand.replace(/X.*$/, "");
+      const col = normalizeSku(collection);
+      const st = normalizeSku(style);
 
+      // Generate variant chain for recursive checking
       const variants = [
         { s: normalized, type: 'EXACT' },
-        { s: noButt, type: 'FALLBACK_BUTT' },
-        { s: noHand, type: 'FALLBACK_VAR' },
-        { s: cleaned, type: 'FALLBACK_CLEAN' }
+        { s: normalized.replace(/BUTT$/, ""), type: 'NO_BUTT' },
+        { s: normalized.replace(/[LRH]$/, ""), type: 'NO_HANDING' },
+        { s: normalized.replace(/(BUTT|[LRH])$/, ""), type: 'NO_VARIANT' },
+        // Architectural specific suffixes
+        { s: normalized.replace(/FL$/, ""), type: 'NO_FL_SUFFIX' },
+        { s: normalized.replace(/DP$/, ""), type: 'NO_DP_SUFFIX' },
+        // Base SKU (strip all trailing non-digits if SKU starts with standard prefix)
+        { s: normalized.replace(/(\d+)[A-Z]+$/, "$1"), type: 'BASE_MODEL' }
       ];
 
-      // STAGE 1: Specific collection match
+      // STAGE 1: Try exact collection/style match with all variants
       for (const variant of variants) {
         if (!variant.s) continue;
         const key = `${variant.s}|${col}|${st}`;
@@ -99,28 +104,28 @@ export async function POST(req: Request) {
         if (match) return { match, type: variant.type };
       }
 
-      // STAGE 2: Global catalog match (for universal items like UF3, UF342)
+      // STAGE 2: Global catalog match (Universal accessories/fillers)
       for (const variant of variants) {
         if (!variant.s) continue;
         const match = globalSkuMap.get(variant.s);
-        if (match) return { match, type: `UNIVERSAL_${variant.type}` };
+        if (match) return { match, type: `GLOBAL_${variant.type}` };
       }
 
       return null;
     }
 
     for (const room of rooms) {
-      const selectedCollection = (room.collection || "").trim().toUpperCase();
-      const selectedStyle = (room.door_style || "").trim().toUpperCase();
+      const collection = room.collection || "";
+      const style = room.door_style || "";
       
-      const sections = [
+      const allItems = [
         ...(room.primaryCabinets || []),
         ...(room.otherItems || [])
       ];
 
-      for (const cab of sections) {
-        if (!cab.code) continue;
-        const result = findBestMatch(cab.code, selectedCollection, selectedStyle);
+      for (const item of allItems) {
+        if (!item.code) continue;
+        const result = findBestMatch(item.code, collection, style);
 
         if (result) {
           matchedCount++;
@@ -129,11 +134,11 @@ export async function POST(req: Request) {
           
           bomItems.push({
             project_id: projectId,
-            sku: cab.code,
+            sku: item.code,
             matched_sku: match.sku,
-            qty: Number(cab.qty) || 1,
+            qty: Number(item.qty) || 1,
             unit_price: price,
-            line_total: price * (Number(cab.qty) || 1),
+            line_total: price * (Number(item.qty) || 1),
             room: room.room_name,
             collection: room.collection || match.collection_name,
             door_style: room.door_style || match.door_style,
@@ -144,14 +149,14 @@ export async function POST(req: Request) {
         } else {
           bomItems.push({
             project_id: projectId,
-            sku: cab.code,
+            sku: item.code,
             matched_sku: 'SKU not present in pricing guide',
-            qty: Number(cab.qty) || 1,
+            qty: Number(item.qty) || 1,
             unit_price: 0,
             line_total: 0,
             room: room.room_name,
-            collection: selectedCollection || 'N/A',
-            door_style: selectedStyle || 'N/A',
+            collection: collection || 'N/A',
+            door_style: style || 'N/A',
             price_source: 'MISSING',
             precision_level: 'NOT_FOUND',
             created_at: new Date().toISOString()
@@ -173,7 +178,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Pricing Engine] Error:', err);
+    console.error('[Pricing Engine] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
