@@ -17,15 +17,14 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * SKU NORMALIZATION (v35.0)
- * Extremely aggressive normalization for matching keys.
- * Removes all internal spaces and special delimiters.
+ * SKU NORMALIZATION (v36.0)
+ * Standard normalization for matching.
+ * Preserves words but ensures consistent casing and trimming.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  // Strip EVERYTHING except letters and numbers for the matching index
-  // This handles invisible characters, char code 160 (non-breaking spaces), etc.
-  return String(sku).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Convert to upper and trim. We keep spaces to allow "SB36 BUTT" exact matches.
+  return String(sku).toUpperCase().trim();
 }
 
 /**

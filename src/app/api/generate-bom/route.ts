@@ -1,11 +1,10 @@
 import { createServerSupabase } from '@/lib/supabase-server';
-import { normalizeSku } from '@/lib/utils';
 
 export const maxDuration = 120;
 
 /**
- * ENTERPRISE PRICING ENGINE (v35.0)
- * Optimized for Accessory Fallbacks and Recursive Suffix Stripping.
+ * ENTERPRISE PRICING ENGINE (v36.0)
+ * Optimized for Strict Exact Matching and Universal Accessory Fallbacks.
  */
 export async function POST(req: Request) {
   try {
@@ -27,10 +26,10 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // PAGINATED FETCH: Load the entire manufacturer catalog without limits
+    // PAGINATED FETCH: Load entire manufacturer pricing catalog
     let allPricing: any[] = [];
     let from = 0;
-    const step = 1000;
+    const step = 2000;
     let hasMore = true;
 
     while (hasMore) {
@@ -51,22 +50,22 @@ export async function POST(req: Request) {
       }
     }
 
-    // Build hierarchical lookup maps using SUPER-COMPRESSED keys
-    const pricingMap = new Map<string, any>();
+    // Build indexing maps
+    // 1. Strict Map: EXACT_SKU | COLLECTION | STYLE
+    const strictMap = new Map<string, any>();
+    // 2. Global Map: EXACT_SKU (for accessories like UF3 found in any sheet)
     const globalSkuMap = new Map<string, any>();
 
     allPricing.forEach(p => {
-      const skuKey = normalizeSku(p.sku);
-      const colKey = normalizeSku(p.collection_name);
-      const styKey = normalizeSku(p.door_style);
+      const sku = String(p.sku || "").trim().toUpperCase();
+      const col = String(p.collection_name || "").trim().toUpperCase();
+      const sty = String(p.door_style || "").trim().toUpperCase();
       
-      const key = `${skuKey}|${colKey}|${styKey}`;
-      pricingMap.set(key, p);
+      const key = `${sku}|${col}|${sty}`;
+      strictMap.set(key, p);
 
-      // Global map for accessories that might be in different sheets
-      // We prefer non-zero prices if possible
-      if (!globalSkuMap.has(skuKey) || (p.price > 0 && globalSkuMap.get(skuKey)?.price === 0)) {
-        globalSkuMap.set(skuKey, p);
+      if (!globalSkuMap.has(sku) || (p.price > 0 && globalSkuMap.get(sku)?.price === 0)) {
+        globalSkuMap.set(sku, p);
       }
     });
 
@@ -74,50 +73,52 @@ export async function POST(req: Request) {
     let matchedCount = 0;
 
     /**
-     * Advanced Recursive Matcher (v35.0)
-     * Handles Handing (L/R/H), BUTT, and Dimensional Suffixes (DP/FL).
+     * Strict Exact Matcher with Fallbacks
      */
-    function findBestMatch(cabinetSKU: string, collection: string, style: string) {
-      const normalized = normalizeSku(cabinetSKU);
-      if (!normalized) return null;
+    function findBestMatch(itemCode: string, collection: string, style: string) {
+      const target = itemCode.trim().toUpperCase();
+      if (!target) return null;
 
-      const col = normalizeSku(collection);
-      const st = normalizeSku(style);
+      const col = collection.trim().toUpperCase();
+      const sty = style.trim().toUpperCase();
 
-      // Generate variant chain for recursive checking
-      const variants = [
-        { s: normalized, type: 'EXACT' },
-        { s: normalized.replace(/BUTT$/, ""), type: 'NO_BUTT' },
-        { s: normalized.replace(/[LRH]$/, ""), type: 'NO_HANDING' },
-        { s: normalized.replace(/(BUTT|[LRH])$/, ""), type: 'NO_VARIANT' },
-        { s: normalized.replace(/FL$/, ""), type: 'NO_FL_SUFFIX' },
-        { s: normalized.replace(/DP$/, ""), type: 'NO_DP_SUFFIX' },
-        // Architectural specific: strip all trailing letters after numbers
-        { s: normalized.replace(/^([A-Z]+[0-9]+)[A-Z]+$/, "$1"), type: 'BASE_SKU' },
-        { s: normalized.replace(/(\d+)[A-Z]+$/, "$1"), type: 'BASE_MODEL' }
-      ];
-
-      // STAGE 1: Try exact collection/style match with all variants
-      for (const variant of variants) {
-        if (!variant.s) continue;
-        const key = `${variant.s}|${col}|${st}`;
-        const match = pricingMap.get(key);
-        if (match) return { match, type: variant.type };
+      // STAGE 1: Exact Match in Selected Collection/Style
+      const exactKey = `${target}|${col}|${sty}`;
+      if (strictMap.has(exactKey)) {
+        return { match: strictMap.get(exactKey), type: 'EXACT' };
       }
 
-      // STAGE 2: Global catalog match (Universal accessories/fillers/accessories)
+      // STAGE 2: Global Match (for Fillers/Accessories across all sheets)
+      if (globalSkuMap.has(target)) {
+        return { match: globalSkuMap.get(target), type: 'GLOBAL' };
+      }
+
+      // STAGE 3: Smart Fallbacks (BUTT, Handedness)
+      const variants = [
+        { s: target.replace(" BUTT", ""), type: 'NO_BUTT' },
+        { s: target.replace(/BUTT$/, ""), type: 'NO_BUTT_COMPRESSED' },
+        { s: target.replace(/[LRH]$/, ""), type: 'NO_HANDING' },
+        { s: target.replace(/(BUTT|[LRH])$/, ""), type: 'BASE_SKU' },
+        { s: target.replace(/FL$/, ""), type: 'NO_FL' }
+      ];
+
       for (const variant of variants) {
-        if (!variant.s) continue;
-        const match = globalSkuMap.get(variant.s);
-        if (match) return { match, type: `GLOBAL_${variant.type}` };
+        if (!variant.s || variant.s === target) continue;
+        
+        // Try exact fallback in collection
+        const fallKey = `${variant.s}|${col}|${sty}`;
+        if (strictMap.has(fallKey)) return { match: strictMap.get(fallKey), type: variant.type };
+        
+        // Try global fallback
+        if (globalSkuMap.has(variant.s)) return { match: globalSkuMap.get(variant.s), type: `GLOBAL_${variant.type}` };
       }
 
       return null;
     }
 
     for (const room of rooms) {
-      const collection = room.collection || "";
-      const style = room.door_style || "";
+      const roomCol = room.collection || "";
+      const roomSty = room.door_style || "";
       
       const allItems = [
         ...(room.primaryCabinets || []),
@@ -126,7 +127,7 @@ export async function POST(req: Request) {
 
       for (const item of allItems) {
         if (!item.code) continue;
-        const result = findBestMatch(item.code, collection, style);
+        const result = findBestMatch(item.code, roomCol, roomSty);
 
         if (result) {
           matchedCount++;
@@ -156,8 +157,8 @@ export async function POST(req: Request) {
             unit_price: 0,
             line_total: 0,
             room: room.room_name,
-            collection: collection || 'N/A',
-            door_style: style || 'N/A',
+            collection: roomCol || 'N/A',
+            door_style: roomSty || 'N/A',
             price_source: 'MISSING',
             precision_level: 'NOT_FOUND',
             created_at: new Date().toISOString()
@@ -166,6 +167,7 @@ export async function POST(req: Request) {
       }
     }
 
+    // Cleanup and Insert
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
       await supabase.from('quotation_boms').insert(bomItems);
