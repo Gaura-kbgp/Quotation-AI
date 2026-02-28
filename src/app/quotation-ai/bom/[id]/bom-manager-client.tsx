@@ -27,7 +27,8 @@ import {
   Box,
   Package,
   ChevronDown,
-  AlertCircle
+  AlertCircle,
+  Phone
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn, isPrimaryCabinet } from '@/lib/utils';
@@ -281,19 +282,26 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         )}
 
         {step === 'customer' && (
-          <div className="max-w-xl mx-auto py-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
-             <Card className="p-12 rounded-[3rem] shadow-2xl bg-white border-none">
-                <h2 className="text-3xl font-black text-slate-900 mb-8">Client Information</h2>
-                <div className="space-y-6">
-                   <div className="space-y-2">
-                      <Label className="text-xs uppercase font-bold text-slate-400">Name</Label>
-                      <Input value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-14 bg-slate-50 border-none px-6 font-bold" />
+          <div className="max-w-md mx-auto py-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <Card className="p-8 rounded-[2rem] shadow-2xl bg-white border border-slate-100">
+                <h2 className="text-xl font-black text-slate-900 mb-6">Client Information</h2>
+                <div className="space-y-5">
+                   <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Full Name</Label>
+                      <Input value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-11 bg-slate-50 border-none px-4 font-bold text-sm" placeholder="e.g. John Doe" />
                    </div>
-                   <div className="space-y-2">
-                      <Label className="text-xs uppercase font-bold text-slate-400">Site Address</Label>
-                      <Input value={customer.address} onChange={e => setCustomer({...customer, address: e.target.value})} className="h-14 bg-slate-50 border-none px-6 font-bold" />
+                   <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Phone Number</Label>
+                      <Input value={customer.phone} onChange={e => setCustomer({...customer, phone: e.target.value})} className="h-11 bg-slate-50 border-none px-4 font-bold text-sm" placeholder="e.g. (555) 000-0000" />
                    </div>
-                   <Button className="w-full h-14 gradient-button rounded-2xl text-lg mt-6" onClick={() => setStep('preview')}>Review Final Quote</Button>
+                   <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Site Address</Label>
+                      <Input value={customer.address} onChange={e => setCustomer({...customer, address: e.target.value})} className="h-11 bg-slate-50 border-none px-4 font-bold text-sm" placeholder="e.g. 123 Main St, Sarasota FL" />
+                   </div>
+                   <Button className="w-full h-12 gradient-button rounded-xl text-base mt-4 shadow-sky-500/10" onClick={() => setStep('preview')}>
+                     Review Final Quote
+                     <ArrowRight className="w-4 h-4 ml-2" />
+                   </Button>
                 </div>
              </Card>
           </div>
@@ -323,7 +331,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       <h4 className="text-[10px] font-black uppercase text-sky-600">Customer</h4>
                       <div className="space-y-1">
                         <p className="text-xl font-bold">{customer.name || '---'}</p>
-                        <p className="text-slate-500">{customer.address || '---'}</p>
+                        {customer.phone && <p className="text-sm text-slate-600 font-medium">{customer.phone}</p>}
+                        <p className="text-slate-500 text-sm">{customer.address || '---'}</p>
                       </div>
                    </div>
                    <div className="space-y-4 text-right">
