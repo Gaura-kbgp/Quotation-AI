@@ -4,8 +4,8 @@ import { compressSku } from '@/lib/utils';
 export const maxDuration = 300;
 
 /**
- * ULTIMATE ENTERPRISE PRICING ENGINE (v45.0)
- * Scans ALL pricing records with recursive variant stripping and global fallback logic.
+ * SMART MULTI-ENGINE PRICING SYSTEM (v46.0)
+ * Implements recursive global scanning across ALL sheets and rows indexed in the database.
  */
 export async function POST(req: Request) {
   try {
@@ -13,49 +13,55 @@ export async function POST(req: Request) {
     const { projectId, manufacturerId } = body;
 
     if (!projectId || !manufacturerId) {
-      return Response.json({ success: false, error: "Missing parameters." }, { status: 400 });
+      return Response.json({ success: false, error: "Missing required project/manufacturer IDs." }, { status: 400 });
     }
 
     const supabase = createServerSupabase();
 
-    const [pRes, mRes] = await Promise.all([
-      supabase.from('quotation_projects').select('*').eq('id', projectId).single(),
-      supabase.from('manufacturers').select('*').eq('id', manufacturerId).single()
-    ]);
+    // 1. PROJECT RETRIEVAL
+    const { data: project, error: pError } = await supabase
+      .from('quotation_projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
 
-    if (pRes.error || !pRes.data) throw new Error('Project not found.');
-    const project = pRes.data;
+    if (pError || !project) throw new Error('Could not find quotation project.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // 1. EXHAUSTIVE CATALOG RETRIEVAL (Recursive Paginated Fetch)
+    // 2. EXHAUSTIVE GLOBAL CATALOG LOAD (Recursive Pagination)
+    // We must load every single record for this manufacturer to ensure all sheets are scanned.
     let allPricing: any[] = [];
     let from = 0;
-    const step = 2000;
+    const pageSize = 1000;
     let hasMore = true;
+
+    console.log(`[Pricing Engine] Initiating global scan for manufacturer: ${manufacturerId}`);
 
     while (hasMore) {
       const { data, error: sError } = await supabase
         .from('manufacturer_pricing')
         .select('*')
         .eq('manufacturer_id', manufacturerId)
-        .range(from, from + step - 1);
+        .range(from, from + pageSize - 1);
 
-      if (sError) throw new Error(`Database fetch error: ${sError.message}`);
+      if (sError) throw new Error(`Database catalog retrieval error: ${sError.message}`);
+      
       if (!data || data.length === 0) {
         hasMore = false;
       } else {
         allPricing = [...allPricing, ...data];
-        from += step;
-        if (data.length < step) hasMore = false;
+        from += pageSize;
+        if (data.length < pageSize) hasMore = false;
       }
     }
 
-    console.log(`[Pricing Engine] Loaded ${allPricing.length} total pricing records for matching.`);
+    console.log(`[Pricing Engine] Successfully indexed ${allPricing.length} total pricing records across all sheets.`);
 
-    // 2. HIGH-SPEED INDEXING
-    const localMap = new Map<string, any>(); 
-    const globalSkuMap = new Map<string, any>(); 
-    const compressedMap = new Map<string, any>(); 
+    // 3. SMART MULTI-TIER INDEXING
+    // Index data by various keys for high-speed matching fallbacks
+    const localMap = new Map<string, any>(); // SKU|COL|STYLE
+    const globalSkuMap = new Map<string, any>(); // Exact SKU -> Best Match
+    const compressedMap = new Map<string, any>(); // CompressedSKU -> Best Match
 
     allPricing.forEach(p => {
       const sku = String(p.sku || "").trim().toUpperCase();
@@ -63,20 +69,23 @@ export async function POST(req: Request) {
       const sty = String(p.door_style || "").trim().toUpperCase();
       const comp = compressSku(sku);
       
+      // Tier 1: Local Context Map
       const fullKey = `${sku}|${col}|${sty}`;
       if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Global fallback - prioritize UNIVERSAL and non-zero entries
-      if (!globalSkuMap.has(sku) || sty === "UNIVERSAL" || (p.price > 0 && !globalSkuMap.get(sku).price)) {
+      // Tier 2: Global Fallback Map (Prioritize non-zero and UNIVERSAL entries)
+      const existingGlobal = globalSkuMap.get(sku);
+      if (!existingGlobal || sty === "UNIVERSAL" || (p.price > 0 && !existingGlobal.price)) {
         globalSkuMap.set(sku, p);
       }
       
+      // Tier 3: Global Compressed Fallback
       if (!compressedMap.has(comp)) compressedMap.set(comp, p);
     });
 
     /**
-     * RECURSIVE MATCHING ENGINE
-     * Implements Context-Aware Suffix Stripping for Production Codes
+     * RECURSIVE MATCHING ALGORITHM
+     * Checks multiple tiers across all sheets found in the database.
      */
     function findBestMatch(itemCode: string, collection: string, style: string) {
       const target = String(itemCode || "").trim().toUpperCase();
@@ -86,34 +95,35 @@ export async function POST(req: Request) {
       const sty = String(style || "").trim().toUpperCase();
       const targetComp = compressSku(target);
 
-      // Recursive variants for matching
+      // Recursive variants for stripping production suffixes
       const variants = [
         target,
-        target.replace(/\s+/g, ''), // No spaces
-        target.replace(/\s*BUTT$/g, ''), // No BUTT
-        target.replace(/\s*[HLR]$/g, ''), // No Handing (H, L, R)
-        target.replace(/\s*FL$/g, ''), // No FL (Filler/Finish)
-        target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''), // Multi-Strip
+        target.replace(/\s+/g, ''), // No internal spaces
+        target.replace(/\s*BUTT$/g, ''), // Stripping 'BUTT'
+        target.replace(/\s*[HLR]$/g, ''), // Stripping handedness (H, L, R)
+        target.replace(/\s*FL$/g, ''), // Stripping Filler/Finish suffix
+        target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''), // Aggressive stripping
       ];
 
       const searchVariants = Array.from(new Set(variants.filter(Boolean)));
 
-      // TIER 1: EXACT LOCAL MATCH
+      // ENGINE TIER 1: EXACT LOCAL MATCH (Specific Sheet/Collection/Style)
       for (const v of searchVariants) {
         const key = `${v}|${col}|${sty}`;
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_EXACT' };
       }
 
-      // TIER 2: COMPRESSED LOCAL MATCH
+      // ENGINE TIER 2: COMPRESSED LOCAL MATCH
       const compKey = `${targetComp}|${col}|${sty}`;
       if (compressedMap.has(compKey)) return { match: compressedMap.get(compKey), type: 'LOCAL_FUZZY' };
 
-      // TIER 3: GLOBAL CATALOG SEARCH (Search all sheets/collections)
+      // ENGINE TIER 3: GLOBAL CATALOG SEARCH (Search ALL sheets/collections)
+      // This is crucial for items like UF3, RR120, etc. which might be on different sheets.
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
-      // TIER 4: GLOBAL COMPRESSED
+      // ENGINE TIER 4: GLOBAL COMPRESSED SEARCH
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'GLOBAL_FUZZY' };
 
       return null;
@@ -173,8 +183,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // Atomic Update: Clear and re-insert BOM
+    // Atomic Save: Clean old BOM and insert fresh global matches
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
+    
     if (bomItems.length > 0) {
       const BATCH_SIZE = 500;
       for (let i = 0; i < bomItems.length; i += BATCH_SIZE) {
@@ -188,7 +199,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Pricing Engine] Critical Failure:', err);
+    console.error('[Pricing Engine] Global Scan Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }

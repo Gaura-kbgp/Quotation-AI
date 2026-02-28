@@ -1,14 +1,15 @@
 import * as XLSX from 'xlsx';
 
 /**
- * ENTERPRISE-GRADE HIGH-PRECISION PRICING PARSER (v45.0)
+ * ENTERPRISE-GRADE HIGH-PRECISION PRICING PARSER (v46.0)
  * Scans ALL sheets, ALL rows, and ALL columns without limits.
- * Implements deep-header propagation for complex cabinetry spreadsheets.
+ * Implements recursive header propagation for complex, merged cabinetry spreadsheets.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const pricing: any[] = [];
   
+  // SCAN ALL SHEETS IN THE WORKBOOK
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet || !sheet['!ref']) continue;
@@ -27,7 +28,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     ];
 
     // 1. DYNAMIC HEADER DISCOVERY (Scan deep to find the SKU anchor)
-    for (let r = 0; r < Math.min(rows.length, 200); r++) {
+    for (let r = 0; r < Math.min(rows.length, 500); r++) {
       const row = rows[r];
       if (!row) continue;
       
@@ -45,7 +46,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
     // Fallback: Heuristic search for SKU patterns if no header keyword exists
     if (skuColIdx === -1) {
-      for (let r = 0; r < Math.min(rows.length, 50); r++) {
+      for (let r = 0; r < Math.min(rows.length, 100); r++) {
         const row = rows[r];
         if (!row) continue;
         const potentialIdx = row.findIndex(cell => /^[A-Z]{1,4}[0-9]{1,6}/.test(String(cell || "")));
@@ -59,13 +60,12 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
     if (skuColIdx === -1) continue;
 
-    // 2. BI-DIRECTIONAL HEADER PROPAGATION
-    // Determine bounds from sheet ref
+    // 2. RECURSIVE HEADER PROPAGATION (Resolves Merged Cells)
     const range = XLSX.utils.decode_range(sheet['!ref']);
     const maxCols = range.e.c + 1;
     const headerGrid = rows.slice(0, headerRowIdx + 1).map(r => [...r]);
     
-    // Propagate headers vertically (Collection -> Style hierarchy)
+    // Vertical Propagation (Propagate Collection names down to the SKU header level)
     for (let c = 0; c < maxCols; c++) {
       let lastVal = "";
       for (let r = 0; r < headerGrid.length; r++) {
@@ -78,7 +78,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       }
     }
 
-    // Propagate headers horizontally (Across merged cells)
+    // Horizontal Propagation (Propagate across merged columns)
     for (let r = 0; r < headerGrid.length; r++) {
       let lastVal = "";
       for (let c = 0; c < maxCols; c++) {
@@ -110,7 +110,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       };
     });
 
-    // 4. EXHAUSTIVE DATA EXTRACTION (Scan ALL rows)
+    // 4. EXHAUSTIVE EXTRACTION (Scan ALL rows, no limits)
     for (let r = headerRowIdx + 1; r < rows.length; r++) {
       const row = rows[r];
       if (!row || row.length === 0) continue;
@@ -126,7 +126,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         const rawVal = row[c];
         if (rawVal === "" || rawVal === null || rawVal === undefined) continue;
 
-        // Clean price: Handle currency symbols and complex formatting
+        // Clean price string from any currency symbols or noise
         const priceStr = String(rawVal).replace(/[^\d.-]/g, "");
         const priceNum = parseFloat(priceStr);
         

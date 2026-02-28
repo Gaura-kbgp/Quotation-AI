@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 /**
  * SKU CLEANING FOR DISPLAY
- * Minimal cleaning for the final invoice.
+ * Preserves alphanumeric integrity while removing trailing noise.
  */
 export function cleanSkuForDisplay(sku: string | any): string {
   if (!sku) return '';
@@ -17,8 +17,8 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * SKU NORMALIZATION (v43.0)
- * Standard normalization for matching.
+ * SKU NORMALIZATION (v46.0)
+ * Standardizes for strict matching by stripping excessive whitespace.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
@@ -27,7 +27,8 @@ export function normalizeSku(sku: string | any): string {
 
 /**
  * COMPRESSED SKU FOR FUZZY MATCHING
- * Removes all whitespace and special characters.
+ * Removes ALL internal whitespace and special characters for the "Super Search" engine.
+ * Ensures 'UF 342' matches 'UF342' perfectly.
  */
 export function compressSku(sku: string | any): string {
   if (!sku) return '';
@@ -36,7 +37,7 @@ export function compressSku(sku: string | any): string {
 
 /**
  * CABINET CLASSIFICATION
- * Updated with expanded prefix list for architectural sets.
+ * Detects if a code belongs to the primary cabinet list or accessories.
  */
 export function isPrimaryCabinet(sku: string): boolean {
   const s = normalizeSku(sku);
@@ -50,7 +51,7 @@ export function isPrimaryCabinet(sku: string): boolean {
 }
 
 /**
- * INTELLIGENT PREFIX MAPPING for PDF Categorization
+ * INTELLIGENT PREFIX MAPPING
  */
 export function detectCategory(sku: string): string {
   if (!sku) return 'Accessories';
