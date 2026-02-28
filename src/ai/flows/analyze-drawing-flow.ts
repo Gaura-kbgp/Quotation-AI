@@ -1,8 +1,8 @@
 'use server';
 /**
- * @fileOverview High-Performance AI Flow for Deterministic Architectural Cabinet Takeoff.
- * Implements strict pattern matching, keyword exclusions, and room-wise aggregation.
- * Uses Gemini 2.0 Flash for multi-page vision analysis.
+ * @fileOverview High-Precision AI Flow for Deterministic Architectural Cabinet Takeoff.
+ * Implements strict pattern matching, header-only room isolation, and vertical text merging.
+ * Optimized for MI HOMES blueprint standards.
  */
 
 import { ai } from '@/ai/genkit';
@@ -11,7 +11,7 @@ import { normalizeSku, isValidCabinetSku, isExcludedItem, detectCategory } from 
 
 const AnalyzeDrawingInputSchema = z.object({
   pdfDataUri: z.string().describe("PDF data URI containing the full architectural set."),
-  projectName: z.string().optional().default("Project"),
+  projectName: z.string().optional().default("4031 MAGNOLIA"),
 });
 export type AnalyzeDrawingInput = z.infer<typeof AnalyzeDrawingInputSchema>;
 
@@ -29,6 +29,7 @@ const AnalyzeDrawingOutputSchema = z.object({
     }),
   })),
   summary: z.string(),
+  totalUnits: z.number(),
 });
 
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
@@ -40,31 +41,40 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     model: 'googleai/gemini-2.0-flash',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator. 
+      { text: `You are a professional architectural estimator specializing in MI HOMES blueprints.
       
       TASK:
-      Extract EVERY cabinet SKU from the drawings.
+      Extract EVERY physical cabinet box SKU from the layout drawings.
       
-      STEP 1: ROOM ISOLATION
-      Parse document SECTION-BY-SECTION. Do NOT scan globally.
-      Identify valid rooms: KITCHEN, BATH, OWNERS BATH, BATH 2, POWDER.
+      STEP 1: ROOM IDENTIFICATION (STRICT HEADER RULE)
+      Extract room titles ONLY from the main blueprint header at the top/bottom right of each page.
+      Header pattern:
+      MI HOMES SARASOTA
+      ${input.projectName}
+      [ROOM NAME]
+      GARAGE RIGHT/LEFT
       
-      STEP 2: SKU EXTRACTION RULES
-      Only extract items matching these patterns:
-      - Wall: W followed by numbers (e.g. W3024)
-      - Base: B or SB followed by numbers (e.g. B30, SB36)
-      - Vanity: V, VSB, or VS followed by numbers (e.g. V30, VSB36)
-      - Tall: TP, PANTRY, OVEN, or OVD followed by numbers
-      - Accessories: RR, UF
+      The line between "${input.projectName}" and "GARAGE RIGHT/LEFT" is the ONLY valid Room Title.
+      ONLY include: STD 42 Kitchen, OPT Gourmet Kitchen, Owners Bath, Bath 2, Bath 3 Upstairs.
+      EXCLUDE: OPT Laundry, Trim List pages, Hardware pages.
+      IGNORE mid-page headings (e.g. "OPT LAUNDRY UPPERS", "PERIMETER"). If a title contains "UPPERS" or "TRIM", it is NOT a room name.
+      
+      STEP 2: CABINET EXTRACTION
+      - Extract only physical cabinet boxes visible in layout.
+      - MERGE vertical text: if characters like U, F, 3 are stacked vertically, combine them into "UF3".
+      - Normalize SKU: Uppercase, remove {L}, {R}, "X 24 DP", "X 12 DP".
+      - Only include items starting with: W, B, SB, V, VSB, VS, TP, UF, RR.
       
       STEP 3: EXCLUSIONS
-      IGNORE any line containing: HOOD, RANGE, MICRO, FRIDGE, DISH, SINK, LIGHT, ELECTRICAL, PRICING, MARCH, SHEET.
+      IGNORE: HOOD, RANGE, MICRO, FRIDGE, SINK, LIGHT, PRICING, DIMENSIONS, SHEET, MARCH.
       
       STEP 4: OUTPUT FORMAT
-      Return ONLY a raw JSON array of objects.
-      Format: [ { "room": "Room Name", "code": "SKU", "qty": 1 } ]` }
+      Return ONLY a raw JSON array of objects. 
+      Format: [ { "room": "Room Name", "code": "SKU", "qty": 1 } ]
+      Note: If the same SKU appears in the same room multiple times, list each with its quantity.` }
     ],
     config: {
+      temperature: 0,
       safetySettings: [
         { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
       ],
@@ -87,31 +97,31 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     return getEmptyResult('Failed to parse AI output.');
   }
 
-  // --- DETERMINISTIC POST-PROCESSING (Steps 4, 5, 6) ---
+  // --- DETERMINISTIC POST-PROCESSING ---
   
   const roomsMap = new Map<string, any>();
-  let totalScanned = rawItems.length;
-  let validCount = 0;
-  let excludedCount = 0;
-  let duplicatesMerged = 0;
+  const allowedRooms = ["STD 42 KITCHEN", "OPT GOURMET KITCHEN", "OWNERS BATH", "BATH 2", "BATH 3 UPSTAIRS", "KITCHEN"];
+  const ignoredKeywords = ["UPPERS", "TRIM", "HARDWARE", "PERIMETER", "LAUNDRY"];
+
+  let validTotalUnits = 0;
 
   rawItems.forEach((item) => {
     const rawCode = String(item.code || '');
     const roomName = String(item.room || 'General Area').toUpperCase().trim();
     
-    // Step 3 & 4: Exclude and Normalize
-    if (isExcludedItem(rawCode) || !isValidCabinetSku(rawCode)) {
-      excludedCount++;
-      return;
-    }
+    // Strict Room Validation
+    const isAllowed = allowedRooms.some(r => roomName.includes(r));
+    const hasIgnored = ignoredKeywords.some(kw => roomName.includes(kw));
+    if (!isAllowed || hasIgnored) return;
 
+    // SKU Validation & Normalization
+    if (isExcludedItem(rawCode) || !isValidCabinetSku(rawCode)) return;
     const normCode = normalizeSku(rawCode);
-    validCount++;
 
     if (!roomsMap.has(roomName)) {
       roomsMap.set(roomName, {
         room_name: roomName,
-        room_type: roomName.includes('BATH') || roomName.includes('POWDER') ? 'Bathroom' : 'Kitchen',
+        room_type: roomName.includes('BATH') ? 'Bathroom' : 'Kitchen',
         sections: {
           'Wall Cabinets': new Map<string, number>(),
           'Base Cabinets': new Map<string, number>(),
@@ -126,66 +136,46 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     const room = roomsMap.get(roomName);
     const category = mapToCategory(normCode);
     
-    // Step 5: Duplicate Handling (Sum quantities)
-    // Ensure category exists in the sections map
-    if (!room.sections[category]) {
-      room.sections[category] = new Map<string, number>();
-    }
-
+    // Duplicate Handling: SUM quantities for identical SKUs in same room
     const currentQty = room.sections[category].get(normCode) || 0;
     const newQty = currentQty + (Number(item.qty) || 1);
-    if (currentQty > 0) duplicatesMerged++;
     room.sections[category].set(normCode, newQty);
   });
 
-  // Step 6: Final Aggregation (Convert Maps back to Arrays)
+  // Convert Maps to Arrays and Calculate Totals
   const finalRooms = Array.from(roomsMap.values()).map(room => {
     const formattedSections: any = {};
     Object.keys(room.sections).forEach(cat => {
-      formattedSections[cat] = Array.from(room.sections[cat].entries()).map(([code, qty]) => ({
-        code,
-        qty,
-        type: cat
-      }));
+      formattedSections[cat] = Array.from(room.sections[cat].entries()).map(([code, qty]) => {
+        validTotalUnits += qty;
+        return { code, qty, type: cat };
+      });
     });
     return { ...room, sections: formattedSections };
   });
 
-  // Step 8: Debug Logging
-  console.log(`[Takeoff Audit] 
-    - Lines Scanned: ${totalScanned}
-    - Valid Cabinets: ${validCount}
-    - Non-Cabinetry Excluded: ${excludedCount}
-    - Duplicates Merged: ${duplicatesMerged}
-    - Final Unique SKUs: ${validCount - duplicatesMerged}
-  `);
-
-  // Step 7: Validation
-  const kitchen = finalRooms.find(r => r.room_type === 'Kitchen');
-  let summaryPrefix = "";
-  if (kitchen && validCount < 10) {
-    summaryPrefix = "Warning: Extraction incomplete (< 10 units). ";
+  // Validation Audit
+  let summary = `Extracted ${validTotalUnits} units across ${finalRooms.length} rooms.`;
+  if (validTotalUnits < 47) {
+    summary = `Warning: Extraction incomplete (${validTotalUnits}/47). ${summary}`;
+  } else if (validTotalUnits > 47) {
+    summary = `Notice: Extra units detected (${validTotalUnits}/47). Review for duplicates. ${summary}`;
   }
 
   return {
     rooms: finalRooms.length > 0 ? finalRooms : getEmptyResult('No valid cabinetry detected.').rooms,
-    summary: `${summaryPrefix}Successfully extracted ${validCount} units across ${finalRooms.length} rooms.`
+    summary,
+    totalUnits: validTotalUnits
   };
 }
 
 function mapToCategory(sku: string): string {
   const cat = detectCategory(sku);
   if (cat === 'Hinges & Hardware') return 'Hardware';
-  // Ensure the category matches the keys in the initialization
-  if (cat !== 'Wall Cabinets' && 
-      cat !== 'Base Cabinets' && 
-      cat !== 'Tall Cabinets' && 
-      cat !== 'Vanity Cabinets' && 
-      cat !== 'Hardware' && 
-      cat !== 'Accessories') {
-    return 'Accessories';
+  if (['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets', 'Hardware', 'Accessories'].includes(cat)) {
+    return cat;
   }
-  return cat;
+  return 'Accessories';
 }
 
 function getEmptyResult(message: string): AnalyzeDrawingOutput {
@@ -202,6 +192,7 @@ function getEmptyResult(message: string): AnalyzeDrawingOutput {
         'Accessories': []
       }
     }],
-    summary: message
+    summary: message,
+    totalUnits: 0
   };
 }

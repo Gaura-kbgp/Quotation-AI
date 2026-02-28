@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * DETERMINISTIC SKU NORMALIZATION (v25.0)
+ * DETERMINISTIC SKU NORMALIZATION (v26.0)
  * 1. Convert to uppercase
  * 2. Remove tokens: {L}, {R}, X 24 DP, X 12 DP
  * 3. Remove duplicate spaces
@@ -38,10 +38,10 @@ export function isValidCabinetSku(sku: string): boolean {
 
   // Patterns from requirements
   const wallPattern = /^W\d+/;
-  const basePattern = /^(B|SB)\d+/;
+  const basePattern = /^(B|SB|DB)\d+/;
   const vanityPattern = /^V(SB|S)?\d+/;
-  const tallPattern = /^(TP|PANTRY|OVEN|OVD)\d+/;
-  const accessoryPattern = /^(RR|UF)/;
+  const tallPattern = /^(TP|PANTRY|OVEN|OVD|P|T|OC)\d+/;
+  const accessoryPattern = /^(RR|UF|BTK|SM|F)/;
 
   return (
     wallPattern.test(s) || 
@@ -60,7 +60,7 @@ export function isExcludedItem(text: string): boolean {
   const exclusions = [
     'HOOD', 'RANGE', 'MICRO', 'FRIDGE', 'DISH', 'SINK', 
     'LIGHT', 'ELECTRICAL', 'PRICING', 'MARCH', 'SHEET', 
-    'ACCESSORY PRICING'
+    'ACCESSORY PRICING', 'DIMENSIONS'
   ];
   return exclusions.some(kw => s.includes(kw));
 }
@@ -76,7 +76,7 @@ export function detectCategory(sku: string): string {
   if (s.startsWith('SB') || s.startsWith('B') || s.startsWith('DB')) return 'Base Cabinets';
   if (s.startsWith('V')) return 'Vanity Cabinets';
   if (s.startsWith('T') || s.startsWith('P') || s.startsWith('OC')) return 'Tall Cabinets';
-  if (s.includes('HINGE') || s.includes('PULL') || s.startsWith('F')) return 'Hinges & Hardware';
+  if (s.includes('HINGE') || s.includes('PULL') || s.startsWith('F')) return 'Hardware';
   
   return 'Accessories';
 }
