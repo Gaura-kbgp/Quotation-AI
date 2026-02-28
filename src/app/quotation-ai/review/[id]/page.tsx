@@ -2,7 +2,7 @@
 import { createServerSupabase } from '@/lib/supabase-server';
 import { EstimatorClient } from './estimator-client';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, ArrowLeft } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -27,31 +27,7 @@ export default async function ReviewProjectPage({ params }: { params: Promise<{ 
 
     return (
       <main className="min-h-screen bg-white text-slate-900">
-         {/* Compact Sticky Header */}
-         <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-slate-100 px-6 h-16 flex items-center justify-between shadow-sm">
-            <div className="flex items-center gap-4">
-              <Link href="/quotation-ai">
-                <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
-              </Link>
-              <div>
-                <h1 className="text-base font-bold tracking-tight text-slate-900 line-clamp-1 max-w-[300px] md:max-w-md">{project.project_name}</h1>
-                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Project ID: {id.substring(0, 8).toUpperCase()}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-               <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-100">
-                  <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">Live Sync</span>
-               </div>
-            </div>
-         </header>
-
-         <div className="p-6">
-            <EstimatorClient project={project} manufacturers={manufacturers} />
-         </div>
+         <EstimatorClient project={project} manufacturers={manufacturers} />
       </main>
     );
 
