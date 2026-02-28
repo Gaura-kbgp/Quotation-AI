@@ -4,7 +4,7 @@ export const maxDuration = 30;
 
 /**
  * API to fetch structured Collection -> Door Styles mapping.
- * Returns unique door styles for each specific collection.
+ * Optimized to handle multi-style strings and provide clean, independent dropdown options.
  */
 export async function GET(req: Request) {
   try {
@@ -17,7 +17,6 @@ export async function GET(req: Request) {
 
     const supabase = createServerSupabase();
     
-    // Fetch distinct collection/style pairs
     const { data: pricing, error } = await supabase
       .from('manufacturer_pricing')
       .select('collection_name, door_style')
@@ -36,12 +35,20 @@ export async function GET(req: Request) {
     const mapping: Record<string, Set<string>> = {};
 
     pricing.forEach(record => {
-      const c = String(record.collection_name || '').trim().toUpperCase();
-      const st = String(record.door_style || '').trim().toUpperCase();
+      const rawC = String(record.collection_name || '').trim().toUpperCase();
+      const rawSt = String(record.door_style || '').trim().toUpperCase();
       
-      if (c && st) {
-        if (!mapping[c]) mapping[c] = new Set<string>();
-        mapping[c].add(st);
+      if (rawC && rawSt) {
+        // Split by standard delimiters as a fallback for any legacy merged data
+        const collections = rawC.split(/[\n\r,]+/).map(s => s.trim()).filter(Boolean);
+        const styles = rawSt.split(/[\n\r,]+/).map(s => s.trim()).filter(Boolean);
+
+        collections.forEach(c => {
+          if (!mapping[c]) mapping[c] = new Set<string>();
+          styles.forEach(st => {
+            mapping[c].add(st);
+          });
+        });
       }
     });
 

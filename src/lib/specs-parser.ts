@@ -1,31 +1,50 @@
 import * as XLSX from 'xlsx';
 
 /**
- * Intelligent String Splitter
- * Detects concatenated strings without delimiters by looking for repeating brand prefixes.
+ * Intelligent String Splitter (v25.0)
+ * Handles multi-value cells in Excel (Newlines, Commas, and concatenated strings).
+ * Corrects the issue where multiple styles were merged into a single dropdown option.
  */
 function smartSplit(raw: string): string[] {
   if (!raw) return [];
   
-  const brandKeywords = ["ELITE", "PREMIUM", "PRIME", "BASE", "CHOICE", "DURAFORM"];
-  const keywordPattern = brandKeywords.join('|');
-  
-  // Split based on brand keywords using a lookahead
-  let parts = raw.split(new RegExp(`(?=${keywordPattern})`, 'g'))
+  // 1. Standardize and split by explicit delimiters (Newline, Carriage Return, Comma)
+  // This handles cells where styles are listed vertically or separated by commas.
+  let initialParts = String(raw).split(/[\n\r,]+/)
     .map(s => s.trim())
     .filter(Boolean);
 
-  // Remove duplicates
-  return Array.from(new Set(parts));
+  // 2. Secondary split for "jammed" strings without clear delimiters
+  // We use common cabinetry prefixes and brand keywords as split points.
+  const boundaryKeywords = [
+    "ELITE", "PREMIUM", "PRIME", "BASE", "CHOICE", "DURAFORM", 
+    "CANYON", "DURANGO", "ELDERIDGE", "BANDERA", "DENVER", "COOPER", 
+    "OXFORD", "ALPINE", "SNOWBOUND", "ABILENE", "LUBBOCK", "COLORADO",
+    "SELECT", "CLASSIC", "DESIGNER", "ULTRA", "ELITE", "PRIME"
+  ];
+  
+  const keywordPattern = boundaryKeywords.join('|');
+  
+  // Regex Logic: Look for a keyword that is preceded by a space.
+  // This allows "CANYON CHERRY" to stay together, but splits "CHERRY CANYON"
+  // into ["CHERRY", "CANYON"] if they were jammed in one cell.
+  const jammedRegex = new RegExp(`(?<=\\s)(?=${keywordPattern})`, 'gi');
+
+  let results: string[] = [];
+  initialParts.forEach(part => {
+    const subParts = part.split(jammedRegex)
+      .map(s => s.trim())
+      .filter(Boolean);
+    results.push(...subParts);
+  });
+
+  // 3. Final clean: Remove duplicates and return unique items
+  return Array.from(new Set(results));
 }
 
 /**
- * Enterprise Matrix Extraction Engine (v24.0)
- * Specifically tuned for:
- * Row 1: Collection Group Headers (Merged)
- * Row 2: Door Style Headers
- * Row 3: SKU Label Row
- * Row 4+: Data
+ * Enterprise Matrix Extraction Engine (v25.0)
+ * Specifically tuned for multi-row headers and merged multi-value cells.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -40,12 +59,11 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
   const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
   if (rawData.length < 4) return [];
 
-  // 2. Identify Header Rows (Excel Index 1, 2, 3 -> JS Array 0, 1, 2)
+  // 2. Identify Header Rows
   const collectionRow = rawData[0] || [];
   const styleRow = rawData[1] || [];
   const skuRowLabels = rawData[2] || [];
 
-  // Find SKU Column Index (Usually index 0 or where 'SKU' is written)
   let skuColIdx = skuRowLabels.findIndex(cell => {
     const val = String(cell || "").toUpperCase().trim();
     return val === "SKU" || val === "MODEL";
@@ -74,10 +92,8 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     const row = rawData[r];
     const rawSku = String(row[skuColIdx] || "").trim();
     
-    // Skip empty SKU rows or header repetitions
     if (!rawSku || rawSku.toUpperCase() === "SKU") continue;
 
-    // Iterate through price columns
     for (let c = skuColIdx + 1; c < row.length; c++) {
       const rawPrice = row[c];
       if (rawPrice === null || rawPrice === undefined || rawPrice === "") continue;
@@ -85,15 +101,15 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       const priceNum = parseFloat(String(rawPrice).replace(/[^0-9.]/g, ""));
       if (isNaN(priceNum) || priceNum <= 0) continue;
 
-      // Extract Collection and Style for this specific column
+      // Extract and split potentially multi-value headers
       const colCell = normalizedCollections[c];
       const styleCell = normalizedStyles[c];
 
-      // Handle cases where headers are concatenated in one cell
       const collections = smartSplit(colCell);
       const styles = smartSplit(styleCell);
 
       // Create Cartesian product entries (Collection x Style)
+      // This ensures "Elite Cherry, Elite Maple" becomes two separate searchable entries.
       for (const colName of collections) {
         for (const styleName of styles) {
           pricing.push({
