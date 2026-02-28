@@ -39,7 +39,6 @@
   h2 { font-weight: 600 !important; }
   h3 { font-weight: 600 !important; }
   
-  /* Remove Truncation Globally for Titles */
   .no-truncate {
     overflow: visible !important;
     text-overflow: clip !important;
@@ -58,12 +57,14 @@
 
 @media print {
   @page {
-    margin: 20mm;
-    size: portrait;
+    size: A4;
+    margin: 15mm;
   }
   body {
     background: white !important;
     font-size: 10pt;
+    margin: 0;
+    padding: 0;
   }
   .print\:hidden {
     display: none !important;
@@ -77,8 +78,8 @@
   .rounded-none {
     border-radius: 0 !important;
   }
-  .bg-slate-100 {
-    background-color: #f1f5f9 !important;
+  .bg-slate-50, .bg-slate-100 {
+    background-color: #f8fafc !important;
     -webkit-print-color-adjust: exact;
   }
   .bg-slate-900 {

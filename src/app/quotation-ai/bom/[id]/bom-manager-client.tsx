@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,20 +22,19 @@ import {
   Save,
   CheckCircle2,
   ChevronRight,
-  FileText,
-  Download,
   ArrowRight,
   ShieldCheck,
   Building2,
   Phone,
   MapPin,
-  CalendarDays
+  CalendarDays,
+  FileText,
+  Box
 } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { cn, detectCategory } from '@/lib/utils';
 import { updateBomItemAction, updateProjectAction } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation';
 
 interface BomItem {
   id: string;
@@ -63,13 +62,11 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const [bom, setBom] = useState<BomItem[]>(initialBom);
   const [step, setStep] = useState<WorkflowStep>('pricing');
   
-  // Surcharges & Overheads
   const [discount, setDiscount] = useState(project.bom_data?.discount || 0);
   const [shipping, setShipping] = useState(project.bom_data?.shipping || 0);
   const [fuel, setFuel] = useState(project.bom_data?.fuel || 0);
   const [taxRate, setTaxRate] = useState(project.bom_data?.taxRate || 8.25);
 
-  // Customer Details
   const [customer, setCustomer] = useState({
     name: project.bom_data?.customerName || '',
     address: project.bom_data?.customerAddress || '',
@@ -78,7 +75,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
   const [isSaving, setIsSaving] = useState(false);
 
-  // Recalculations
   const materialSubtotal = useMemo(() => 
     bom.reduce((acc, curr) => acc + (Number(curr.unit_price) * Number(curr.qty) || 0), 0),
     [bom]
@@ -112,7 +108,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const handleSaveAll = async () => {
     setIsSaving(true);
     try {
-      // 1. Bulk Update Line Items
       await Promise.all(bom.map(item => 
         updateBomItemAction(item.id, { 
           sku: item.sku,
@@ -123,7 +118,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         })
       ));
 
-      // 2. Update Project Metadata
       await updateProjectAction(id, {
         bom_data: {
           discount,
@@ -150,7 +144,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
   return (
     <main className="min-h-screen bg-slate-50 pb-32 print:bg-white print:pb-0">
-      {/* Dynamic Header */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 h-20 flex items-center justify-between print:hidden">
         <div className="flex items-center gap-6">
           <Button variant="ghost" size="icon" className="rounded-full" onClick={() => {
@@ -211,9 +204,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-8 mt-12 space-y-12 print:mt-0 print:px-0">
+      <div className="max-w-5xl mx-auto px-8 mt-12 space-y-12 print:mt-0 print:px-0 print:max-w-none">
         
-        {/* STEP 1: PRICING REVIEW */}
         {step === 'pricing' && (
           <div className="space-y-12 animate-in fade-in duration-500">
             <div className="flex justify-between items-end">
@@ -373,7 +365,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           </div>
         )}
 
-        {/* STEP 2: CUSTOMER INTAKE */}
         {step === 'customer' && (
           <div className="max-w-3xl mx-auto py-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
              <Card className="rounded-[3rem] p-12 border-slate-100 shadow-2xl bg-white text-center">
@@ -426,95 +417,79 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           </div>
         )}
 
-        {/* STEP 3: FINAL PREVIEW & PRINT (PDF TEMPLATE) */}
         {step === 'preview' && (
-          <div className="animate-in fade-in zoom-in-95 duration-500 print:bg-white print:p-0">
-             <div className="flex justify-between items-center mb-8 print:hidden">
+          <div className="animate-in fade-in duration-500 print:bg-white print:p-0">
+             <div className="flex justify-between items-center mb-6 print:hidden">
                 <Button variant="ghost" onClick={() => setStep('customer')} className="font-bold text-slate-500">
-                   <ArrowLeft className="w-4 h-4 mr-2" /> Back to Intake
+                   <ArrowLeft className="w-4 h-4 mr-2" /> Back
                 </Button>
-                <div className="flex gap-3">
-                  <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={handleSaveAll}>
-                    <Save className="w-4 h-4 mr-2" /> Save Final Version
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="rounded-lg font-bold" onClick={handleSaveAll}>
+                    <Save className="w-4 h-4 mr-2" /> Save
                   </Button>
-                  <Button className="gradient-button h-12 px-10 rounded-xl font-bold" onClick={() => window.print()}>
-                    <Printer className="w-4 h-4 mr-2" /> Print & Download PDF
+                  <Button size="sm" className="gradient-button px-6 rounded-lg font-bold" onClick={() => window.print()}>
+                    <Printer className="w-4 h-4 mr-2" /> Print PDF (A4)
                   </Button>
                 </div>
              </div>
 
-             <Card className="bg-white p-12 md:p-16 rounded-none shadow-2xl border-none print:shadow-none print:p-0">
-                {/* INVOICE HEADER BLOCK */}
-                <div className="flex flex-col md:flex-row justify-between items-start gap-12 border-b-4 border-slate-900 pb-12 mb-12">
-                   {/* DEALER LOGO & INFO */}
-                   <div className="space-y-4 flex-1">
-                      <div className="flex items-center gap-4 mb-6">
-                        <div className="w-20 h-20 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-4xl">
+             <div className="bg-white print:p-0 font-body text-slate-900 max-w-none">
+                <div className="flex justify-between items-start gap-8 border-b-2 border-slate-900 pb-4 mb-4">
+                   <div className="space-y-2 flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-12 h-12 rounded-lg bg-slate-900 flex items-center justify-center text-white font-black text-2xl">
                           {manufacturerName.charAt(0)}
                         </div>
                         <div>
-                          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{manufacturerName} ORDER</h2>
-                          <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 w-fit">
+                          <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight">{manufacturerName} ORDER</h2>
+                          <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase text-slate-500">
                              <ShieldCheck className="w-3 h-3 text-sky-600" />
-                             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Authorized Facility</span>
+                             Authorized Facility
                           </div>
                         </div>
                       </div>
-                      <div className="space-y-1">
-                         <h4 className="text-xs font-black uppercase tracking-widest text-slate-900">Dealer Information</h4>
-                         <div className="text-sm text-slate-600 font-medium flex items-center gap-2">
-                            <Building2 className="w-3 h-3 text-slate-400" /> KABS Premium Cabinetry Co.
-                         </div>
-                         <div className="text-sm text-slate-500 flex items-center gap-2">
-                            <MapPin className="w-3 h-3 text-slate-400" /> 102 West Montgomery St, TX
-                         </div>
-                         <div className="text-sm text-slate-500 flex items-center gap-2">
-                            <Phone className="w-3 h-3 text-slate-400" /> (800) 555-0199
-                         </div>
+                      <div className="space-y-0.5">
+                         <h4 className="text-[10px] font-bold uppercase text-slate-900">Dealer</h4>
+                         <p className="text-[11px] font-medium text-slate-700">KABS Premium Cabinetry Co.</p>
+                         <p className="text-[10px] text-slate-500">102 West Montgomery St, TX • (800) 555-0199</p>
                       </div>
                    </div>
 
-                   {/* PROJECT & CUSTOMER INFO */}
-                   <div className="text-right space-y-6 flex-1">
+                   <div className="text-right space-y-4 flex-1">
                       <div>
-                        <h1 className="text-6xl font-black text-slate-900 tracking-tighter">QUOTATION</h1>
-                        <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em] mt-1">Ref: {project.project_name}</p>
+                        <h1 className="text-2xl font-black text-slate-900 uppercase">QUOTATION</h1>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-normal">Ref: {project.project_name}</p>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-8 text-left justify-end ml-auto">
-                        <div className="space-y-1">
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Order Date</h4>
-                          <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                            <CalendarDays className="w-3 h-3 text-sky-500" /> {new Date().toLocaleDateString()}
-                          </p>
+                      <div className="flex justify-end gap-6">
+                        <div className="text-left">
+                          <h4 className="text-[9px] font-bold uppercase text-slate-400">Date</h4>
+                          <p className="text-[11px] font-bold text-slate-900">{new Date().toLocaleDateString()}</p>
                         </div>
-                        <div className="space-y-1">
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Project Type</h4>
-                          <p className="text-sm font-bold text-slate-900 uppercase">Cabinetry Takeoff</p>
+                        <div className="text-left">
+                          <h4 className="text-[9px] font-bold uppercase text-slate-400">Project Type</h4>
+                          <p className="text-[11px] font-bold text-slate-900">Takeoff</p>
                         </div>
                       </div>
 
-                      <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100 text-left">
-                         <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Attention To / Shipping Site</h4>
-                         <p className="text-base font-black text-slate-900 uppercase leading-tight">{customer.name || 'Valued Client'}</p>
-                         <p className="text-sm text-slate-600 mt-1">{customer.address || 'N/A'}</p>
-                         <p className="text-sm text-slate-500 font-medium mt-1">{customer.phone || 'N/A'}</p>
+                      <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 text-left ml-auto max-w-[240px]">
+                         <h4 className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">Ship To / Attention</h4>
+                         <p className="text-[11px] font-bold text-slate-900 uppercase">{customer.name || 'Valued Client'}</p>
+                         <p className="text-[10px] text-slate-600 leading-tight mt-0.5">{customer.address || 'Address N/A'}</p>
                       </div>
                    </div>
                 </div>
 
-                {/* ROOM SECTIONS (CATEGORIZED TABLES) */}
                 {rooms.map(room => {
                   const roomItems = bom.filter(i => i.room === room);
                   const categories = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets', 'Hinges & Hardware', 'Accessories'];
                   const roomTotal = roomItems.reduce((acc, i) => acc + (i.unit_price * i.qty), 0);
 
                   return (
-                    <div key={room} className="mb-16 avoid-break">
-                      {/* Room Banner */}
-                      <div className="bg-slate-100 px-8 py-3 rounded-lg flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-black text-slate-900 uppercase tracking-widest">{room}</h3>
-                        <div className="text-xs font-bold text-slate-500">Unit Count: {roomItems.length}</div>
+                    <div key={room} className="mb-6 avoid-break">
+                      <div className="bg-slate-100 px-3 py-1.5 rounded flex justify-between items-center mb-2">
+                        <h3 className="text-sm font-bold text-slate-900 uppercase">{room}</h3>
+                        <div className="text-[9px] font-bold text-slate-500 uppercase">Units: {roomItems.length}</div>
                       </div>
 
                       {categories.map(cat => {
@@ -522,24 +497,24 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                         if (catItems.length === 0) return null;
 
                         return (
-                          <div key={cat} className="mb-8 pl-4">
-                            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-600 mb-3 border-l-2 border-sky-500 pl-3">{cat}</h4>
-                            <Table>
+                          <div key={cat} className="mb-3 pl-2">
+                            <h4 className="text-[10px] font-bold uppercase text-sky-600 mb-1 border-l-2 border-sky-500 pl-2">{cat}</h4>
+                            <Table className="border-collapse">
                               <TableHeader>
-                                <TableRow className="border-b-2 border-slate-200 hover:bg-transparent">
-                                  <TableHead className="font-black text-slate-900 text-[10px] uppercase w-1/2">Product Description / SKU</TableHead>
-                                  <TableHead className="font-black text-slate-900 text-[10px] uppercase text-center w-20">Qty</TableHead>
-                                  <TableHead className="font-black text-slate-900 text-[10px] uppercase text-right">Unit Price</TableHead>
-                                  <TableHead className="font-black text-slate-900 text-[10px] uppercase text-right pr-4">Total</TableHead>
+                                <TableRow className="h-6 border-b-2 border-slate-200 hover:bg-transparent">
+                                  <TableHead className="font-bold text-slate-900 text-[9px] uppercase h-6 px-2 w-1/2">Product Description</TableHead>
+                                  <TableHead className="font-bold text-slate-900 text-[9px] uppercase h-6 px-2 text-center w-16">Qty</TableHead>
+                                  <TableHead className="font-bold text-slate-900 text-[9px] uppercase h-6 px-2 text-right">Unit Price</TableHead>
+                                  <TableHead className="font-bold text-slate-900 text-[9px] uppercase h-6 px-2 text-right">Total</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
                                 {catItems.map(item => (
-                                  <TableRow key={item.id} className="border-b border-slate-100 hover:bg-transparent">
-                                    <TableCell className="font-bold text-slate-800 py-3 text-sm">{item.sku}</TableCell>
-                                    <TableCell className="text-center font-bold text-slate-600">{item.qty}</TableCell>
-                                    <TableCell className="text-right font-mono text-xs text-slate-500">${item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                                    <TableCell className="text-right font-mono font-black text-slate-900 pr-4">${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                                  <TableRow key={item.id} className="h-6 border-b border-slate-100 hover:bg-transparent">
+                                    <TableCell className="font-bold text-slate-800 py-1 px-2 text-[10px]">{item.sku}</TableCell>
+                                    <TableCell className="text-center font-bold text-slate-600 py-1 px-2 text-[10px]">{item.qty}</TableCell>
+                                    <TableCell className="text-right font-mono text-[10px] text-slate-500 py-1 px-2">${item.unit_price.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-mono font-bold text-slate-900 py-1 px-2 text-[10px]">${(item.unit_price * item.qty).toFixed(2)}</TableCell>
                                   </TableRow>
                                 ))}
                               </TableBody>
@@ -548,79 +523,74 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                         );
                       })}
 
-                      {/* Room Subtotal Line */}
-                      <div className="flex justify-end pr-4 py-4 border-t border-slate-200">
+                      <div className="flex justify-end pt-1 border-t border-slate-200">
                          <div className="text-right">
-                           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-4">Area Investment ({room})</span>
-                           <span className="text-xl font-black font-mono text-slate-900">${roomTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                           <span className="text-[9px] font-bold uppercase text-slate-400 mr-3">Area Total ({room})</span>
+                           <span className="text-[11px] font-bold font-mono text-slate-900">${roomTotal.toFixed(2)}</span>
                          </div>
                       </div>
                     </div>
                   );
                 })}
 
-                {/* FINAL SUMMARY PAGE / FOOTER */}
-                <div className="mt-20 pt-12 border-t-4 border-slate-900 avoid-break">
-                   <div className="flex flex-col md:flex-row justify-between items-start gap-12">
-                      <div className="flex-1 space-y-6">
-                         <div className="p-8 rounded-[2rem] bg-sky-50 border border-sky-100">
-                            <h4 className="text-sm font-black text-sky-900 uppercase tracking-widest mb-2 flex items-center gap-2">
-                               <ShieldCheck className="w-5 h-5" /> Terms & Verification
+                <div className="mt-8 pt-4 border-t-2 border-slate-900 avoid-break">
+                   <div className="flex justify-between items-start gap-8">
+                      <div className="flex-1">
+                         <div className="p-4 rounded-lg bg-sky-50 border border-sky-100 max-w-[340px]">
+                            <h4 className="text-[10px] font-bold text-sky-900 uppercase mb-1 flex items-center gap-2">
+                               <ShieldCheck className="w-4 h-4" /> Terms
                             </h4>
-                            <p className="text-xs text-sky-700 leading-relaxed font-medium">
-                               This quotation is generated by KABS AI v21.4 and is based on the provided architectural blueprints. 
-                               Verification of field measurements is required before order release. Prices are valid for 30 days.
+                            <p className="text-[9px] text-sky-700 leading-tight font-medium">
+                               Generated by KABS AI v24.0 based on blueprints. 
+                               Verify field measurements before order. Prices valid 30 days.
                             </p>
-                         </div>
-                         <div className="text-center md:text-left">
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.4em]">Powered by KABS AI • Production Precision</p>
                          </div>
                       </div>
 
-                      <div className="w-full md:w-96 space-y-4">
-                         <div className="space-y-3">
-                            <div className="flex justify-between items-center text-slate-500 text-sm font-bold">
-                               <span className="uppercase tracking-widest">Gross Material Subtotal</span>
-                               <span className="font-mono">${materialSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <div className="w-64 space-y-2">
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold">
+                             <span className="uppercase">Material Subtotal</span>
+                             <span className="font-mono">${materialSubtotal.toFixed(2)}</span>
+                          </div>
+                          {discount > 0 && (
+                            <div className="flex justify-between items-center text-emerald-600 text-[10px] font-bold">
+                               <span className="uppercase">Discount ({discount}%)</span>
+                               <span className="font-mono">-${discountAmount.toFixed(2)}</span>
                             </div>
-                            {discount > 0 && (
-                              <div className="flex justify-between items-center text-emerald-600 text-sm font-bold">
-                                 <span className="uppercase tracking-widest">Dealer Discount ({discount}%)</span>
-                                 <span className="font-mono">-${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              </div>
-                            )}
-                            <div className="flex justify-between items-center text-slate-500 text-sm font-bold">
-                               <span className="uppercase tracking-widest">Net Material Total</span>
-                               <span className="font-mono">${adjustedSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-slate-500 text-sm font-bold">
-                               <span className="uppercase tracking-widest">Logistics (Shipping/Fuel)</span>
-                               <span className="font-mono">${(Number(shipping) + Number(fuel)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-slate-500 text-sm font-bold pb-4">
-                               <span className="uppercase tracking-widest">Sales Tax ({taxRate}%)</span>
-                               <span className="font-mono">${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </div>
-                         </div>
+                          )}
+                          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold">
+                             <span className="uppercase">Logistics</span>
+                             <span className="font-mono">${(Number(shipping) + Number(fuel)).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-slate-500 text-[10px] font-bold pb-2">
+                             <span className="uppercase">Sales Tax ({taxRate}%)</span>
+                             <span className="font-mono">${taxAmount.toFixed(2)}</span>
+                          </div>
+                        </div>
 
-                         <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white shadow-2xl">
-                            <div className="flex justify-between items-baseline mb-2">
-                               <span className="text-[10px] font-black uppercase tracking-[0.4em] text-sky-400">Total Investment</span>
-                               <span className="text-5xl font-black font-mono tracking-tighter">
-                                  ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                               </span>
-                            </div>
-                            <p className="text-[9px] text-slate-500 font-bold text-right uppercase tracking-widest">All Values in USD</p>
-                         </div>
+                        <div className="bg-slate-900 p-4 rounded-lg text-white">
+                           <div className="flex justify-between items-baseline">
+                              <span className="text-[9px] font-bold uppercase text-sky-400">Grand Total</span>
+                              <span className="text-xl font-bold font-mono">
+                                 ${grandTotal.toFixed(2)}
+                              </span>
+                           </div>
+                           <p className="text-[8px] text-slate-500 font-bold text-right uppercase mt-1">USD</p>
+                        </div>
                       </div>
                    </div>
                 </div>
-             </Card>
+                
+                <div className="mt-8 text-center">
+                   <p className="text-[8px] text-slate-300 font-bold uppercase">Powered by KABS AI • Production Precision</p>
+                </div>
+             </div>
           </div>
         )}
       </div>
 
-      <footer className="mt-32 border-t border-slate-200 py-12 text-center text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 print:hidden">
+      <footer className="mt-32 border-t border-slate-200 py-12 text-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 print:hidden">
         &copy; {new Date().getFullYear()} KABS Inc. Precision Engineering.
       </footer>
     </main>
