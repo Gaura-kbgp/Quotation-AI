@@ -23,7 +23,8 @@ export function cleanSkuForDisplay(sku: string | any): string {
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  // Strip everything except letters and numbers for the matching index
+  // Strip EVERYTHING except letters and numbers for the matching index
+  // This handles invisible characters, char code 160 (non-breaking spaces), etc.
   return String(sku).toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
@@ -37,7 +38,7 @@ export function isPrimaryCabinet(sku: string): boolean {
 
   const primaryPrefixes = [
     'W', 'B', 'SB', 'VSB', 'UF', 'RR', 'OVD', 'TP', 'PANTRY', 
-    'OVEN', 'REF', 'DW', 'MICRO', 'DRW', 'TALL', 'UTIL', 'WALL', 'BASE'
+    'OVEN', 'REF', 'DW', 'MICRO', 'DRW', 'TALL', 'UTIL', 'WALL', 'BASE', 'V'
   ];
   return primaryPrefixes.some(p => s.startsWith(p));
 }

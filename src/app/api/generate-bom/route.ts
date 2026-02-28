@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // PAGINATED FETCH: Load the entire manufacturer catalog
+    // PAGINATED FETCH: Load the entire manufacturer catalog without limits
     let allPricing: any[] = [];
     let from = 0;
     const step = 1000;
@@ -63,8 +63,9 @@ export async function POST(req: Request) {
       const key = `${skuKey}|${colKey}|${styKey}`;
       pricingMap.set(key, p);
 
-      // Keep the highest price found globally for this SKU (fallback)
-      if (!globalSkuMap.has(skuKey) || p.price > (globalSkuMap.get(skuKey)?.price || 0)) {
+      // Global map for accessories that might be in different sheets
+      // We prefer non-zero prices if possible
+      if (!globalSkuMap.has(skuKey) || (p.price > 0 && globalSkuMap.get(skuKey)?.price === 0)) {
         globalSkuMap.set(skuKey, p);
       }
     });
@@ -89,10 +90,10 @@ export async function POST(req: Request) {
         { s: normalized.replace(/BUTT$/, ""), type: 'NO_BUTT' },
         { s: normalized.replace(/[LRH]$/, ""), type: 'NO_HANDING' },
         { s: normalized.replace(/(BUTT|[LRH])$/, ""), type: 'NO_VARIANT' },
-        // Architectural specific suffixes
         { s: normalized.replace(/FL$/, ""), type: 'NO_FL_SUFFIX' },
         { s: normalized.replace(/DP$/, ""), type: 'NO_DP_SUFFIX' },
-        // Base SKU (strip all trailing non-digits if SKU starts with standard prefix)
+        // Architectural specific: strip all trailing letters after numbers
+        { s: normalized.replace(/^([A-Z]+[0-9]+)[A-Z]+$/, "$1"), type: 'BASE_SKU' },
         { s: normalized.replace(/(\d+)[A-Z]+$/, "$1"), type: 'BASE_MODEL' }
       ];
 
@@ -104,7 +105,7 @@ export async function POST(req: Request) {
         if (match) return { match, type: variant.type };
       }
 
-      // STAGE 2: Global catalog match (Universal accessories/fillers)
+      // STAGE 2: Global catalog match (Universal accessories/fillers/accessories)
       for (const variant of variants) {
         if (!variant.s) continue;
         const match = globalSkuMap.get(variant.s);

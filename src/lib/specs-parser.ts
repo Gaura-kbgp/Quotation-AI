@@ -17,7 +17,7 @@ function smartSplit(raw: string): string[] {
     "CANYON", "DURANGO", "ELDERIDGE", "BANDERA", "DENVER", "COOPER", 
     "OXFORD", "ALPINE", "SNOWBOUND", "ABILENE", "LUBBOCK", "COLORADO",
     "SELECT", "CLASSIC", "DESIGNER", "ULTRA", "BOERNE", "HARDWOOD",
-    "ACCESSORY", "MOULDING", "HARDWARE"
+    "ACCESSORY", "MOULDING", "HARDWARE", "DECORATIVE", "CROWN"
   ];
   
   const keywordPattern = boundaryKeywords.join('|');
@@ -52,12 +52,14 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     let skuColIdx = -1;
     let headerRowIdx = -1;
 
-    // Scan for SKU column header
-    for (let r = 0; r < Math.min(100, rawData.length); r++) {
+    // Scan for SKU column header with expanded detection
+    const skuHeaders = ["SKU", "ITEMSKU", "CODE", "MODEL", "ITEMCODE", "CATALOGCODE", "PARTNUMBER", "CABINETSKU", "MODELNUMBER"];
+    
+    for (let r = 0; r < Math.min(200, rawData.length); r++) {
       const row = rawData[r];
       const idx = row.findIndex(cell => {
         const val = String(cell || "").toUpperCase().trim().replace(/[^A-Z]/g, "");
-        return ["SKU", "ITEMSKU", "CODE", "MODEL", "ITEMCODE", "CATALOGCODE"].includes(val); 
+        return skuHeaders.includes(val); 
       });
       if (idx !== -1) {
         skuColIdx = idx;
@@ -66,13 +68,13 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       }
     }
 
-    // Default to column A if no header found
+    // Default to column A if no header found, but scan first 10 rows for alphanumeric consistency
     if (skuColIdx === -1) {
       skuColIdx = 0;
       headerRowIdx = 0;
     }
 
-    // Accessory sheets usually have sheet names as the collection identifier
+    // Accessory sheets identifier
     const defaultCollection = sheetName.replace(/\d+/g, "").replace("Pricing", "").trim().toUpperCase();
 
     const collectionRow = headerRowIdx >= 2 ? (rawData[headerRowIdx - 2] || []) : [];
@@ -81,7 +83,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
     const normalizedCollections: string[] = [];
     let currentCollection = "";
-    for (let c = 0; c < 200; c++) {
+    for (let c = 0; c < 300; c++) {
       const val = String(collectionRow[c] || "").trim();
       if (val && val.length > 1) currentCollection = val;
       normalizedCollections[c] = currentCollection;
@@ -89,7 +91,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
     const normalizedStyles: string[] = [];
     let currentStyle = "";
-    for (let c = 0; c < 200; c++) {
+    for (let c = 0; c < 300; c++) {
       const val = String(styleRow[c] || "").trim();
       if (val && val.length > 1) currentStyle = val;
       normalizedStyles[c] = currentStyle;
@@ -100,24 +102,28 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       const rawExcelSKU = String(row[skuColIdx] || "").trim();
       if (!rawExcelSKU) continue;
 
-      // COMPRESSED NORMALIZATION: Standardize keys for matching
       const indexedSKU = normalizeSku(rawExcelSKU);
       
-      if (!indexedSKU || ["SKU", "TOTAL", "PAGE", "SUBTOTAL", "FOOTER", "GRAND"].includes(indexedSKU)) continue;
+      // Filter out obvious noise rows
+      if (!indexedSKU || indexedSKU.length < 2 || ["SKU", "TOTAL", "PAGE", "SUBTOTAL", "FOOTER", "GRAND", "CONTINUED"].includes(indexedSKU)) continue;
 
-      for (let c = skuColIdx + 1; c < row.length; c++) {
+      // Scan ALL columns for prices to handle non-standard accessory layouts
+      for (let c = 0; c < row.length; c++) {
+        if (c === skuColIdx) continue;
+        
         const rawPrice = row[c];
         if (rawPrice === null || rawPrice === undefined || rawPrice === "") continue;
 
-        const priceNum = parseFloat(String(rawPrice).replace(/[^0-9.]/g, ""));
-        if (isNaN(priceNum)) continue;
+        // Clean price string of currency symbols and commas
+        const priceNum = parseFloat(String(rawPrice).replace(/[^\d.-]/g, ""));
+        if (isNaN(priceNum) || priceNum === 0) continue;
 
         let colCell = normalizedCollections[c] || "";
         let styleCell = normalizedStyles[c] || mainHeaderRow[c] || "";
 
         // Fallback for accessory sheets
-        if (!colCell) colCell = defaultCollection;
-        if (!styleCell) styleCell = "STANDARD";
+        if (!colCell || colCell.length < 2) colCell = defaultCollection;
+        if (!styleCell || styleCell.length < 2) styleCell = "STANDARD";
 
         const collections = smartSplit(colCell);
         const styles = smartSplit(styleCell);
