@@ -4,8 +4,8 @@ export const maxDuration = 300;
 
 /**
  * ULTIMATE SMART PRICING ENGINE (v41.0)
- * High-Precision matching with recursive fallbacks and paginated global catalog lookup.
- * Scans ALL pricing records for ALL sheets.
+ * Implements Paginated Catalog Retrieval and Recursive Fallback Matching.
+ * Handles 50,000+ records and multi-sheet dependencies.
  */
 export async function POST(req: Request) {
   try {
@@ -27,10 +27,10 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // EXHAUSTIVE CATALOG RETRIEVAL (Bypass limits via pagination for 50,000+ records)
+    // EXHAUSTIVE CATALOG RETRIEVAL (Pagination for massive catalogs)
     let allPricing: any[] = [];
     let from = 0;
-    const step = 5000;
+    const step = 1000; // Supabase safe limit
     let hasMore = true;
 
     while (hasMore) {
@@ -50,26 +50,25 @@ export async function POST(req: Request) {
       }
     }
 
-    // BUILD MULTI-INDEX LOOKUP (O(1) access)
+    // BUILD MULTI-TIER LOOKUP INDEX
     const localMap = new Map<string, any>(); // Key: SKU|Collection|Style
-    const globalSkuMap = new Map<string, any>(); // Key: SKU (for universal items)
+    const globalSkuMap = new Map<string, any>(); // Key: SKU (Universal Fallback)
 
     allPricing.forEach(p => {
       const sku = String(p.sku || "").trim().toUpperCase();
       const col = String(p.collection_name || "").trim().toUpperCase();
       const sty = String(p.door_style || "").trim().toUpperCase();
       
-      localMap.set(`${sku}|${col}|${sty}`, p);
+      const fullKey = `${sku}|${col}|${sty}`;
+      if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Global map prioritized for accessories/universal items
-      if (!globalSkuMap.has(sku)) {
-        globalSkuMap.set(sku, p);
-      }
+      // Global map prioritized for accessories
+      if (!globalSkuMap.has(sku)) globalSkuMap.set(sku, p);
     });
 
     /**
-     * RESILIENT MATCHER
-     * Logic: Exact -> Compressed -> Descriptor Fallback -> Variant Stripping -> Global Search
+     * RECURSIVE MATCHING ENGINE
+     * Sequence: Exact -> Compressed -> Descriptor Stripping -> Global Catalog Search
      */
     function findBestMatch(itemCode: string, collection: string, style: string) {
       const target = itemCode.trim().toUpperCase();
@@ -78,33 +77,27 @@ export async function POST(req: Request) {
       const col = collection.trim().toUpperCase();
       const sty = style.trim().toUpperCase();
 
-      // CLEAN TARGET: Remove all spaces for the base comparison
-      const compressedTarget = target.replace(/\s+/g, '');
+      // Generate search variants using regex for precision
+      const variants = [
+        target, // B30 BUTT
+        target.replace(/\s+/g, ''), // B30BUTT
+        target.replace(/\s*BUTT$/g, ''), // B30
+        target.replace(/\s*[HLR]$/g, ''), // B15
+        target.replace(/\s*FL$/g, ''), // RR120
+        target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''), // Base Model
+        target.split(/\s+/)[0] // First word only
+      ];
 
-      // GENERATE SEARCH VARIANTS
-      const variants = new Set([
-        target,
-        compressedTarget,
-        target.replace(" BUTT", ""),
-        compressedTarget.replace("BUTT", ""),
-        target.replace(/[HLR]$/, ""), // Remove handing
-        compressedTarget.replace(/[HLR]$/, ""),
-        target.replace(" BUTT", "").replace(/[HLR]$/, ""),
-        compressedTarget.replace("BUTT", "").replace(/[HLR]$/, ""),
-        target.replace("FL", ""),
-        compressedTarget.replace("FL", ""),
-        target.replace(/ (BUTT|H|L|R|FL)$/, "").trim(),
-        compressedTarget.replace(/(BUTT|H|L|R|FL)$/, "").trim()
-      ]);
+      const searchVariants = Array.from(new Set(variants.filter(Boolean)));
 
-      // 1. Try Local Collection Match (High Precision)
-      for (const v of variants) {
+      // 1. Try Local Collection Match (Specific Style)
+      for (const v of searchVariants) {
         const key = `${v}|${col}|${sty}`;
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL' };
       }
 
-      // 2. Try Global Catalog Search (Universal items like UF3, RR120)
-      for (const v of variants) {
+      // 2. Try Global Catalog Match (Cross-Sheet Fallback)
+      for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL' };
       }
 
@@ -165,10 +158,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // Atomic Clear and Rewrite for the project
+    // Atomic Clear and Rewrite
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
-      // Chunk insertions for high-scale BOMs
       const BATCH_SIZE = 500;
       for (let i = 0; i < bomItems.length; i += BATCH_SIZE) {
         const batch = bomItems.slice(i, i + BATCH_SIZE);
