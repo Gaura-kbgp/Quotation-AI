@@ -4,8 +4,8 @@ import { normalizeSku } from '@/lib/utils';
 export const maxDuration = 120;
 
 /**
- * STRICT EXACT PRICING ENGINE (v29.0)
- * Implements "Match EXACT SKU" rule.
+ * STRICT EXACT PRICING ENGINE (v30.0)
+ * Implements "Match EXACT SKU" rule across all catalog sheets.
  */
 export async function POST(req: Request) {
   try {
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // Fetch ALL pricing records for this manufacturer
+    // Fetch ALL pricing records for this manufacturer (Global Multi-Sheet Scan Result)
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
@@ -35,11 +35,11 @@ export async function POST(req: Request) {
 
     if (sError) throw new Error(`Database error: ${sError.message}`);
 
-    // Build Exact Lookup Map
+    // Build EXACT lookup map for performance
     const pricingMap = new Map<string, any>();
     allPricing?.forEach(p => {
-      // Key: SKU (Strict) | COLLECTION | STYLE
-      const key = `${p.sku.toUpperCase().trim()}|${String(p.collection_name || "").toUpperCase()}|${String(p.door_style || "").toUpperCase()}`;
+      // Key: SKU (Exact) | COLLECTION | STYLE
+      const key = `${p.sku.toUpperCase().trim()}|${String(p.collection_name || "").toUpperCase().trim()}|${String(p.door_style || "").toUpperCase().trim()}`;
       pricingMap.set(key, p);
     });
 
@@ -60,15 +60,15 @@ export async function POST(req: Request) {
         if (!cab.code) continue;
         totalCount++;
 
-        const exactSku = cab.code.toUpperCase().trim();
-        const lookupKey = `${exactSku}|${selectedCollection}|${selectedStyle}`;
+        const pdfSku = cab.code.toUpperCase().trim();
+        const lookupKey = `${pdfSku}|${selectedCollection}|${selectedStyle}`;
         
         let match = pricingMap.get(lookupKey);
         let matchType = 'EXACT';
 
-        // GLOBAL FALLBACK (Strict SKU match across any collection/style if exact spec fails)
+        // GLOBAL FALLBACK (Strict SKU match across any collection if exact spec lookup fails)
         if (!match && allPricing) {
-           match = allPricing.find(p => p.sku.toUpperCase().trim() === exactSku);
+           match = allPricing.find(p => p.sku.toUpperCase().trim() === pdfSku);
            if (match) matchType = 'GLOBAL_EXACT';
         }
 
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
             created_at: new Date().toISOString()
           });
         } else {
-          // NO MATCH FOUND
+          // NO MATCH FOUND - Surfacing descriptive error
           bomItems.push({
             project_id: projectId,
             sku: cab.code,
@@ -113,7 +113,8 @@ export async function POST(req: Request) {
     // Persist Results
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
-      await supabase.from('quotation_boms').insert(bomItems);
+      const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
+      if (insertError) throw insertError;
     }
 
     await supabase.from('quotation_projects').update({ 

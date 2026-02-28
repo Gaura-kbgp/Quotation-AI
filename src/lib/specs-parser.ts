@@ -1,7 +1,8 @@
 import * as XLSX from 'xlsx';
 
 /**
- * Intelligent String Splitter (v28.0)
+ * Intelligent String Splitter (v30.0)
+ * Splits multiple door styles/collections while preserving exact names.
  */
 function smartSplit(raw: string): string[] {
   if (!raw) return [];
@@ -32,31 +33,33 @@ function smartSplit(raw: string): string[] {
 }
 
 /**
- * STRICT EXACT SKU PARSER (v29.0)
- * Scans ALL sheets and extracts prices based on EXACT SKU column.
+ * STRICT EXACT SKU PARSER (v30.0)
+ * Scans ALL sheets and EVERY row.
+ * Dynamic "SKU" column detection.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const pricing: any[] = [];
   
-  console.log(`[Strict Parser] Scanning workbook with ${workbook.SheetNames.length} sheets...`);
+  console.log(`[Strict Parser v30] Scanning ${workbook.SheetNames.length} sheets...`);
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
 
+    // Read entire sheet as a 2D array to ensure no row is skipped
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
     if (rawData.length < 2) continue;
 
-    // Detect SKU Column Exactly
+    // Detect SKU Column Exactly by scanning the first few rows
     let skuColIdx = -1;
     let headerRowIdx = -1;
 
-    for (let r = 0; r < Math.min(20, rawData.length); r++) {
+    for (let r = 0; r < Math.min(50, rawData.length); r++) {
       const row = rawData[r];
       const idx = row.findIndex(cell => {
         const val = String(cell || "").toUpperCase().trim();
-        return val === "SKU"; // EXACT MATCH FOR HEADER
+        return val === "SKU"; 
       });
       if (idx !== -1) {
         skuColIdx = idx;
@@ -66,27 +69,16 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
 
     if (skuColIdx === -1) {
-      // Fallback to searching common aliases if "SKU" is strictly missing
-      for (let r = 0; r < Math.min(20, rawData.length); r++) {
-        const row = rawData[r];
-        const idx = row.findIndex(cell => {
-          const val = String(cell || "").toUpperCase().trim();
-          return ["ITEM CODE", "CABINET CODE", "MODEL"].includes(val);
-        });
-        if (idx !== -1) {
-          skuColIdx = idx;
-          headerRowIdx = r;
-          break;
-        }
-      }
+      console.warn(`[Strict Parser] "SKU" column not found in sheet: ${sheetName}`);
+      continue;
     }
 
-    if (skuColIdx === -1) continue;
-
+    // Capture metadata rows relative to header
     const collectionRow = rawData[Math.max(0, headerRowIdx - 2)] || [];
     const styleRow = rawData[Math.max(0, headerRowIdx - 1)] || [];
     const mainHeaderRow = rawData[headerRowIdx] || [];
 
+    // Pre-calculate merged header values (Collection/Style)
     const normalizedCollections: string[] = [];
     let currentCollection = "";
     for (let c = 0; c < collectionRow.length; c++) {
@@ -103,12 +95,15 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       normalizedStyles[c] = currentStyle;
     }
 
+    // SCAN ENTIRE SHEET DATA
     for (let r = headerRowIdx + 1; r < rawData.length; r++) {
       const row = rawData[r];
-      const rawSku = String(row[skuColIdx] || "").trim();
+      const excelSKU = String(row[skuColIdx] || "").trim().toUpperCase();
       
-      if (!rawSku || ["SKU", "TOTAL", "PAGE"].includes(rawSku.toUpperCase())) continue;
+      // Strict filter for valid data rows
+      if (!excelSKU || ["SKU", "TOTAL", "PAGE", "SUBTOTAL"].includes(excelSKU)) continue;
 
+      // Scan all columns to the right of SKU for pricing values
       for (let c = skuColIdx + 1; c < row.length; c++) {
         const rawPrice = row[c];
         if (rawPrice === null || rawPrice === undefined || rawPrice === "") continue;
@@ -128,7 +123,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
               manufacturer_id: manufacturerId,
               collection_name: colName.toUpperCase().trim(),
               door_style: styleName.toUpperCase().trim(),
-              sku: rawSku.toUpperCase().trim(), // STORE EXACT SKU
+              sku: excelSKU, // Store EXACT trimmed uppercase SKU
               price: priceNum,
               raw_source_file_id: fileId,
               created_at: new Date().toISOString()
@@ -139,5 +134,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   }
 
+  console.log(`[Strict Parser] Extracted ${pricing.length} pricing points across all sheets.`);
   return pricing;
 }

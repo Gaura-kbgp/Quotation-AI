@@ -8,33 +8,28 @@ export function cn(...inputs: ClassValue[]) {
 
 /**
  * SKU CLEANING FOR DISPLAY
- * Removes tokens like {L}, {R}, but keeps "BUTT" and sizes for the final invoice.
+ * Minimal cleaning for the final invoice.
  */
 export function cleanSkuForDisplay(sku: string | any): string {
   if (!sku) return '';
   let s = String(sku).toUpperCase();
-  s = s.replace(/\{L\}|\{R\}/g, '');
-  s = s.replace(/X\s*24\s*DP/g, '');
-  s = s.replace(/X\s*12\s*DP/g, '');
   s = s.replace(/\s\s+/g, ' ');
   return s.trim();
 }
 
 /**
- * STRICT SKU NORMALIZATION (v29.0)
+ * STRICT SKU NORMALIZATION (v30.0)
  * Adheres to "Do NOT modify SKU" rule.
- * 1. Convert to uppercase
- * 2. Trim whitespace
- * 3. Preserve tokens like BUTT, H, etc.
+ * ONLY performs uppercase and trim.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  // Return exact uppercase trimmed string
   return String(sku).toUpperCase().trim();
 }
 
 /**
- * BASE SKU EXTRACTION (Kept for classification logic, but not used for strict matching)
+ * BASE SKU EXTRACTION
+ * Kept for classification logic.
  */
 export function getBaseSku(sku: string): string {
   const norm = normalizeSku(sku);
@@ -66,14 +61,4 @@ export function detectCategory(sku: string): string {
   if (s.startsWith('T') || s.startsWith('P') || s.startsWith('O')) return 'Tall Cabinets';
   
   return 'Accessories';
-}
-
-/**
- * SMART SIMILARITY SCORING (Deprecated for Pricing, kept for General AI tasks)
- */
-export function calculateSimilarity(input: string, database: string): number {
-  const s1 = normalizeSku(input);
-  const s2 = normalizeSku(database);
-  if (s1 === s2) return 1.0;
-  return stringSimilarity.compareTwoStrings(s1, s2);
 }
