@@ -4,9 +4,8 @@ import { normalizeSku } from '@/lib/utils';
 export const maxDuration = 120;
 
 /**
- * ENTERPRISE PRICING ENGINE (v33.0)
- * Implements recursive multi-stage fallback matching and paginated data fetching.
- * Fixes the 1000-record limit issue for large catalogs.
+ * ENTERPRISE PRICING ENGINE (v33.1)
+ * Optimized for Accessory Sheets and exhaustive global fallback matching.
  */
 export async function POST(req: Request) {
   try {
@@ -28,8 +27,7 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // PAGINATED FETCH: Supabase defaults to 1000 records. 
-    // We must fetch ALL pricing records for this manufacturer recursively.
+    // PAGINATED FETCH: Load the entire manufacturer catalog
     let allPricing: any[] = [];
     let from = 0;
     const step = 1000;
@@ -53,9 +51,9 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[Pricing Engine] Loaded ${allPricing.length} price points for lookup.`);
+    console.log(`[Pricing Engine] Loaded ${allPricing.length} records for ${mRes.data?.name}`);
 
-    // Build hierarchical lookup maps for performance
+    // Build hierarchical lookup maps
     const pricingMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
 
@@ -68,25 +66,25 @@ export async function POST(req: Request) {
       const key = `${skuKey}|${colKey}|${styKey}`;
       pricingMap.set(key, p);
 
-      // Global SKU index (Fallback - first occurrence wins)
-      if (!globalSkuMap.has(skuKey)) {
+      // Global SKU index (Accessory Fallback)
+      // We prioritize the most expensive or first found variant for universal items
+      if (!globalSkuMap.has(skuKey) || p.price > (globalSkuMap.get(skuKey)?.price || 0)) {
         globalSkuMap.set(skuKey, p);
       }
     });
 
     const bomItems: any[] = [];
     let matchedCount = 0;
-    let totalCount = 0;
 
     /**
-     * Recursive Matcher with Deep Fallbacks
+     * Recursive Matcher with Accessory Fallbacks
      */
     function findBestMatch(cabinetSKU: string, collection: string, style: string) {
       const normalized = cabinetSKU.trim().toUpperCase();
       const col = collection.trim().toUpperCase();
       const st = style.trim().toUpperCase();
 
-      // Define Fallback Chain
+      // Fallback Chain
       const noButt = normalized.replace(/\s?BUTT$/i, "").trim();
       const noH = noButt.replace(/H$/, "").trim();
       const cleaned = noH.replace(/ X .*$/, "").trim();
@@ -98,7 +96,7 @@ export async function POST(req: Request) {
         { s: cleaned, type: 'FALLBACK_CLEAN' }
       ];
 
-      // STAGE 1: Check variants within the specific selected room spec
+      // STAGE 1: Check variants within specific room collection
       for (const variant of variants) {
         if (!variant.s) continue;
         const key = `${variant.s}|${col}|${st}`;
@@ -106,11 +104,12 @@ export async function POST(req: Request) {
         if (match) return { match, type: variant.type };
       }
 
-      // STAGE 2: Global Fallback Search (Across all collections)
+      // STAGE 2: Global Search (Crucial for Accessory Sheets)
+      // Items like UF3, UF342 are often not collection-specific
       for (const variant of variants) {
         if (!variant.s) continue;
         const match = globalSkuMap.get(variant.s);
-        if (match) return { match, type: `GLOBAL_${variant.type}` };
+        if (match) return { match, type: `UNIVERSAL_${variant.type}` };
       }
 
       return null;
@@ -127,8 +126,6 @@ export async function POST(req: Request) {
 
       for (const cab of sections) {
         if (!cab.code) continue;
-        totalCount++;
-
         const result = findBestMatch(cab.code, selectedCollection, selectedStyle);
 
         if (result) {
@@ -169,11 +166,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // Purge old BOM and save new results
+    // Save Results
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
-      const { error: insertError } = await supabase.from('quotation_boms').insert(bomItems);
-      if (insertError) throw insertError;
+      await supabase.from('quotation_boms').insert(bomItems);
     }
 
     await supabase.from('quotation_projects').update({ 
@@ -181,7 +177,7 @@ export async function POST(req: Request) {
       status: 'Priced' 
     }).eq('id', projectId);
 
-    return Response.json({ success: true, matched: matchedCount, total: totalCount });
+    return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
     console.error('[Pricing Engine] Error:', err);
