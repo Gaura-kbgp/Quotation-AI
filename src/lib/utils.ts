@@ -17,18 +17,18 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * SKU NORMALIZATION (v46.0)
- * Standardizes for strict matching by stripping excessive whitespace.
+ * SKU NORMALIZATION (v49.0)
+ * Standardizes for strict matching by stripping excessive whitespace and common noise.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  return String(sku).toUpperCase().trim();
+  return String(sku).toUpperCase().replace(/\s+/g, '').trim();
 }
 
 /**
  * COMPRESSED SKU FOR FUZZY MATCHING
- * Removes ALL internal whitespace and special characters for the "Super Search" engine.
- * Ensures 'UF 342' matches 'UF342' perfectly.
+ * Removes ALL non-alphanumeric characters for the "Universal Matcher".
+ * Ensures 'UF 342' matches 'UF342' and 'UF-342' perfectly.
  */
 export function compressSku(sku: string | any): string {
   if (!sku) return '';
@@ -40,7 +40,7 @@ export function compressSku(sku: string | any): string {
  * Detects if a code belongs to the primary cabinet list or accessories.
  */
 export function isPrimaryCabinet(sku: string): boolean {
-  const s = normalizeSku(sku);
+  const s = String(sku || "").toUpperCase().trim();
   if (!s) return false;
 
   const primaryPrefixes = [
@@ -55,7 +55,7 @@ export function isPrimaryCabinet(sku: string): boolean {
  */
 export function detectCategory(sku: string): string {
   if (!sku) return 'Accessories';
-  const s = normalizeSku(sku);
+  const s = String(sku || "").toUpperCase().trim();
   
   if (s.startsWith('W')) return 'Wall Cabinets';
   if (s.startsWith('SB') || s.startsWith('B')) return 'Base Cabinets';

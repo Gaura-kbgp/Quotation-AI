@@ -4,12 +4,12 @@ import { compressSku } from '@/lib/utils';
 export const maxDuration = 300;
 
 /**
- * ENTERPRISE MULTI-ENGINE PRICING SYSTEM (v48.0)
+ * ENTERPRISE MULTI-ENGINE PRICING SYSTEM (v49.0)
  * 
  * IMPROVEMENTS:
- * 1. RECURSIVE PAGINATED LOAD: Fetches up to 100,000 records from DB.
+ * 1. UNLIMITED RECURSIVE LOAD: Fetches every single record in the database.
  * 2. UNIVERSAL GLOBAL FALLBACK: If room match fails, search all other sheets for SKU.
- * 3. RECURSIVE SUFFIX STRIPPING: Strips BUTT, H, L, R to find base model prices.
+ * 3. SUPER-COMPRESSED MATCHING: Strips spaces/special chars for accessory matching (UF3, UF342).
  */
 export async function POST(req: Request) {
   try {
@@ -22,7 +22,6 @@ export async function POST(req: Request) {
 
     const supabase = createServerSupabase();
 
-    // 1. FETCH PROJECT
     const { data: project, error: pError } = await supabase
       .from('quotation_projects')
       .select('*')
@@ -32,7 +31,7 @@ export async function POST(req: Request) {
     if (pError || !project) throw new Error('Project not found.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. RECURSIVE GLOBAL CATALOG LOAD (Supports 50,000+ records)
+    // RECURSIVE FULL CATALOG LOAD
     let allPricing: any[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -46,35 +45,32 @@ export async function POST(req: Request) {
         .range(from, from + pageSize - 1);
 
       if (sError) throw sError;
-      
       if (!data || data.length === 0) {
         hasMore = false;
       } else {
         allPricing = [...allPricing, ...data];
         from += pageSize;
-        // Safety break to prevent infinite loops, though range handles this
         if (data.length < pageSize) hasMore = false;
       }
     }
 
-    // 3. MULTI-TIER INDEXING
-    const localMap = new Map<string, any>(); // SKU|COL|STYLE
-    const globalSkuMap = new Map<string, any>(); // Exact SKU (fallback for accessories)
-    const compressedMap = new Map<string, any>(); // Compressed SKU (ignore spaces)
+    // MULTI-TIER INDEXING
+    const localMap = new Map<string, any>(); 
+    const globalSkuMap = new Map<string, any>();
+    const compressedMap = new Map<string, any>();
 
-    const normalizeHeader = (s: string) => String(s || "").trim().toUpperCase().split('(')[0].trim();
+    const normalizeKey = (s: string) => String(s || "").trim().toUpperCase();
 
     allPricing.forEach(p => {
-      const sku = String(p.sku || "").trim().toUpperCase();
-      const col = normalizeHeader(p.collection_name);
-      const sty = normalizeHeader(p.door_style);
+      const sku = normalizeKey(p.sku);
+      const col = normalizeKey(p.collection_name);
+      const sty = normalizeKey(p.door_style);
       const comp = compressSku(sku);
       
       const fullKey = `${sku}|${col}|${sty}`;
       if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Index for global fallback (Essential for Universal Accessories like UF3)
-      // Prioritize "UNIVERSAL" or sheet-level styles if found
+      // Global fallback (Prioritize accessory sheets if possible)
       if (!globalSkuMap.has(sku) || sty === "UNIVERSAL") {
         globalSkuMap.set(sku, p);
       }
@@ -82,18 +78,14 @@ export async function POST(req: Request) {
       if (!compressedMap.has(comp)) compressedMap.set(comp, p);
     });
 
-    /**
-     * RECURSIVE MATCHING ALGORITHM
-     */
     function findBestMatch(itemCode: string, collection: string, style: string) {
-      const target = String(itemCode || "").trim().toUpperCase();
+      const target = normalizeKey(itemCode);
       if (!target) return null;
 
-      const col = normalizeHeader(collection);
-      const sty = normalizeHeader(style);
+      const col = normalizeKey(collection);
+      const sty = normalizeKey(style);
       const targetComp = compressSku(target);
 
-      // Search Variants
       const variants = [
         target,
         target.replace(/\s+/g, ''),
@@ -105,18 +97,18 @@ export async function POST(req: Request) {
 
       const searchVariants = Array.from(new Set(variants.filter(Boolean)));
 
-      // TIER 1: EXACT LOCAL (Same Room/Collection/Style)
+      // TIER 1: EXACT LOCAL
       for (const v of searchVariants) {
         const key = `${v}|${col}|${sty}`;
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_EXACT' };
       }
 
-      // TIER 2: GLOBAL CATALOG (Searches all sheets, accessory lists, etc.)
+      // TIER 2: GLOBAL CATALOG (Crucial for UF3, UF342 from second sheet)
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
-      // TIER 3: COMPRESSED FUZZY (Ignores all formatting)
+      // TIER 3: SUPER COMPRESSED FUZZY
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'GLOBAL_FUZZY' };
 
       return null;
@@ -129,10 +121,7 @@ export async function POST(req: Request) {
       const roomCol = room.collection || "";
       const roomSty = room.door_style || "";
       
-      const allItems = [
-        ...(room.primaryCabinets || []),
-        ...(room.otherItems || [])
-      ];
+      const allItems = [...(room.primaryCabinets || []), ...(room.otherItems || [])];
 
       for (const item of allItems) {
         const result = findBestMatch(item.code, roomCol, roomSty);
@@ -175,7 +164,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Atomic Update
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     
     if (bomItems.length > 0) {
