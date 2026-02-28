@@ -11,7 +11,6 @@ export function cn(...inputs: ClassValue[]) {
  * 1. Convert to uppercase
  * 2. Remove noise tokens: {L}, {R}, X [number] DP
  * 3. Remove spaces, dashes, and special characters
- * 4. DO NOT remove 'BUTT' or 'BASE' here as they might be part of specific codes
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
@@ -20,10 +19,27 @@ export function normalizeSku(sku: string | any): string {
   // Remove noise patterns
   s = s.replace(/\{L\}|\{R\}/g, '');
   s = s.replace(/X\s*\d+\s*DP/g, '');
-  s = s.replace(/BUTT|BASE|WALL|DP/g, ''); // User requested removal to match base codes
+  s = s.replace(/BUTT|BASE|WALL|DP/g, ''); 
   
   // Keep only alphanumeric
   return s.replace(/[^A-Z0-9]/g, '').trim();
+}
+
+/**
+ * INTELLIGENT PREFIX MAPPING for PDF Categorization
+ * Maps specific prefixes to generalized production categories
+ */
+export function detectCategory(sku: string): string {
+  if (!sku) return 'Accessories';
+  const s = String(sku).toUpperCase();
+  
+  if (s.startsWith('W')) return 'Wall Cabinets';
+  if (s.startsWith('SB') || s.startsWith('B') || s.startsWith('DB')) return 'Base Cabinets';
+  if (s.startsWith('V')) return 'Vanity Cabinets';
+  if (s.startsWith('T') || s.startsWith('P') || s.startsWith('OC')) return 'Tall Cabinets';
+  if (s.includes('HINGE') || s.includes('PULL') || s.startsWith('F')) return 'Hinges & Hardware';
+  
+  return 'Accessories';
 }
 
 /**
@@ -66,18 +82,4 @@ export function calculateSimilarity(input: string, database: string): number {
   if (s1 === s2) return 1.0;
   if (s1.includes(s2) || s2.includes(s1)) return 0.9;
   return stringSimilarity.compareTwoStrings(s1, s2);
-}
-
-/**
- * INTELLIGENT PREFIX MAPPING
- * Maps specific prefixes to generalized categories
- */
-export function detectCategory(sku: string): string {
-  const s = normalizeSku(sku);
-  if (s.startsWith('W')) return 'WALL';
-  if (s.startsWith('SB') || s.startsWith('B')) return 'BASE';
-  if (s.startsWith('V')) return 'VANITY';
-  if (s.startsWith('T')) return 'TALL';
-  if (s.startsWith('UF') || s.startsWith('F')) return 'ACCESSORY';
-  return 'OTHER';
 }

@@ -24,10 +24,15 @@ import {
   ChevronRight,
   FileText,
   Download,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck,
+  Building2,
+  Phone,
+  MapPin,
+  CalendarDays
 } from 'lucide-react';
 import Link from 'next/link';
-import { cn } from '@/lib/utils';
+import { cn, detectCategory } from '@/lib/utils';
 import { updateBomItemAction, updateProjectAction } from '../../actions';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
@@ -144,7 +149,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const rooms = Array.from(new Set(bom.map(i => i.room)));
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-32">
+    <main className="min-h-screen bg-slate-50 pb-32 print:bg-white print:pb-0">
       {/* Dynamic Header */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 h-20 flex items-center justify-between print:hidden">
         <div className="flex items-center gap-6">
@@ -230,7 +235,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                     <Input 
                       value={room}
                       onChange={(e) => handleUpdateRoomName(room, e.target.value)}
-                      className="text-xl font-black uppercase tracking-tight text-slate-900 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-sky-100 p-0 h-auto"
+                      className="text-xl font-black uppercase tracking-tight text-slate-900 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-sky-100 p-0 h-auto no-truncate"
                     />
                   </div>
                 </div>
@@ -274,7 +279,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                              />
                           </TableCell>
                           <TableCell className="text-right font-black text-slate-900 pr-6 font-mono">
-                            ${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
                         </TableRow>
                       );
@@ -336,21 +341,21 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                      <div className="space-y-3">
                         <div className="flex justify-between items-center text-slate-500">
                            <span className="text-[10px] font-bold uppercase tracking-widest">Subtotal</span>
-                           <span className="font-mono text-lg font-bold text-slate-900">${materialSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                           <span className="font-mono text-lg font-bold text-slate-900">${materialSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                         {discount > 0 && (
                           <div className="flex justify-between items-center text-emerald-600">
                              <span className="text-[10px] font-bold uppercase tracking-widest">Discount ({discount}%)</span>
-                             <span className="font-mono text-lg font-bold">-${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                             <span className="font-mono text-lg font-bold">-${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                         )}
                         <div className="flex justify-between items-center text-slate-500">
                            <span className="text-[10px] font-bold uppercase tracking-widest">Logistics Fees</span>
-                           <span className="font-mono text-lg font-bold text-slate-900">${(Number(shipping) + Number(fuel)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                           <span className="font-mono text-lg font-bold text-slate-900">${(Number(shipping) + Number(fuel)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                         <div className="flex justify-between items-center text-slate-500">
                            <span className="text-[10px] font-bold uppercase tracking-widest">Taxes ({taxRate}%)</span>
-                           <span className="font-mono text-lg font-bold text-slate-900">${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                           <span className="font-mono text-lg font-bold text-slate-900">${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                      </div>
 
@@ -358,7 +363,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                         <div className="flex justify-between items-baseline">
                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-400">Total Investment</span>
                            <span className="text-4xl font-black font-mono tracking-tighter">
-                              ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                            </span>
                         </div>
                      </div>
@@ -421,7 +426,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           </div>
         )}
 
-        {/* STEP 3: FINAL PREVIEW & PRINT */}
+        {/* STEP 3: FINAL PREVIEW & PRINT (PDF TEMPLATE) */}
         {step === 'preview' && (
           <div className="animate-in fade-in zoom-in-95 duration-500 print:bg-white print:p-0">
              <div className="flex justify-between items-center mb-8 print:hidden">
@@ -438,92 +443,177 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 </div>
              </div>
 
-             <Card className="bg-white p-16 rounded-none shadow-2xl border-none print:shadow-none print:p-0">
-                {/* INVOICE HEADER */}
-                <div className="flex justify-between items-start border-b-2 border-slate-900 pb-12 mb-12">
-                   <div className="space-y-3">
-                      <div className="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-3xl mb-4">
-                        {manufacturerName.charAt(0)}
-                      </div>
-                      <h2 className="text-4xl font-black text-slate-900 tracking-tighter">{manufacturerName}</h2>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Authorized Production Facility</p>
-                   </div>
-                   <div className="text-right space-y-4">
-                      <div className="space-y-1">
-                        <h1 className="text-5xl font-black text-slate-900 tracking-tighter">QUOTATION</h1>
-                        <p className="text-sm font-bold text-slate-400">Project Ref: {project.project_name.toUpperCase()}</p>
-                      </div>
-                      <div className="space-y-1 pt-4">
-                        <p className="text-sm font-black text-slate-900 uppercase">Billing Information</p>
-                        <p className="text-sm text-slate-600 font-bold">{customer.name || 'Valued Client'}</p>
-                        <p className="text-sm text-slate-500">{customer.address || 'N/A'}</p>
-                        <p className="text-sm text-slate-500">{customer.phone || 'N/A'}</p>
-                        <p className="text-xs text-slate-400 pt-2 font-bold uppercase tracking-widest">Date: {new Date().toLocaleDateString()}</p>
-                      </div>
-                   </div>
-                </div>
-
-                {/* LINE ITEMS */}
-                {rooms.map(room => (
-                  <div key={room} className="mb-12">
-                    <h3 className="text-lg font-black bg-slate-100 px-6 py-2 rounded-lg text-slate-900 mb-6 uppercase tracking-widest">{room}</h3>
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-b-2 border-slate-200">
-                          <TableHead className="font-black text-slate-900 text-xs">SKU / ITEM CODE</TableHead>
-                          <TableHead className="font-black text-slate-900 text-xs text-center">QTY</TableHead>
-                          <TableHead className="font-black text-slate-900 text-xs text-right">UNIT PRICE</TableHead>
-                          <TableHead className="font-black text-slate-900 text-xs text-right pr-4">TOTAL</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {bom.filter(i => i.room === room).map(item => (
-                          <TableRow key={item.id} className="border-b border-slate-100">
-                            <TableCell className="font-bold text-slate-900 py-4">{item.sku}</TableCell>
-                            <TableCell className="text-center font-bold text-slate-600">{item.qty}</TableCell>
-                            <TableCell className="text-right font-mono font-bold text-slate-600">${item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                            <TableCell className="text-right font-mono font-black text-slate-900 pr-4">${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ))}
-
-                {/* SUMMARY BOX */}
-                <div className="flex justify-end pt-12 border-t-2 border-slate-900 mt-12">
-                   <div className="w-full max-w-sm space-y-4">
-                      <div className="flex justify-between items-center text-slate-500 text-sm font-bold">
-                         <span>Material Subtotal</span>
-                         <span className="font-mono">${materialSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                      </div>
-                      {discount > 0 && (
-                        <div className="flex justify-between items-center text-emerald-600 text-sm font-bold">
-                           <span>Dealer Discount ({discount}%)</span>
-                           <span className="font-mono">-${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+             <Card className="bg-white p-12 md:p-16 rounded-none shadow-2xl border-none print:shadow-none print:p-0">
+                {/* INVOICE HEADER BLOCK */}
+                <div className="flex flex-col md:flex-row justify-between items-start gap-12 border-b-4 border-slate-900 pb-12 mb-12">
+                   {/* DEALER LOGO & INFO */}
+                   <div className="space-y-4 flex-1">
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="w-20 h-20 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-4xl">
+                          {manufacturerName.charAt(0)}
                         </div>
-                      )}
-                      <div className="flex justify-between items-center text-slate-500 text-sm font-bold">
-                         <span>Logistics (Shipping/Fuel)</span>
-                         <span className="font-mono">${(Number(shipping) + Number(fuel)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        <div>
+                          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{manufacturerName} ORDER</h2>
+                          <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 w-fit">
+                             <ShieldCheck className="w-3 h-3 text-sky-600" />
+                             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Authorized Facility</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex justify-between items-center text-slate-500 text-sm font-bold">
-                         <span>Sales Tax ({taxRate}%)</span>
-                         <span className="font-mono">${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="bg-slate-900 p-8 rounded-2xl text-white mt-6">
-                         <div className="flex justify-between items-baseline">
-                            <span className="text-xs font-black uppercase tracking-[0.2em]">Grand Total</span>
-                            <span className="text-4xl font-black font-mono tracking-tighter">
-                               ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                            </span>
+                      <div className="space-y-1">
+                         <h4 className="text-xs font-black uppercase tracking-widest text-slate-900">Dealer Information</h4>
+                         <div className="text-sm text-slate-600 font-medium flex items-center gap-2">
+                            <Building2 className="w-3 h-3 text-slate-400" /> KABS Premium Cabinetry Co.
+                         </div>
+                         <div className="text-sm text-slate-500 flex items-center gap-2">
+                            <MapPin className="w-3 h-3 text-slate-400" /> 102 West Montgomery St, TX
+                         </div>
+                         <div className="text-sm text-slate-500 flex items-center gap-2">
+                            <Phone className="w-3 h-3 text-slate-400" /> (800) 555-0199
                          </div>
                       </div>
                    </div>
+
+                   {/* PROJECT & CUSTOMER INFO */}
+                   <div className="text-right space-y-6 flex-1">
+                      <div>
+                        <h1 className="text-6xl font-black text-slate-900 tracking-tighter">QUOTATION</h1>
+                        <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em] mt-1">Ref: {project.project_name}</p>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-8 text-left justify-end ml-auto">
+                        <div className="space-y-1">
+                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Order Date</h4>
+                          <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                            <CalendarDays className="w-3 h-3 text-sky-500" /> {new Date().toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Project Type</h4>
+                          <p className="text-sm font-bold text-slate-900 uppercase">Cabinetry Takeoff</p>
+                        </div>
+                      </div>
+
+                      <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100 text-left">
+                         <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Attention To / Shipping Site</h4>
+                         <p className="text-base font-black text-slate-900 uppercase leading-tight">{customer.name || 'Valued Client'}</p>
+                         <p className="text-sm text-slate-600 mt-1">{customer.address || 'N/A'}</p>
+                         <p className="text-sm text-slate-500 font-medium mt-1">{customer.phone || 'N/A'}</p>
+                      </div>
+                   </div>
                 </div>
 
-                <div className="mt-20 text-[9px] text-slate-400 font-bold uppercase tracking-[0.3em] text-center">
-                   Verified Architectural Estimation • Powered by KABS AI v21.4
+                {/* ROOM SECTIONS (CATEGORIZED TABLES) */}
+                {rooms.map(room => {
+                  const roomItems = bom.filter(i => i.room === room);
+                  const categories = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets', 'Hinges & Hardware', 'Accessories'];
+                  const roomTotal = roomItems.reduce((acc, i) => acc + (i.unit_price * i.qty), 0);
+
+                  return (
+                    <div key={room} className="mb-16 avoid-break">
+                      {/* Room Banner */}
+                      <div className="bg-slate-100 px-8 py-3 rounded-lg flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-black text-slate-900 uppercase tracking-widest">{room}</h3>
+                        <div className="text-xs font-bold text-slate-500">Unit Count: {roomItems.length}</div>
+                      </div>
+
+                      {categories.map(cat => {
+                        const catItems = roomItems.filter(i => detectCategory(i.sku) === cat);
+                        if (catItems.length === 0) return null;
+
+                        return (
+                          <div key={cat} className="mb-8 pl-4">
+                            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-600 mb-3 border-l-2 border-sky-500 pl-3">{cat}</h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="border-b-2 border-slate-200 hover:bg-transparent">
+                                  <TableHead className="font-black text-slate-900 text-[10px] uppercase w-1/2">Product Description / SKU</TableHead>
+                                  <TableHead className="font-black text-slate-900 text-[10px] uppercase text-center w-20">Qty</TableHead>
+                                  <TableHead className="font-black text-slate-900 text-[10px] uppercase text-right">Unit Price</TableHead>
+                                  <TableHead className="font-black text-slate-900 text-[10px] uppercase text-right pr-4">Total</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {catItems.map(item => (
+                                  <TableRow key={item.id} className="border-b border-slate-100 hover:bg-transparent">
+                                    <TableCell className="font-bold text-slate-800 py-3 text-sm">{item.sku}</TableCell>
+                                    <TableCell className="text-center font-bold text-slate-600">{item.qty}</TableCell>
+                                    <TableCell className="text-right font-mono text-xs text-slate-500">${item.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                                    <TableCell className="text-right font-mono font-black text-slate-900 pr-4">${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        );
+                      })}
+
+                      {/* Room Subtotal Line */}
+                      <div className="flex justify-end pr-4 py-4 border-t border-slate-200">
+                         <div className="text-right">
+                           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-4">Area Investment ({room})</span>
+                           <span className="text-xl font-black font-mono text-slate-900">${roomTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                         </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* FINAL SUMMARY PAGE / FOOTER */}
+                <div className="mt-20 pt-12 border-t-4 border-slate-900 avoid-break">
+                   <div className="flex flex-col md:flex-row justify-between items-start gap-12">
+                      <div className="flex-1 space-y-6">
+                         <div className="p-8 rounded-[2rem] bg-sky-50 border border-sky-100">
+                            <h4 className="text-sm font-black text-sky-900 uppercase tracking-widest mb-2 flex items-center gap-2">
+                               <ShieldCheck className="w-5 h-5" /> Terms & Verification
+                            </h4>
+                            <p className="text-xs text-sky-700 leading-relaxed font-medium">
+                               This quotation is generated by KABS AI v21.4 and is based on the provided architectural blueprints. 
+                               Verification of field measurements is required before order release. Prices are valid for 30 days.
+                            </p>
+                         </div>
+                         <div className="text-center md:text-left">
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.4em]">Powered by KABS AI • Production Precision</p>
+                         </div>
+                      </div>
+
+                      <div className="w-full md:w-96 space-y-4">
+                         <div className="space-y-3">
+                            <div className="flex justify-between items-center text-slate-500 text-sm font-bold">
+                               <span className="uppercase tracking-widest">Gross Material Subtotal</span>
+                               <span className="font-mono">${materialSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                            {discount > 0 && (
+                              <div className="flex justify-between items-center text-emerald-600 text-sm font-bold">
+                                 <span className="uppercase tracking-widest">Dealer Discount ({discount}%)</span>
+                                 <span className="font-mono">-${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-center text-slate-500 text-sm font-bold">
+                               <span className="uppercase tracking-widest">Net Material Total</span>
+                               <span className="font-mono">${adjustedSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-slate-500 text-sm font-bold">
+                               <span className="uppercase tracking-widest">Logistics (Shipping/Fuel)</span>
+                               <span className="font-mono">${(Number(shipping) + Number(fuel)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-slate-500 text-sm font-bold pb-4">
+                               <span className="uppercase tracking-widest">Sales Tax ({taxRate}%)</span>
+                               <span className="font-mono">${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                         </div>
+
+                         <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white shadow-2xl">
+                            <div className="flex justify-between items-baseline mb-2">
+                               <span className="text-[10px] font-black uppercase tracking-[0.4em] text-sky-400">Total Investment</span>
+                               <span className="text-5xl font-black font-mono tracking-tighter">
+                                  ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                               </span>
+                            </div>
+                            <p className="text-[9px] text-slate-500 font-bold text-right uppercase tracking-widest">All Values in USD</p>
+                         </div>
+                      </div>
+                   </div>
                 </div>
              </Card>
           </div>
