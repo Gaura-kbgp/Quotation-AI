@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 
 /**
- * ENTERPRISE-GRADE HIGH-PRECISION PRICING PARSER (v41.0)
+ * ENTERPRISE-GRADE HIGH-PRECISION PRICING PARSER (v42.0)
  * Implements Deep-Header Un-merging and Bi-Directional Schema Detection.
  * Scans ALL sheets and ALL rows without limits.
  */
@@ -9,7 +9,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const pricing: any[] = [];
   
-  // SCAN EVERY SHEET IN THE WORKBOOK (Unlimited Sheets - Supporting 60+)
+  // SCAN EVERY SHEET IN THE WORKBOOK (Unlimited Sheets)
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
@@ -20,11 +20,16 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
     let skuColIdx = -1;
     let headerRowIdx = -1;
+    
     // Expanded keywords to catch diverse sheet layouts
-    const skuKeywords = ["SKU", "ITEM SKU", "CODE", "MODEL", "ITEM CODE", "PART NUMBER", "CABINET SKU", "MODEL NUMBER", "ITEM", "PRODUCT CODE", "DESCRIPTION"];
+    const skuKeywords = [
+      "SKU", "ITEM SKU", "CODE", "MODEL", "ITEM CODE", "PART NUMBER", 
+      "CABINET SKU", "MODEL NUMBER", "ITEM", "PRODUCT CODE", "DESCRIPTION",
+      "PART #", "MODEL #"
+    ];
 
-    // 1. DYNAMIC HEADER DETECTION (Scan up to 100 rows for the header)
-    for (let r = 0; r < Math.min(rows.length, 100); r++) {
+    // 1. DYNAMIC HEADER DETECTION (Scan up to 150 rows for the header)
+    for (let r = 0; r < Math.min(rows.length, 150); r++) {
       const row = rows[r];
       if (!row) continue;
       
@@ -46,7 +51,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     const headerGrid = rows.slice(0, headerRowIdx + 1).map(r => [...r]);
     
     // Vertical propagation
-    for (let c = 0; c < 200; c++) {
+    for (let c = 0; c < 300; c++) {
       let lastVal = "";
       for (let r = 0; r < headerGrid.length; r++) {
         const val = String(headerGrid[r][c] || "").trim();
@@ -90,13 +95,13 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       };
     });
 
-    // 4. EXHAUSTIVE DATA EXTRACTION (Scanning up to 50,000+ rows)
+    // 4. EXHAUSTIVE DATA EXTRACTION
     for (let r = headerRowIdx + 1; r < rows.length; r++) {
       const row = rows[r];
       if (!row || row.length === 0) continue;
 
       const rawSku = String(row[skuColIdx] || "").trim();
-      if (!rawSku || rawSku.toUpperCase() === "SKU") continue;
+      if (!rawSku || skuKeywords.some(k => rawSku.toUpperCase() === k)) continue;
       
       const displaySku = rawSku.toUpperCase();
 

@@ -3,7 +3,7 @@ import { createServerSupabase } from '@/lib/supabase-server';
 export const maxDuration = 300;
 
 /**
- * ULTIMATE SMART PRICING ENGINE (v41.0)
+ * ULTIMATE SMART PRICING ENGINE (v42.0)
  * Implements Paginated Catalog Retrieval and Recursive Fallback Matching.
  * Handles 50,000+ records and multi-sheet dependencies.
  */
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     // EXHAUSTIVE CATALOG RETRIEVAL (Pagination for massive catalogs)
     let allPricing: any[] = [];
     let from = 0;
-    const step = 1000; // Supabase safe limit
+    const step = 1000;
     let hasMore = true;
 
     while (hasMore) {
@@ -71,21 +71,21 @@ export async function POST(req: Request) {
      * Sequence: Exact -> Compressed -> Descriptor Stripping -> Global Catalog Search
      */
     function findBestMatch(itemCode: string, collection: string, style: string) {
-      const target = itemCode.trim().toUpperCase();
+      const target = String(itemCode || "").trim().toUpperCase();
       if (!target) return null;
 
-      const col = collection.trim().toUpperCase();
-      const sty = style.trim().toUpperCase();
+      const col = String(collection || "").trim().toUpperCase();
+      const sty = String(style || "").trim().toUpperCase();
 
       // Generate search variants using regex for precision
       const variants = [
-        target, // B30 BUTT
-        target.replace(/\s+/g, ''), // B30BUTT
-        target.replace(/\s*BUTT$/g, ''), // B30
+        target, // W3036 BUTT
+        target.replace(/\s+/g, ''), // W3036BUTT
+        target.replace(/\s*BUTT$/g, ''), // W3036
         target.replace(/\s*[HLR]$/g, ''), // B15
         target.replace(/\s*FL$/g, ''), // RR120
         target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''), // Base Model
-        target.split(/\s+/)[0] // First word only
+        target.split(/\s+/)[0] // First word only (e.g. "B30" from "B30 24 DP")
       ];
 
       const searchVariants = Array.from(new Set(variants.filter(Boolean)));
