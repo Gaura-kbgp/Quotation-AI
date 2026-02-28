@@ -22,8 +22,8 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     let headerRowIdx = -1;
     const skuKeywords = ["SKU", "ITEM SKU", "CODE", "MODEL", "ITEM CODE", "PART NUMBER", "CABINET SKU", "MODEL NUMBER", "ITEM", "PRODUCT CODE"];
 
-    // 1. DYNAMIC HEADER DETECTION (Scan until found - no row limit)
-    for (let r = 0; r < Math.min(rows.length, 1000); r++) {
+    // 1. DYNAMIC HEADER DETECTION (Scan entire sheet to find the header row)
+    for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       if (!row) continue;
       

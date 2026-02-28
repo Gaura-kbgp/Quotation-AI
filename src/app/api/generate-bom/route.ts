@@ -1,9 +1,9 @@
 import { createServerSupabase } from '@/lib/supabase-server';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /**
- * ULTIMATE SMART PRICING ENGINE (v40.0)
+ * ULTIMATE SMART PRICING ENGINE (v41.0)
  * High-Precision matching with recursive fallbacks and paginated global catalog lookup.
  * Scans ALL pricing records for ALL sheets.
  */
@@ -78,16 +78,24 @@ export async function POST(req: Request) {
       const col = collection.trim().toUpperCase();
       const sty = style.trim().toUpperCase();
 
+      // CLEAN TARGET: Remove all spaces for the base comparison
+      const compressedTarget = target.replace(/\s+/g, '');
+
       // GENERATE SEARCH VARIANTS
-      const variants = [
-        target, // 1. Exact Match
-        target.replace(/\s+/g, ''), // 2. No Spaces
-        target.replace(" BUTT", ""), // 3. Base Model (No BUTT)
-        target.replace(" BUTT", "").replace(/[HLR]$/, ""), // 4. Base (No BUTT, No Handing)
-        target.replace(/[HLR]$/, ""), // 5. Handing Only
-        target.replace("FL", "").trim(), // 6. Molding Variant
-        target.replace(/ (BUTT|H|L|R|FL)$/, "").trim() // 7. Aggressive Base
-      ];
+      const variants = new Set([
+        target,
+        compressedTarget,
+        target.replace(" BUTT", ""),
+        compressedTarget.replace("BUTT", ""),
+        target.replace(/[HLR]$/, ""), // Remove handing
+        compressedTarget.replace(/[HLR]$/, ""),
+        target.replace(" BUTT", "").replace(/[HLR]$/, ""),
+        compressedTarget.replace("BUTT", "").replace(/[HLR]$/, ""),
+        target.replace("FL", ""),
+        compressedTarget.replace("FL", ""),
+        target.replace(/ (BUTT|H|L|R|FL)$/, "").trim(),
+        compressedTarget.replace(/(BUTT|H|L|R|FL)$/, "").trim()
+      ]);
 
       // 1. Try Local Collection Match (High Precision)
       for (const v of variants) {
