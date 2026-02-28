@@ -3,8 +3,9 @@ import { createServerSupabase } from '@/lib/supabase-server';
 export const maxDuration = 120;
 
 /**
- * SMART PRICING ENGINE (v39.0)
- * High-Precision matching with recursive fallbacks and global catalog lookup.
+ * ULTIMATE SMART PRICING ENGINE (v40.0)
+ * High-Precision matching with recursive fallbacks and paginated global catalog lookup.
+ * Scans ALL pricing records for ALL sheets.
  */
 export async function POST(req: Request) {
   try {
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // EXHAUSTIVE CATALOG RETRIEVAL (Bypass limits via pagination)
+    // EXHAUSTIVE CATALOG RETRIEVAL (Bypass limits via pagination for 50,000+ records)
     let allPricing: any[] = [];
     let from = 0;
     const step = 5000;
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
         .eq('manufacturer_id', manufacturerId)
         .range(from, from + step - 1);
 
-      if (sError) throw new Error(`Database error: ${sError.message}`);
+      if (sError) throw new Error(`Database fetch error: ${sError.message}`);
       if (!data || data.length === 0) {
         hasMore = false;
       } else {
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // BUILD MULTI-INDEX LOOKUP
+    // BUILD MULTI-INDEX LOOKUP (O(1) access)
     const localMap = new Map<string, any>(); // Key: SKU|Collection|Style
     const globalSkuMap = new Map<string, any>(); // Key: SKU (for universal items)
 
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
       
       localMap.set(`${sku}|${col}|${sty}`, p);
       
-      // Global map prioritized by alphabetical sheet source (often Accessories come first)
+      // Global map prioritized for accessories/universal items
       if (!globalSkuMap.has(sku)) {
         globalSkuMap.set(sku, p);
       }
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
 
     /**
      * RESILIENT MATCHER
-     * Logic: Strict Match -> Compressed Match -> Descriptor Fallback -> Global Search
+     * Logic: Exact -> Compressed -> Descriptor Fallback -> Variant Stripping -> Global Search
      */
     function findBestMatch(itemCode: string, collection: string, style: string) {
       const target = itemCode.trim().toUpperCase();
@@ -77,14 +78,15 @@ export async function POST(req: Request) {
       const col = collection.trim().toUpperCase();
       const sty = style.trim().toUpperCase();
 
-      // VARIANT CHAIN (Strict -> No Space -> No BUTT -> No Handing -> Base)
+      // GENERATE SEARCH VARIANTS
       const variants = [
-        target,
-        target.replace(/\s+/g, ''),
-        target.replace(" BUTT", ""),
-        target.replace(" BUTT", "").replace(/[HLR]$/, ""),
-        target.replace(/[HLR]$/, ""),
-        target.replace(/ (BUTT|H|L|R)$/, "").replace(/[HLR]$/, "").trim()
+        target, // 1. Exact Match
+        target.replace(/\s+/g, ''), // 2. No Spaces
+        target.replace(" BUTT", ""), // 3. Base Model (No BUTT)
+        target.replace(" BUTT", "").replace(/[HLR]$/, ""), // 4. Base (No BUTT, No Handing)
+        target.replace(/[HLR]$/, ""), // 5. Handing Only
+        target.replace("FL", "").trim(), // 6. Molding Variant
+        target.replace(/ (BUTT|H|L|R|FL)$/, "").trim() // 7. Aggressive Base
       ];
 
       // 1. Try Local Collection Match (High Precision)
@@ -93,7 +95,7 @@ export async function POST(req: Request) {
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL' };
       }
 
-      // 2. Try Global Catalog Search (Universal Items like UF3, RR120)
+      // 2. Try Global Catalog Search (Universal items like UF3, RR120)
       for (const v of variants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL' };
       }
@@ -155,10 +157,15 @@ export async function POST(req: Request) {
       }
     }
 
-    // Atomic Clear and Rewrite
+    // Atomic Clear and Rewrite for the project
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
-      await supabase.from('quotation_boms').insert(bomItems);
+      // Chunk insertions for high-scale BOMs
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < bomItems.length; i += BATCH_SIZE) {
+        const batch = bomItems.slice(i, i + BATCH_SIZE);
+        await supabase.from('quotation_boms').insert(batch);
+      }
     }
 
     await supabase.from('quotation_projects').update({ status: 'Priced' }).eq('id', projectId);
@@ -166,7 +173,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Pricing Engine] Failure:', err);
+    console.error('[Ultimate Pricing Engine] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
