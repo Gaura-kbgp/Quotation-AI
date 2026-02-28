@@ -118,7 +118,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           qty: item.qty,
           unit_price: item.unit_price, 
           line_total: item.unit_price * item.qty,
-          room: item.room
+          room: item.room,
+          is_billable: item.is_billable
         })
       ));
       await updateProjectAction(id, {
@@ -184,14 +185,14 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       <TableBody>
                         {primaryItems.map((item) => {
                           const itemIdx = bom.findIndex(b => b.id === item.id);
-                          const isMissing = item.precision_level === 'NOT_FOUND';
+                          const isMissing = item.precision_level === 'NOT_FOUND' || item.matched_sku.includes('not present');
                           return (
                             <TableRow key={item.id} className={cn("h-16 hover:bg-white border-b border-slate-50", isMissing && "bg-red-50/30")}>
                               <TableCell className="w-1/2">
                                 <div className="font-bold text-slate-900">{item.sku}</div>
                                 <div className={cn("text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 mt-1", isMissing ? "text-red-500" : "text-sky-600")}>
                                   {isMissing ? <AlertCircle className="w-3 h-3" /> : <ShieldCheck className="w-3 h-3" />}
-                                  {isMissing ? 'PRICE NOT FOUND IN GUIDE' : `Catalog Match: ${item.matched_sku}`}
+                                  {isMissing ? 'SKU not present in pricing guide' : `Catalog Match: ${item.matched_sku}`}
                                 </div>
                               </TableCell>
                               <TableCell className="text-center font-bold">
@@ -225,7 +226,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                               <TableBody>
                                 {otherItems.map((item) => {
                                   const itemIdx = bom.findIndex(b => b.id === item.id);
-                                  const isMissing = item.precision_level === 'NOT_FOUND';
+                                  const isMissing = item.precision_level === 'NOT_FOUND' || item.matched_sku.includes('not present');
                                   return (
                                     <TableRow key={item.id} className={cn("h-12 border-b border-slate-50/50", !item.is_billable && "opacity-40", isMissing && "bg-red-50/20")}>
                                       <TableCell className="pl-4">

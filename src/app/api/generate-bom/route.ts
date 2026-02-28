@@ -1,11 +1,11 @@
 import { createServerSupabase } from '@/lib/supabase-server';
-import { normalizeSku, calculateSimilarity, getBaseSku } from '@/lib/utils';
+import { normalizeSku } from '@/lib/utils';
 
 export const maxDuration = 120;
 
 /**
- * SMART PRICING ENGINE (v28.0)
- * Implements full-catalog lookup and recursive matching.
+ * STRICT EXACT PRICING ENGINE (v29.0)
+ * Implements "Match EXACT SKU" rule.
  */
 export async function POST(req: Request) {
   try {
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // Fetch ALL pricing records for this manufacturer across all sheets
+    // Fetch ALL pricing records for this manufacturer
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
@@ -35,10 +35,11 @@ export async function POST(req: Request) {
 
     if (sError) throw new Error(`Database error: ${sError.message}`);
 
-    // Build Global SKU -> Price Map for O(1) matching
+    // Build Exact Lookup Map
     const pricingMap = new Map<string, any>();
     allPricing?.forEach(p => {
-      const key = `${normalizeSku(p.sku)}|${String(p.collection_name || "").toUpperCase()}|${String(p.door_style || "").toUpperCase()}`;
+      // Key: SKU (Strict) | COLLECTION | STYLE
+      const key = `${p.sku.toUpperCase().trim()}|${String(p.collection_name || "").toUpperCase()}|${String(p.door_style || "").toUpperCase()}`;
       pricingMap.set(key, p);
     });
 
@@ -49,83 +50,62 @@ export async function POST(req: Request) {
     for (const room of rooms) {
       const selectedCollection = (room.collection || "").trim().toUpperCase();
       const selectedStyle = (room.door_style || "").trim().toUpperCase();
-      const sections = {
-        'Wall Cabinets': room.primaryCabinets || [],
-        'Other Items': room.otherItems || []
-      };
+      
+      const sections = [
+        ...(room.primaryCabinets || []),
+        ...(room.otherItems || [])
+      ];
 
-      for (const [sectionName, items] of Object.entries(sections)) {
-        const cabinetItems = items as any[];
-        for (const cab of cabinetItems) {
-          if (!cab.code) continue;
-          totalCount++;
+      for (const cab of sections) {
+        if (!cab.code) continue;
+        totalCount++;
 
-          const rawInput = String(cab.code).trim();
-          const normInput = normalizeSku(rawInput);
-          const baseInput = getBaseSku(rawInput);
+        const exactSku = cab.code.toUpperCase().trim();
+        const lookupKey = `${exactSku}|${selectedCollection}|${selectedStyle}`;
+        
+        let match = pricingMap.get(lookupKey);
+        let matchType = 'EXACT';
+
+        // GLOBAL FALLBACK (Strict SKU match across any collection/style if exact spec fails)
+        if (!match && allPricing) {
+           match = allPricing.find(p => p.sku.toUpperCase().trim() === exactSku);
+           if (match) matchType = 'GLOBAL_EXACT';
+        }
+
+        if (match) {
+          matchedCount++;
+          const price = Number(match.price) || 0;
           
-          let match = null;
-          let matchType = 'NOT_FOUND';
-
-          // 1. Target Specification Match (Exact)
-          const specKey = `${normInput}|${selectedCollection}|${selectedStyle}`;
-          match = pricingMap.get(specKey);
-          
-          if (match) {
-            matchType = 'EXACT_SPEC';
-          } else {
-            // 2. Target Specification Match (Base SKU)
-            const baseSpecKey = `${baseInput}|${selectedCollection}|${selectedStyle}`;
-            match = pricingMap.get(baseSpecKey);
-            if (match) matchType = 'BASE_SPEC';
-          }
-
-          // 3. Global Fallback (Entire Catalog Search)
-          if (!match && allPricing) {
-             match = allPricing.find(p => normalizeSku(p.sku) === normInput);
-             if (match) {
-               matchType = 'GLOBAL_EXACT';
-             } else {
-               match = allPricing.find(p => normalizeSku(p.sku) === baseInput);
-               if (match) matchType = 'GLOBAL_BASE';
-             }
-          }
-
-          if (match) {
-            matchedCount++;
-            const price = Number(match.price) || 0;
-            
-            bomItems.push({
-              project_id: projectId,
-              sku: rawInput,
-              matched_sku: match.sku,
-              qty: Number(cab.qty) || 1,
-              unit_price: price,
-              line_total: price * (Number(cab.qty) || 1),
-              room: room.room_name,
-              collection: room.collection || match.collection_name,
-              door_style: room.door_style || match.door_style,
-              price_source: `Catalog (${matchType})`,
-              precision_level: matchType,
-              created_at: new Date().toISOString()
-            });
-          } else {
-            // Price Not Found
-            bomItems.push({
-              project_id: projectId,
-              sku: rawInput,
-              matched_sku: 'PRICE NOT FOUND',
-              qty: Number(cab.qty) || 1,
-              unit_price: 0,
-              line_total: 0,
-              room: room.room_name,
-              collection: room.collection || 'N/A',
-              door_style: room.door_style || 'N/A',
-              price_source: 'MISSING',
-              precision_level: 'NOT_FOUND',
-              created_at: new Date().toISOString()
-            });
-          }
+          bomItems.push({
+            project_id: projectId,
+            sku: cab.code,
+            matched_sku: match.sku,
+            qty: Number(cab.qty) || 1,
+            unit_price: price,
+            line_total: price * (Number(cab.qty) || 1),
+            room: room.room_name,
+            collection: room.collection || match.collection_name,
+            door_style: room.door_style || match.door_style,
+            price_source: `Guide (${matchType})`,
+            precision_level: matchType,
+            created_at: new Date().toISOString()
+          });
+        } else {
+          // NO MATCH FOUND
+          bomItems.push({
+            project_id: projectId,
+            sku: cab.code,
+            matched_sku: 'SKU not present in pricing guide',
+            qty: Number(cab.qty) || 1,
+            unit_price: 0,
+            line_total: 0,
+            room: room.room_name,
+            collection: selectedCollection || 'N/A',
+            door_style: selectedStyle || 'N/A',
+            price_source: 'MISSING',
+            precision_level: 'NOT_FOUND',
+            created_at: new Date().toISOString()
+          });
         }
       }
     }
