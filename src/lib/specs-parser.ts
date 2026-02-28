@@ -1,14 +1,13 @@
 import * as XLSX from 'xlsx';
+import { normalizeSku } from './utils';
 
 /**
  * Intelligent String Splitter
  * Splits multiple door styles/collections while preserving exact names.
- * Optimized for vertical/stacked text in Excel cells.
  */
 function smartSplit(raw: string): string[] {
   if (!raw) return [];
   
-  // First split by common delimiters including line breaks which are common in vertical Excel blocks
   let initialParts = String(raw).split(/[\n\r,]+/)
     .map(s => s.trim())
     .filter(Boolean);
@@ -25,7 +24,6 @@ function smartSplit(raw: string): string[] {
 
   let results: string[] = [];
   initialParts.forEach(part => {
-    // Check if the part itself has jammed keywords with no spaces (rare but possible in OCR/conversions)
     const subParts = part.split(jammedRegex)
       .map(s => s.trim())
       .filter(Boolean);
@@ -36,17 +34,13 @@ function smartSplit(raw: string): string[] {
 }
 
 /**
- * HIGH-PRECISION PRICING PARSER (v33.0)
- * Scans ALL sheets and EVERY row without arbitrary limits.
- * Propagates merged headers correctly.
- * Handles Accessory sheets with simplified structures.
+ * HIGH-PRECISION PRICING PARSER (v34.0)
+ * Uses compressed normalization for SKUs to ensure cross-sheet matching.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const pricing: any[] = [];
   
-  console.log(`[High-Precision Parser] Scanning ${workbook.SheetNames.length} sheets...`);
-
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
@@ -54,7 +48,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
     if (rawData.length < 2) continue;
 
-    // Detect SKU Column fuzzily
     let skuColIdx = -1;
     let headerRowIdx = -1;
 
@@ -71,20 +64,15 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       }
     }
 
-    // Fallback: If no "SKU" header found, assume Column 0 if it contains SKU-like alphanumeric data
     if (skuColIdx === -1) {
       skuColIdx = 0;
       headerRowIdx = 0;
-      console.log(`[Parser] Defaulting to Column 0 for SKU in sheet: ${sheetName}`);
     }
 
-    // Determine Context Headers
-    // Many accessory sheets don't have Row 1/2 for collection/style
     const collectionRow = headerRowIdx >= 2 ? (rawData[headerRowIdx - 2] || []) : [];
     const styleRow = headerRowIdx >= 1 ? (rawData[headerRowIdx - 1] || []) : [];
     const mainHeaderRow = rawData[headerRowIdx] || [];
 
-    // Pre-calculate merged header values (propagation)
     const normalizedCollections: string[] = [];
     let currentCollection = "";
     for (let c = 0; c < 100; c++) {
@@ -101,18 +89,16 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       normalizedStyles[c] = currentStyle;
     }
 
-    // SCAN ALL ROWS starting from after the detected header
     for (let r = headerRowIdx + 1; r < rawData.length; r++) {
       const row = rawData[r];
-      const excelSKU = String(row[skuColIdx] || "").trim().toUpperCase();
-      
-      // Clean SKU from invisible artifacts
-      const cleanedSKU = excelSKU.replace(/[\u200B-\u200D\uFEFF]/g, "");
-      
-      if (!cleanedSKU || ["SKU", "TOTAL", "PAGE", "SUBTOTAL", "FOOTER"].includes(cleanedSKU)) continue;
+      const rawExcelSKU = String(row[skuColIdx] || "").trim();
+      if (!rawExcelSKU) continue;
 
-      // Scan columns for pricing data
-      // For accessory sheets, Row[skuColIdx + 1] is often the only price column
+      // COMPRESSED NORMALIZATION: Remove all internal spaces for indexing
+      const indexedSKU = normalizeSku(rawExcelSKU);
+      
+      if (!indexedSKU || ["SKU", "TOTAL", "PAGE", "SUBTOTAL", "FOOTER"].includes(indexedSKU)) continue;
+
       for (let c = skuColIdx + 1; c < row.length; c++) {
         const rawPrice = row[c];
         if (rawPrice === null || rawPrice === undefined || rawPrice === "") continue;
@@ -120,11 +106,9 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         const priceNum = parseFloat(String(rawPrice).replace(/[^0-9.]/g, ""));
         if (isNaN(priceNum)) continue;
 
-        // Use propagated headers or fallback to sheet-level context
         let colCell = normalizedCollections[c] || "";
         let styleCell = normalizedStyles[c] || mainHeaderRow[c] || "";
 
-        // ACCESSORY SHEET FALLBACK: If no headers detected, use sheet name
         if (!colCell) colCell = sheetName.replace(/\d{4}/g, "").replace("Pricing", "").trim();
         if (!styleCell) styleCell = "STANDARD";
 
@@ -137,7 +121,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
               manufacturer_id: manufacturerId,
               collection_name: colName.toUpperCase().trim(),
               door_style: styleName.toUpperCase().trim(),
-              sku: cleanedSKU,
+              sku: indexedSKU, // STORE COMPRESSED
               price: priceNum,
               raw_source_file_id: fileId,
               created_at: new Date().toISOString()
@@ -148,6 +132,5 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   }
 
-  console.log(`[Parser] Extraction Complete: ${pricing.length} price points indexed.`);
   return pricing;
 }

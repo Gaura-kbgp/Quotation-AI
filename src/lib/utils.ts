@@ -18,13 +18,13 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * SKU NORMALIZATION (v31.0)
- * Simple normalization for basic comparison.
- * Falling back to smart pricing logic for complex matches.
+ * SKU NORMALIZATION (v34.0)
+ * Aggressive normalization that removes ALL internal spaces.
+ * This ensures "UF 342" matches "UF342".
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  return String(sku).toUpperCase().trim();
+  return String(sku).toUpperCase().replace(/\s+/g, '');
 }
 
 /**
@@ -34,7 +34,7 @@ export function normalizeSku(sku: string | any): string {
 export function getBaseSku(sku: string): string {
   const norm = normalizeSku(sku);
   // Remove common suffixes for categorization purposes
-  let base = norm.replace(" BUTT", "").replace(/H$/, "").replace(/ X .*$/, "");
+  let base = norm.replace("BUTT", "").replace(/[LRH]$/, "");
   return base.trim();
 }
 
