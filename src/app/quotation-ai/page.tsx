@@ -84,7 +84,7 @@ export default function QuotationAiPage() {
           </Link>
           <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-50 border border-sky-100">
             <Sparkles className="w-4 h-4 text-sky-600" />
-            <span className="text-xs font-bold uppercase tracking-widest text-sky-600">Gemini 2.0 AI</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-sky-600">Pro AI Engine</span>
           </div>
         </div>
 
@@ -159,7 +159,7 @@ export default function QuotationAiPage() {
              <AlertCircle className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
              <div className="text-xs text-sky-700 leading-relaxed">
                 <p className="font-bold mb-1">Deep Vision Extraction in Progress</p>
-                <p>Gemini 2.0 is currently analyzing floor plans, elevations, and schedules across the entire document. This process may take up to 2 minutes for complex sets.</p>
+                <p>The KABS proprietary AI is currently analyzing floor plans, elevations, and schedules across the entire document. This process may take up to 2 minutes for complex sets.</p>
              </div>
           </div>
         )}
