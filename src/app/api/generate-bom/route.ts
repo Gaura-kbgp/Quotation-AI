@@ -3,8 +3,8 @@ import { createServerSupabase } from '@/lib/supabase-server';
 export const maxDuration = 120;
 
 /**
- * SMART PRICING ENGINE (v38.0)
- * Enterprise-grade multi-stage fallback matching across global catalog.
+ * SMART PRICING ENGINE (v39.0)
+ * High-Precision matching with recursive fallbacks and global catalog lookup.
  */
 export async function POST(req: Request) {
   try {
@@ -26,10 +26,10 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // FULL CATALOG RETRIEVAL (Recursive pagination to ensure all 50k+ records are loaded)
+    // EXHAUSTIVE CATALOG RETRIEVAL (Bypass limits via pagination)
     let allPricing: any[] = [];
     let from = 0;
-    const step = 5000; // Larger chunks for speed
+    const step = 5000;
     let hasMore = true;
 
     while (hasMore) {
@@ -49,27 +49,26 @@ export async function POST(req: Request) {
       }
     }
 
-    // MULTI-LEVEL LOOKUP MAPS
-    const strictMap = new Map<string, any>();
-    const globalSkuMap = new Map<string, any>();
+    // BUILD MULTI-INDEX LOOKUP
+    const localMap = new Map<string, any>(); // Key: SKU|Collection|Style
+    const globalSkuMap = new Map<string, any>(); // Key: SKU (for universal items)
 
     allPricing.forEach(p => {
       const sku = String(p.sku || "").trim().toUpperCase();
       const col = String(p.collection_name || "").trim().toUpperCase();
       const sty = String(p.door_style || "").trim().toUpperCase();
       
-      const key = `${sku}|${col}|${sty}`;
-      strictMap.set(key, p);
-
-      // Global map prioritized by most descriptive source or highest price (prevents 0 matches)
+      localMap.set(`${sku}|${col}|${sty}`, p);
+      
+      // Global map prioritized by alphabetical sheet source (often Accessories come first)
       if (!globalSkuMap.has(sku)) {
         globalSkuMap.set(sku, p);
       }
     });
 
     /**
-     * SUPER-RESILIENT MATCHER
-     * Implementation: Exact -> Compressed -> No BUTT -> No Handing -> Global Fallback
+     * RESILIENT MATCHER
+     * Logic: Strict Match -> Compressed Match -> Descriptor Fallback -> Global Search
      */
     function findBestMatch(itemCode: string, collection: string, style: string) {
       const target = itemCode.trim().toUpperCase();
@@ -78,41 +77,25 @@ export async function POST(req: Request) {
       const col = collection.trim().toUpperCase();
       const sty = style.trim().toUpperCase();
 
-      // 1. EXACT LOCAL MATCH (Best Case)
-      const exactKey = `${target}|${col}|${sty}`;
-      if (strictMap.has(exactKey)) return { match: strictMap.get(exactKey), type: 'EXACT' };
+      // VARIANT CHAIN (Strict -> No Space -> No BUTT -> No Handing -> Base)
+      const variants = [
+        target,
+        target.replace(/\s+/g, ''),
+        target.replace(" BUTT", ""),
+        target.replace(" BUTT", "").replace(/[HLR]$/, ""),
+        target.replace(/[HLR]$/, ""),
+        target.replace(/ (BUTT|H|L|R)$/, "").replace(/[HLR]$/, "").trim()
+      ];
 
-      // 2. SPACE-INSENSITIVE MATCH (Common for UF items)
-      const compressed = target.replace(/\s+/g, '');
-      const compressedKey = `${compressed}|${col}|${sty}`;
-      if (strictMap.has(compressedKey)) return { match: strictMap.get(compressedKey), type: 'COMPRESSED' };
-
-      // 3. GLOBAL EXACT (Check other sheets/sections for this SKU)
-      if (globalSkuMap.has(target)) return { match: globalSkuMap.get(target), type: 'GLOBAL' };
-      if (globalSkuMap.has(compressed)) return { match: globalSkuMap.get(compressed), type: 'GLOBAL_COMPRESSED' };
-
-      // 4. STRIP " BUTT" FALLBACK
-      const noButt = target.replace(" BUTT", "").trim();
-      if (noButt !== target) {
-        const key = `${noButt}|${col}|${sty}`;
-        if (strictMap.has(key)) return { match: strictMap.get(key), type: 'NO_BUTT' };
-        if (globalSkuMap.has(noButt)) return { match: globalSkuMap.get(noButt), type: 'GLOBAL_NO_BUTT' };
+      // 1. Try Local Collection Match (High Precision)
+      for (const v of variants) {
+        const key = `${v}|${col}|${sty}`;
+        if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL' };
       }
 
-      // 5. STRIP HANDING FALLBACK (H, L, R)
-      const noHanding = target.replace(/[HLR]$/, "").trim();
-      if (noHanding !== target) {
-        const key = `${noHanding}|${col}|${sty}`;
-        if (strictMap.has(key)) return { match: strictMap.get(key), type: 'NO_HANDING' };
-        if (globalSkuMap.has(noHanding)) return { match: globalSkuMap.get(noHanding), type: 'GLOBAL_NO_HANDING' };
-      }
-
-      // 6. BASE SKU CLEANING
-      const baseSku = target.replace(/ (BUTT|H|L|R)$/, "").replace(/[HLR]$/, "").trim();
-      if (baseSku !== target && baseSku.length > 2) {
-        const key = `${baseSku}|${col}|${sty}`;
-        if (strictMap.has(key)) return { match: strictMap.get(key), type: 'BASE_SKU' };
-        if (globalSkuMap.has(baseSku)) return { match: globalSkuMap.get(baseSku), type: 'GLOBAL_BASE' };
+      // 2. Try Global Catalog Search (Universal Items like UF3, RR120)
+      for (const v of variants) {
+        if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL' };
       }
 
       return null;
@@ -172,21 +155,18 @@ export async function POST(req: Request) {
       }
     }
 
-    // Atomic Update: Clear and Rewrite BOM
+    // Atomic Clear and Rewrite
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
       await supabase.from('quotation_boms').insert(bomItems);
     }
 
-    await supabase.from('quotation_projects').update({ 
-      manufacturer_id: manufacturerId,
-      status: 'Priced' 
-    }).eq('id', projectId);
+    await supabase.from('quotation_projects').update({ status: 'Priced' }).eq('id', projectId);
 
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Pricing Engine] Critical Failure:', err);
+    console.error('[Pricing Engine] Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }

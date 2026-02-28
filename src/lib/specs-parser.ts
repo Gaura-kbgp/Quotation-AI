@@ -1,35 +1,37 @@
 import * as XLSX from 'xlsx';
 
 /**
- * HIGH-PRECISION ENTERPRISE PRICING PARSER (v38.0)
+ * ENTERPRISE-GRADE HIGH-PRECISION PRICING PARSER (v39.0)
  * Implements Deep-Header Un-merging and Bi-Directional Schema Detection.
+ * Scans ALL sheets and ALL rows without limits.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const pricing: any[] = [];
   
-  // Iterate through EVERY sheet in the workbook
+  // SCAN EVERY SHEET IN THE WORKBOOK
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
 
-    // Use header: 1 to get a 2D array of ALL rows
-    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }) as any[][];
-    if (rawData.length < 1) continue;
+    // Read entire sheet as a raw 2D grid to preserve spatial relationships
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }) as any[][];
+    if (rows.length < 1) continue;
 
     let skuColIdx = -1;
     let headerRowIdx = -1;
+    const skuKeywords = ["SKU", "ITEM SKU", "CODE", "MODEL", "ITEM CODE", "PART NUMBER", "CABINET SKU", "MODEL NUMBER", "ITEM", "PRODUCT CODE"];
 
-    // DYNAMIC HEADER DETECTION
-    const skuHeaders = ["SKU", "ITEM SKU", "CODE", "MODEL", "ITEM CODE", "PART NUMBER", "CABINET SKU", "MODEL NUMBER", "ITEM", "PRODUCT CODE"];
-    
-    // Scan deeper for the header row to handle complex intros
-    for (let r = 0; r < Math.min(200, rawData.length); r++) {
-      const row = rawData[r];
+    // 1. DYNAMIC HEADER DETECTION (Scan top 500 rows)
+    for (let r = 0; r < Math.min(500, rows.length); r++) {
+      const row = rows[r];
+      if (!row) continue;
+      
       const idx = row.findIndex(cell => {
         const val = String(cell || "").toUpperCase().trim();
-        return skuHeaders.some(h => val === h || val.replace(/[^A-Z]/g, '') === h);
+        return skuKeywords.some(k => val === k);
       });
+      
       if (idx !== -1) {
         skuColIdx = idx;
         headerRowIdx = r;
@@ -37,78 +39,85 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       }
     }
 
-    if (skuColIdx === -1) {
-      // Fallback to column A if no explicit header found, but scan for patterns
-      skuColIdx = 0;
-      headerRowIdx = 0;
+    if (skuColIdx === -1) continue;
+
+    // 2. DEEP-HEADER UN-MERGING (Propagate merged headers horizontally and vertically)
+    const headerGrid = rows.slice(0, headerRowIdx + 1).map(r => [...r]);
+    
+    // Vertical propagation (merges spanning multiple rows)
+    for (let c = 0; c < 100; c++) {
+      let lastVal = "";
+      for (let r = 0; r < headerGrid.length; r++) {
+        const val = String(headerGrid[r][c] || "").trim();
+        if (val !== "" && !skuKeywords.some(k => val.toUpperCase() === k)) {
+          lastVal = val;
+        } else if (val === "") {
+          headerGrid[r][c] = lastVal;
+        }
+      }
     }
 
-    // DEEP HEADER UN-MERGING (Propagate merged headers horizontally)
-    const normalizedCollections: string[] = [];
-    const normalizedStyles: string[] = [];
-    
-    // Look up to 10 rows above for headers
-    const lookbackRows = Math.max(0, headerRowIdx - 10);
-    const headerStack = rawData.slice(lookbackRows, headerRowIdx);
+    // Horizontal propagation (merges spanning multiple columns)
+    for (let r = 0; r < headerGrid.length; r++) {
+      let lastVal = "";
+      for (let c = 0; c < headerGrid[r].length; c++) {
+        const val = String(headerGrid[r][c]).trim();
+        if (val !== "" && !skuKeywords.some(k => val.toUpperCase() === k)) {
+          lastVal = val;
+        } else if (val === "") {
+          headerGrid[r][c] = lastVal;
+        }
+      }
+    }
 
-    // Build un-merged maps for every column
-    for (let c = 0; c < 500; c++) {
-      let colVal = "";
-      let styleVal = "";
+    // 3. MAP COLUMNS TO CATALOG METADATA
+    const colMetadata = (headerGrid[headerRowIdx] || []).map((_, cIdx) => {
+      let collection = "";
+      let style = "";
       
-      // Traverse the stack vertically for this column
-      for (let r = 0; r < headerStack.length; r++) {
-        const cellVal = String(headerStack[r][c] || "").trim();
-        if (cellVal.length > 2) {
-          // If a new value is found, it's either a collection or a style
-          if (!colVal) colVal = cellVal;
-          else styleVal = cellVal;
+      for (let r = 0; r <= headerRowIdx; r++) {
+        const val = String(headerGrid[r][cIdx] || "").trim();
+        if (val && !skuKeywords.some(k => val.toUpperCase() === k)) {
+          if (!collection) collection = val;
+          else if (val !== collection) style = val;
         }
       }
 
-      // Horizontal propagation if cell is empty (Standard Excel Merged behavior)
-      if (!colVal && c > 0) colVal = normalizedCollections[c-1];
-      if (!styleVal && c > 0) styleVal = normalizedStyles[c-1];
+      return {
+        collection: (collection || sheetName).toUpperCase().trim(),
+        style: (style || "STANDARD").toUpperCase().trim()
+      };
+    });
 
-      normalizedCollections[c] = colVal;
-      normalizedStyles[c] = styleVal;
-    }
-
-    // EXHAUSTIVE DATA EXTRACTION
-    for (let r = headerRowIdx + 1; r < rawData.length; r++) {
-      const row = rawData[r];
+    // 4. EXHAUSTIVE DATA EXTRACTION
+    for (let r = headerRowIdx + 1; r < rows.length; r++) {
+      const row = rows[r];
       if (!row) continue;
 
-      const rawExcelSKU = String(row[skuColIdx] || "").trim();
-      if (!rawExcelSKU || rawExcelSKU.length < 1) continue;
+      const rawSku = String(row[skuColIdx] || "").trim();
+      if (!rawSku || rawSku === "SKU") continue;
       
-      const displaySKU = rawExcelSKU.toUpperCase();
+      const displaySku = rawSku.toUpperCase();
 
-      // Scan ALL other columns in this row for numeric price values
+      // Scan ALL other columns in this row for price data
       for (let c = 0; c < row.length; c++) {
         if (c === skuColIdx) continue;
         
-        const rawValue = row[c];
-        if (rawValue === null || rawValue === undefined || rawValue === "") continue;
+        const rawVal = row[c];
+        if (rawVal === "" || rawVal === null || rawVal === undefined) continue;
 
-        // Clean currency formatting
-        const priceStr = String(rawValue).replace(/[^\d.-]/g, "");
+        // Extract numeric price
+        const priceStr = String(rawVal).replace(/[^\d.-]/g, "");
         const priceNum = parseFloat(priceStr);
         if (isNaN(priceNum) || priceNum <= 0) continue;
 
-        // Resolve Metadata
-        let col = normalizedCollections[c] || "";
-        let style = normalizedStyles[c] || (rawData[headerRowIdx] ? String(rawData[headerRowIdx][c] || "") : "");
-
-        // If no header found, use sheet name (Critical for Accessory sheets)
-        if (!col || col.length < 2) col = sheetName.toUpperCase().trim();
-        if (!style || style.length < 2) style = "STANDARD";
+        const meta = colMetadata[c] || { collection: sheetName.toUpperCase(), style: "STANDARD" };
 
         pricing.push({
           manufacturer_id: manufacturerId,
-          collection_name: col.toUpperCase().trim(),
-          door_style: style.toUpperCase().trim(),
-          sku: displaySKU,
+          collection_name: meta.collection,
+          door_style: meta.style,
+          sku: displaySku,
           price: priceNum,
           raw_source_file_id: fileId,
           created_at: new Date().toISOString()

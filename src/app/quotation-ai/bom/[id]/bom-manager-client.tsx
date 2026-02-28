@@ -28,7 +28,8 @@ import {
   Package,
   ChevronDown,
   AlertCircle,
-  Phone
+  Phone,
+  RefreshCcw
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn, isPrimaryCabinet } from '@/lib/utils';
@@ -64,7 +65,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const [bom, setBom] = useState<BomItem[]>(() => 
     initialBom.map(item => ({
       ...item,
-      is_billable: item.is_billable ?? isPrimaryCabinet(item.sku)
+      is_billable: item.is_billable ?? (item.precision_level !== 'NOT_FOUND')
     }))
   );
 
@@ -83,6 +84,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isPricing, setIsPricing] = useState(false);
 
   const financials = useMemo(() => {
     const subtotal = bom
@@ -107,6 +109,26 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     }
     newBom[idx] = item;
     setBom(newBom);
+  };
+
+  const handleReprice = async () => {
+    setIsPricing(true);
+    try {
+      const res = await fetch('/api/generate-bom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: id, manufacturerId: project.manufacturer_id })
+      });
+      const result = await res.json();
+      if (result.success) {
+        toast({ title: 'Prices Updated', description: `Successfully matched ${result.matched} items.` });
+        router.refresh();
+      }
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Pricing Error', description: err.message });
+    } finally {
+      setIsPricing(false);
+    }
   };
 
   const handleSaveAll = async () => {
@@ -150,7 +172,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           </Button>
           <div>
             <h1 className="text-xl font-bold tracking-tight">{project.project_name}</h1>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Pricing Workstation</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{manufacturerName} • Workstation</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -159,8 +181,12 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
             <button onClick={() => setStep('customer')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold", step === 'customer' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400")}>2. Customer</button>
             <button onClick={() => setStep('preview')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold", step === 'preview' ? "bg-white text-sky-600 shadow-sm" : "text-slate-400")}>3. Preview</button>
           </div>
+          <Button variant="outline" className="rounded-xl h-11 px-4 border-slate-200" onClick={handleReprice} disabled={isPricing}>
+             {isPricing ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
+             {isPricing ? 'Matching...' : 'Sync Prices'}
+          </Button>
           <Button variant="outline" className="rounded-xl h-11 px-5 border-slate-200 font-bold" onClick={handleSaveAll} disabled={isSaving}>
-            <Save className="w-4 h-4 mr-2" /> Save Progress
+            <Save className="w-4 h-4 mr-2" /> Save
           </Button>
         </div>
       </header>
@@ -218,7 +244,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                           <AccordionTrigger className="px-4 py-3 bg-slate-50 rounded-xl hover:no-underline group">
                             <div className="flex items-center gap-3">
                               <Package className="w-4 h-4 text-slate-400" />
-                              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Other Items ({otherItems.length})</span>
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Accessories & Other ({otherItems.length})</span>
                             </div>
                           </AccordionTrigger>
                           <AccordionContent className="pt-4">
@@ -232,10 +258,13 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                                       <TableCell className="pl-4">
                                         <Checkbox checked={item.is_billable} onCheckedChange={(checked) => handleUpdateItem(itemIdx, { is_billable: !!checked })} />
                                       </TableCell>
-                                      <TableCell className="font-bold text-xs">{item.sku}</TableCell>
+                                      <TableCell className="font-bold text-xs">
+                                        {item.sku}
+                                        {isMissing && <p className="text-[8px] text-red-500 font-bold uppercase mt-0.5">Missing from Catalog</p>}
+                                      </TableCell>
                                       <TableCell className="text-center font-mono text-xs">{item.qty}</TableCell>
                                       <TableCell className="text-right">
-                                        <Input type="number" value={item.unit_price} onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })} className="w-20 ml-auto h-7 text-right text-xs font-mono" />
+                                        <Input type="number" value={item.unit_price} onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })} className={cn("w-20 ml-auto h-7 text-right text-xs font-mono", isMissing && "border-red-200")} />
                                       </TableCell>
                                       <TableCell className="text-right font-bold pr-6 text-xs">
                                         ${item.line_total.toFixed(2)}
@@ -261,7 +290,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                     <Input type="number" value={discount} onChange={e => setDiscount(parseFloat(e.target.value) || 0)} className="h-12 rounded-xl font-bold bg-white/10 border-none text-white" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase text-sky-400">Shipping ($)</Label>
+                    <Label className="text-[10px] font-black uppercase text-sky-400">Logistics ($)</Label>
                     <Input type="number" value={shipping} onChange={e => setShipping(parseFloat(e.target.value) || 0)} className="h-12 rounded-xl font-bold bg-white/10 border-none text-white" />
                   </div>
                   <div className="space-y-2">
@@ -269,12 +298,12 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                     <Input type="number" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="h-12 rounded-xl font-bold bg-white/10 border-none text-white" />
                   </div>
                   <div className="flex items-end">
-                    <Button onClick={() => setStep('customer')} className="w-full h-12 gradient-button rounded-xl">Next: Customer Details</Button>
+                    <Button onClick={() => setStep('customer')} className="w-full h-12 gradient-button rounded-xl">Next: Client Details</Button>
                   </div>
                </div>
                <div className="flex justify-end pt-8 border-t border-white/10">
                   <div className="text-right">
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-400 mb-2">Grand Total</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-400 mb-2">Grand Investment</p>
                     <p className="text-5xl font-black font-mono tracking-tighter">${financials.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                   </div>
                </div>
@@ -288,19 +317,19 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 <h2 className="text-xl font-black text-slate-900 mb-6">Client Information</h2>
                 <div className="space-y-5">
                    <div className="space-y-1.5">
-                      <Label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Full Name</Label>
-                      <Input value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-11 bg-slate-50 border-none px-4 font-bold text-sm" placeholder="e.g. John Doe" />
+                      <Label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Contact Name</Label>
+                      <Input value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-11 bg-slate-50 border-none px-4 font-bold text-sm" placeholder="Full Name" />
                    </div>
                    <div className="space-y-1.5">
                       <Label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Phone Number</Label>
-                      <Input value={customer.phone} onChange={e => setCustomer({...customer, phone: e.target.value})} className="h-11 bg-slate-50 border-none px-4 font-bold text-sm" placeholder="e.g. (555) 000-0000" />
+                      <Input value={customer.phone} onChange={e => setCustomer({...customer, phone: e.target.value})} className="h-11 bg-slate-50 border-none px-4 font-bold text-sm" placeholder="(555) 000-0000" />
                    </div>
                    <div className="space-y-1.5">
-                      <Label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Site Address</Label>
-                      <Input value={customer.address} onChange={e => setCustomer({...customer, address: e.target.value})} className="h-11 bg-slate-50 border-none px-4 font-bold text-sm" placeholder="e.g. 123 Main St, Sarasota FL" />
+                      <Label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Project Address</Label>
+                      <Input value={customer.address} onChange={e => setCustomer({...customer, address: e.target.value})} className="h-11 bg-slate-50 border-none px-4 font-bold text-sm" placeholder="Site Location" />
                    </div>
                    <Button className="w-full h-12 gradient-button rounded-xl text-base mt-4 shadow-sky-500/10" onClick={() => setStep('preview')}>
-                     Review Final Quote
+                     Generate Final Proposal
                      <ArrowRight className="w-4 h-4 ml-2" />
                    </Button>
                 </div>
@@ -319,7 +348,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 <div className="flex justify-between border-b-2 border-slate-900 pb-10 mb-10">
                    <div className="space-y-2">
                       <h2 className="text-2xl font-black text-sky-600">KABS PRO</h2>
-                      <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Official Proposal</p>
+                      <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Architectural Estimation</p>
                    </div>
                    <div className="text-right">
                       <h1 className="text-4xl font-black tracking-tighter mb-2">QUOTATION</h1>
@@ -333,11 +362,11 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       <div className="space-y-1">
                         <p className="text-xl font-bold">{customer.name || '---'}</p>
                         {customer.phone && <p className="text-sm text-slate-600 font-medium">{customer.phone}</p>}
-                        <p className="text-slate-500 text-sm">{customer.address || '---'}</p>
+                        <p className="text-slate-500 text-sm whitespace-pre-line">{customer.address || '---'}</p>
                       </div>
                    </div>
                    <div className="space-y-4 text-right">
-                      <h4 className="text-[10px] font-black uppercase text-sky-600">Investment</h4>
+                      <h4 className="text-[10px] font-black uppercase text-sky-600">Total Investment</h4>
                       <p className="text-3xl font-black font-mono">${financials.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                    </div>
                 </div>
@@ -369,15 +398,19 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 <div className="mt-20 pt-10 border-t-2 border-slate-900 flex justify-end">
                    <div className="w-64 space-y-3">
                       <div className="flex justify-between text-[11px] font-bold uppercase text-slate-400">
-                         <span>Subtotal</span>
+                         <span>Material Subtotal</span>
                          <span className="text-slate-900 font-mono">${financials.subtotal.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-[11px] font-bold uppercase text-slate-400">
-                         <span>Logistics</span>
+                         <span>Tax ({taxRate}%)</span>
+                         <span className="text-slate-900 font-mono">${financials.taxes.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] font-bold uppercase text-slate-400">
+                         <span>Logistics/Fees</span>
                          <span className="text-slate-900 font-mono">${financials.logisticsFees.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-[13px] font-black uppercase text-slate-900 pt-3 border-t border-slate-100">
-                         <span>Total</span>
+                         <span>Final Total</span>
                          <span className="font-mono">${financials.total.toFixed(2)}</span>
                       </div>
                    </div>
