@@ -4,8 +4,12 @@ import { normalizeSku } from '@/lib/utils';
 export const maxDuration = 120;
 
 /**
- * STRICT EXACT PRICING ENGINE (v30.0)
- * Implements "Match EXACT SKU" rule across all catalog sheets.
+ * SMART PRICING ENGINE (v31.0)
+ * Implements multi-stage fallback matching:
+ * 1. Exact Match
+ * 2. Remove " BUTT"
+ * 3. Remove trailing "H"
+ * 4. Remove " X ..." (Dimensional text)
  */
 export async function POST(req: Request) {
   try {
@@ -27,7 +31,7 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // Fetch ALL pricing records for this manufacturer (Global Multi-Sheet Scan Result)
+    // Fetch ALL pricing records for this manufacturer
     const { data: allPricing, error: sError } = await supabase
       .from('manufacturer_pricing')
       .select('*')
@@ -35,17 +39,57 @@ export async function POST(req: Request) {
 
     if (sError) throw new Error(`Database error: ${sError.message}`);
 
-    // Build EXACT lookup map for performance
+    // Build EXACT lookup map
     const pricingMap = new Map<string, any>();
     allPricing?.forEach(p => {
-      // Key: SKU (Exact) | COLLECTION | STYLE
-      const key = `${p.sku.toUpperCase().trim()}|${String(p.collection_name || "").toUpperCase().trim()}|${String(p.door_style || "").toUpperCase().trim()}`;
+      const skuKey = String(p.sku || "").toUpperCase().trim();
+      const colKey = String(p.collection_name || "").toUpperCase().trim();
+      const styKey = String(p.door_style || "").toUpperCase().trim();
+      
+      const key = `${skuKey}|${colKey}|${styKey}`;
       pricingMap.set(key, p);
     });
 
     const bomItems: any[] = [];
     let matchedCount = 0;
     let totalCount = 0;
+
+    /**
+     * Smart Matcher with Fallbacks
+     */
+    function findBestMatch(cabinetSKU: string, collection: string, style: string) {
+      const normalized = cabinetSKU.trim().toUpperCase();
+      const col = collection.trim().toUpperCase();
+      const st = style.trim().toUpperCase();
+
+      // Define Fallback Chain
+      const noButt = normalized.replace(" BUTT", "");
+      const noH = noButt.replace(/H$/, "");
+      const cleaned = noH.replace(/ X .*$/, "");
+
+      const variants = [
+        { s: normalized, type: 'EXACT' },
+        { s: noButt, type: 'FALLBACK_BUTT' },
+        { s: noH, type: 'FALLBACK_H' },
+        { s: cleaned, type: 'FALLBACK_CLEAN' }
+      ];
+
+      // 1. Try fallbacks within the selected spec (STRICT)
+      for (const variant of variants) {
+        if (!variant.s) continue;
+        const key = `${variant.s}|${col}|${st}`;
+        const match = pricingMap.get(key);
+        if (match) return { match, type: variant.type };
+      }
+
+      // 2. Try Global Exact fallback (If not found in specific spec, check whole catalog)
+      if (allPricing) {
+        const globalMatch = allPricing.find(p => p.sku.toUpperCase().trim() === normalized);
+        if (globalMatch) return { match: globalMatch, type: 'GLOBAL_EXACT' };
+      }
+
+      return null;
+    }
 
     for (const room of rooms) {
       const selectedCollection = (room.collection || "").trim().toUpperCase();
@@ -60,20 +104,11 @@ export async function POST(req: Request) {
         if (!cab.code) continue;
         totalCount++;
 
-        const pdfSku = cab.code.toUpperCase().trim();
-        const lookupKey = `${pdfSku}|${selectedCollection}|${selectedStyle}`;
-        
-        let match = pricingMap.get(lookupKey);
-        let matchType = 'EXACT';
+        const result = findBestMatch(cab.code, selectedCollection, selectedStyle);
 
-        // GLOBAL FALLBACK (Strict SKU match across any collection if exact spec lookup fails)
-        if (!match && allPricing) {
-           match = allPricing.find(p => p.sku.toUpperCase().trim() === pdfSku);
-           if (match) matchType = 'GLOBAL_EXACT';
-        }
-
-        if (match) {
+        if (result) {
           matchedCount++;
+          const { match, type } = result;
           const price = Number(match.price) || 0;
           
           bomItems.push({
@@ -86,12 +121,12 @@ export async function POST(req: Request) {
             room: room.room_name,
             collection: room.collection || match.collection_name,
             door_style: room.door_style || match.door_style,
-            price_source: `Guide (${matchType})`,
-            precision_level: matchType,
+            price_source: `Guide (${type})`,
+            precision_level: type,
             created_at: new Date().toISOString()
           });
         } else {
-          // NO MATCH FOUND - Surfacing descriptive error
+          // NO MATCH FOUND
           bomItems.push({
             project_id: projectId,
             sku: cab.code,

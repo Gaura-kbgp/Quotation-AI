@@ -1,6 +1,5 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import stringSimilarity from 'string-similarity';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -9,6 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * SKU CLEANING FOR DISPLAY
  * Minimal cleaning for the final invoice.
+ * Preserves suffixes like BUTT for professional documentation.
  */
 export function cleanSkuForDisplay(sku: string | any): string {
   if (!sku) return '';
@@ -18,9 +18,9 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * STRICT SKU NORMALIZATION (v30.0)
- * Adheres to "Do NOT modify SKU" rule.
- * ONLY performs uppercase and trim.
+ * SKU NORMALIZATION (v31.0)
+ * Simple normalization for basic comparison.
+ * Falling back to smart pricing logic for complex matches.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
@@ -29,16 +29,18 @@ export function normalizeSku(sku: string | any): string {
 
 /**
  * BASE SKU EXTRACTION
- * Kept for classification logic.
+ * Strips known suffixes for classification.
  */
 export function getBaseSku(sku: string): string {
   const norm = normalizeSku(sku);
-  const match = norm.match(/^([A-Z]+[0-9]+)/);
-  return match ? match[1] : norm;
+  // Remove common suffixes for categorization purposes
+  let base = norm.replace(" BUTT", "").replace(/H$/, "").replace(/ X .*$/, "");
+  return base.trim();
 }
 
 /**
- * STRICT CABINET CLASSIFICATION
+ * CABINET CLASSIFICATION
+ * Uses standard industry prefixes.
  */
 export function isPrimaryCabinet(sku: string): boolean {
   const s = normalizeSku(sku);
