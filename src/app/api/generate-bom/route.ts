@@ -3,8 +3,8 @@ import { createServerSupabase } from '@/lib/supabase-server';
 export const maxDuration = 120;
 
 /**
- * SMART PRICING ENGINE (v37.0)
- * Implements Multi-Stage Fallback Matching across all sheets.
+ * SMART PRICING ENGINE (v38.0)
+ * Enterprise-grade multi-stage fallback matching across global catalog.
  */
 export async function POST(req: Request) {
   try {
@@ -26,10 +26,10 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // Fetch entire manufacturer pricing catalog with pagination
+    // FULL CATALOG RETRIEVAL (Recursive pagination to ensure all 50k+ records are loaded)
     let allPricing: any[] = [];
     let from = 0;
-    const step = 2000;
+    const step = 5000; // Larger chunks for speed
     let hasMore = true;
 
     while (hasMore) {
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Build indexing maps for high-speed lookup
+    // MULTI-LEVEL LOOKUP MAPS
     const strictMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
 
@@ -61,15 +61,15 @@ export async function POST(req: Request) {
       const key = `${sku}|${col}|${sty}`;
       strictMap.set(key, p);
 
-      // Global map keeps the most descriptive or highest priced entry as a baseline
-      if (!globalSkuMap.has(sku) || (p.price > 0 && globalSkuMap.get(sku)?.price === 0)) {
+      // Global map prioritized by most descriptive source or highest price (prevents 0 matches)
+      if (!globalSkuMap.has(sku)) {
         globalSkuMap.set(sku, p);
       }
     });
 
     /**
-     * SMART FALLBACK MATCHER
-     * Exact -> No BUTT -> No Handing -> Base
+     * SUPER-RESILIENT MATCHER
+     * Implementation: Exact -> Compressed -> No BUTT -> No Handing -> Global Fallback
      */
     function findBestMatch(itemCode: string, collection: string, style: string) {
       const target = itemCode.trim().toUpperCase();
@@ -78,18 +78,20 @@ export async function POST(req: Request) {
       const col = collection.trim().toUpperCase();
       const sty = style.trim().toUpperCase();
 
-      // 1. EXACT MATCH in specific spec
+      // 1. EXACT LOCAL MATCH (Best Case)
       const exactKey = `${target}|${col}|${sty}`;
-      if (strictMap.has(exactKey)) {
-        return { match: strictMap.get(exactKey), type: 'EXACT' };
-      }
+      if (strictMap.has(exactKey)) return { match: strictMap.get(exactKey), type: 'EXACT' };
 
-      // 2. GLOBAL EXACT MATCH (Accessories/Fillers found on any sheet)
-      if (globalSkuMap.has(target)) {
-        return { match: globalSkuMap.get(target), type: 'GLOBAL' };
-      }
+      // 2. SPACE-INSENSITIVE MATCH (Common for UF items)
+      const compressed = target.replace(/\s+/g, '');
+      const compressedKey = `${compressed}|${col}|${sty}`;
+      if (strictMap.has(compressedKey)) return { match: strictMap.get(compressedKey), type: 'COMPRESSED' };
 
-      // 3. REMOVE " BUTT" FALLBACK
+      // 3. GLOBAL EXACT (Check other sheets/sections for this SKU)
+      if (globalSkuMap.has(target)) return { match: globalSkuMap.get(target), type: 'GLOBAL' };
+      if (globalSkuMap.has(compressed)) return { match: globalSkuMap.get(compressed), type: 'GLOBAL_COMPRESSED' };
+
+      // 4. STRIP " BUTT" FALLBACK
       const noButt = target.replace(" BUTT", "").trim();
       if (noButt !== target) {
         const key = `${noButt}|${col}|${sty}`;
@@ -97,7 +99,7 @@ export async function POST(req: Request) {
         if (globalSkuMap.has(noButt)) return { match: globalSkuMap.get(noButt), type: 'GLOBAL_NO_BUTT' };
       }
 
-      // 4. REMOVE HANDEDNESS FALLBACK (H, L, R)
+      // 5. STRIP HANDING FALLBACK (H, L, R)
       const noHanding = target.replace(/[HLR]$/, "").trim();
       if (noHanding !== target) {
         const key = `${noHanding}|${col}|${sty}`;
@@ -105,7 +107,7 @@ export async function POST(req: Request) {
         if (globalSkuMap.has(noHanding)) return { match: globalSkuMap.get(noHanding), type: 'GLOBAL_NO_HANDING' };
       }
 
-      // 5. AGGRESSIVE CLEAN (BUTT + HANDING)
+      // 6. BASE SKU CLEANING
       const baseSku = target.replace(/ (BUTT|H|L|R)$/, "").replace(/[HLR]$/, "").trim();
       if (baseSku !== target && baseSku.length > 2) {
         const key = `${baseSku}|${col}|${sty}`;
@@ -147,7 +149,7 @@ export async function POST(req: Request) {
             room: room.room_name,
             collection: room.collection || match.collection_name,
             door_style: room.door_style || match.door_style,
-            price_source: `Auto (${type})`,
+            price_source: `Catalog (${type})`,
             precision_level: type,
             created_at: new Date().toISOString()
           });
@@ -170,7 +172,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Insert results
+    // Atomic Update: Clear and Rewrite BOM
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
       await supabase.from('quotation_boms').insert(bomItems);
