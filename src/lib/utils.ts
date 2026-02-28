@@ -17,13 +17,21 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * SKU NORMALIZATION (v37.0)
+ * SKU NORMALIZATION (v43.0)
  * Standard normalization for matching.
- * Strictly trims and uppercases as per catalog standards.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
   return String(sku).toUpperCase().trim();
+}
+
+/**
+ * COMPRESSED SKU FOR FUZZY MATCHING
+ * Removes all whitespace and special characters.
+ */
+export function compressSku(sku: string | any): string {
+  if (!sku) return '';
+  return String(sku).toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 /**

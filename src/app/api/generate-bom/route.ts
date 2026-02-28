@@ -1,11 +1,11 @@
 import { createServerSupabase } from '@/lib/supabase-server';
+import { compressSku } from '@/lib/utils';
 
 export const maxDuration = 300;
 
 /**
- * ULTIMATE SMART PRICING ENGINE (v42.0)
- * Implements Paginated Catalog Retrieval and Recursive Fallback Matching.
- * Handles 50,000+ records and multi-sheet dependencies.
+ * ULTIMATE SMART PRICING ENGINE (v43.0)
+ * Implements Paginated Catalog Retrieval and Recursive Fallback Matching across ALL sheets.
  */
 export async function POST(req: Request) {
   try {
@@ -27,10 +27,10 @@ export async function POST(req: Request) {
     const project = pRes.data;
     const rooms = project.extracted_data?.rooms || [];
     
-    // EXHAUSTIVE CATALOG RETRIEVAL (Pagination for massive catalogs)
+    // 1. EXHAUSTIVE CATALOG RETRIEVAL (Fetch 100% of the pricing guide)
     let allPricing: any[] = [];
     let from = 0;
-    const step = 1000;
+    const step = 2000;
     let hasMore = true;
 
     while (hasMore) {
@@ -50,25 +50,28 @@ export async function POST(req: Request) {
       }
     }
 
-    // BUILD MULTI-TIER LOOKUP INDEX
-    const localMap = new Map<string, any>(); // Key: SKU|Collection|Style
-    const globalSkuMap = new Map<string, any>(); // Key: SKU (Universal Fallback)
+    // 2. BUILD MULTI-TIER LOOKUP INDEXES
+    const localMap = new Map<string, any>(); // SKU|Collection|Style
+    const globalSkuMap = new Map<string, any>(); // SKU (Any Sheet Fallback)
+    const compressedMap = new Map<string, any>(); // Compressed SKU (Fuzzy Fallback)
 
     allPricing.forEach(p => {
       const sku = String(p.sku || "").trim().toUpperCase();
       const col = String(p.collection_name || "").trim().toUpperCase();
       const sty = String(p.door_style || "").trim().toUpperCase();
+      const comp = compressSku(sku);
       
       const fullKey = `${sku}|${col}|${sty}`;
       if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Global map prioritized for accessories
+      // Global fallback prioritized by "Better" matches (preferring non-standard sheets)
       if (!globalSkuMap.has(sku)) globalSkuMap.set(sku, p);
+      if (!compressedMap.has(comp)) compressedMap.set(comp, p);
     });
 
     /**
      * RECURSIVE MATCHING ENGINE
-     * Sequence: Exact -> Compressed -> Descriptor Stripping -> Global Catalog Search
+     * Tries exact matches first, then falls back to compressed and global searches.
      */
     function findBestMatch(itemCode: string, collection: string, style: string) {
       const target = String(itemCode || "").trim().toUpperCase();
@@ -76,30 +79,37 @@ export async function POST(req: Request) {
 
       const col = String(collection || "").trim().toUpperCase();
       const sty = String(style || "").trim().toUpperCase();
+      const targetComp = compressSku(target);
 
-      // Generate search variants using regex for precision
+      // Search Variants for specific variants (like stripping BUTT or handedness)
       const variants = [
-        target, // W3036 BUTT
-        target.replace(/\s+/g, ''), // W3036BUTT
-        target.replace(/\s*BUTT$/g, ''), // W3036
-        target.replace(/\s*[HLR]$/g, ''), // B15
-        target.replace(/\s*FL$/g, ''), // RR120
-        target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''), // Base Model
-        target.split(/\s+/)[0] // First word only (e.g. "B30" from "B30 24 DP")
+        target,
+        target.replace(/\s+/g, ''),
+        target.replace(/\s*BUTT$/g, ''),
+        target.replace(/\s*[HLR]$/g, ''),
+        target.replace(/\s*FL$/g, ''),
+        target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''),
       ];
 
       const searchVariants = Array.from(new Set(variants.filter(Boolean)));
 
-      // 1. Try Local Collection Match (Specific Style)
+      // TIER 1: EXACT LOCAL COLLECTION MATCH
       for (const v of searchVariants) {
         const key = `${v}|${col}|${sty}`;
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL' };
       }
 
-      // 2. Try Global Catalog Match (Cross-Sheet Fallback)
+      // TIER 2: COMPRESSED LOCAL MATCH (Ignores all whitespace)
+      const compKey = `${targetComp}|${col}|${sty}`;
+      if (compressedMap.has(compKey)) return { match: compressedMap.get(compKey), type: 'FUZZY_LOCAL' };
+
+      // TIER 3: GLOBAL CATALOG MATCH (Checks all other sheets)
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL' };
       }
+
+      // TIER 4: GLOBAL COMPRESSED MATCH
+      if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'FUZZY_GLOBAL' };
 
       return null;
     }
@@ -158,7 +168,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Atomic Clear and Rewrite
+    // Atomic Update of BOM items
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
       const BATCH_SIZE = 500;
