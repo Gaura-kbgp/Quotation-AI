@@ -7,9 +7,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * DETERMINISTIC SKU NORMALIZATION (v27.0)
+ * DETERMINISTIC SKU NORMALIZATION (v28.0)
  * 1. Convert to uppercase
- * 2. Remove tokens: {L}, {R}, X 24 DP, X 12 DP
+ * 2. Remove tokens: {L}, {R}, X 24 DP, X 12 DP, BUTT
  * 3. Remove internal spaces in the code
  * 4. Trim
  */
@@ -21,11 +21,24 @@ export function normalizeSku(sku: string | any): string {
   s = s.replace(/\{L\}|\{R\}/g, '');
   s = s.replace(/X\s*24\s*DP/g, '');
   s = s.replace(/X\s*12\s*DP/g, '');
+  s = s.replace(/\s*BUTT\b/g, ''); // Strip trailing "BUTT" modifier
   
   // Remove spaces inside the code (e.g. "W 30 24" -> "W3024")
   s = s.replace(/\s+/g, '');
   
   return s.trim();
+}
+
+/**
+ * BASE SKU EXTRACTION
+ * Removes trailing characters to find the core model number.
+ * Example: UF342H -> UF342
+ */
+export function getBaseSku(sku: string): string {
+  const norm = normalizeSku(sku);
+  // Match prefix and digits, ignore trailing letters often used for handing or variants
+  const match = norm.match(/^([A-Z]+[0-9]+)/);
+  return match ? match[1] : norm;
 }
 
 /**
