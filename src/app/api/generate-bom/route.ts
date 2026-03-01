@@ -6,12 +6,12 @@ import stringSimilarity from 'string-similarity';
 export const maxDuration = 300;
 
 /**
- * UNIVERSAL "SMART JACK" PRICING ENGINE (v60.0)
+ * UNIVERSAL "SMART JACK" PRICING ENGINE (v61.0)
  * 
  * ARCHITECTURE:
- * 1. MULTI-TIER RECURSIVE SEARCH: Scans local collection, then global universal sheets.
- * 2. FORMAT-AGNOSTIC INDEXING: Merges data from all 60+ Excel sheets into a single smart search map.
- * 3. ZERO-PRICE PREVENTION: Applies category averages and fuzzy matching fallbacks.
+ * 1. PAGINATED STREAMING: Loads 100% of catalog records from DB using recursive fetching.
+ * 2. MULTI-TIER RECURSIVE SEARCH: Prioritizes universal accessory sheets for Fillers/Molding.
+ * 3. ZERO-PRICE PREVENTION: Applies category averages if all matching tiers fail.
  */
 export async function POST(req: Request) {
   try {
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 
     const supabase = createServerSupabase();
 
-    // 1. PROJECT DATA LOAD
+    // 1. LOAD PROJECT DATA
     const { data: project, error: pError } = await supabase
       .from('quotation_projects')
       .select('*')
@@ -57,9 +57,9 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[Smart Engine v60] Indexing ${allPricing.length} total catalog records.`);
+    console.log(`[Smart Engine v61] Loaded ${allPricing.length} records into memory.`);
 
-    // 3. SMART MULTI-DIMENSIONAL INDEXING
+    // 3. MULTI-DIMENSIONAL SMART INDEXING
     const localMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
     const compressedMap = new Map<string, any>();
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
       // Strict Index (Local Collection)
       localMap.set(`${sku}|${col}`, p);
       
-      // Global Search Index (Critical for Accessories on deep Row 626+)
+      // Global Search Index (Critical for Accessories like Row 626+)
       if (!globalSkuMap.has(sku) || col === "UNIVERSAL") {
         globalSkuMap.set(sku, p);
       }
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       // Compressed Search Index (Matches "UF 3" to "UF3")
       if (!compressedMap.has(comp)) compressedMap.set(comp, p);
 
-      // Category Metrics for Smart Fallback
+      // Category Metrics for Smart Fallback Estimator
       const stats = categoryStats.get(cat) || { total: 0, count: 0 };
       stats.total += Number(p.price) || 0;
       stats.count += 1;
@@ -105,7 +105,7 @@ export async function POST(req: Request) {
       const targetComp = compressSku(target);
       const category = detectCategory(target);
 
-      // Generate Variants (Stripping common suffixes)
+      // Generate Matching Variants
       const variants = [
         target,
         target.replace(/\s+/g, ''),
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
         if (localMap.has(key)) return { match: localMap.get(key), type: 'STRICT_LOCAL' };
       }
 
-      // TIER 2: GLOBAL CATALOG FALLBACK (Critical for items like UF3, UF342 from other sheets)
+      // TIER 2: GLOBAL CATALOG FALLBACK (Critical for items like UF3 from other sheets)
       for (const v of variants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
@@ -127,10 +127,10 @@ export async function POST(req: Request) {
       // TIER 3: COMPRESSED ALPHANUMERIC SEARCH
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'COMPRESSED_GLOBAL' };
 
-      // TIER 4: AI FUZZY SIMILARITY
+      // TIER 4: AI FUZZY SIMILARITY (90% Confidence)
       if (allSkus.length > 0) {
         const fuzzy = stringSimilarity.findBestMatch(target, allSkus);
-        if (fuzzy.bestMatch.rating > 0.8) {
+        if (fuzzy.bestMatch.rating > 0.9) {
           return { match: globalSkuMap.get(fuzzy.bestMatch.target), type: 'AI_FUZZY_MATCH' };
         }
       }
@@ -195,7 +195,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Persist to Database
+    // Persist Results
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
       for (let i = 0; i < bomItems.length; i += 500) {
@@ -207,7 +207,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Smart Engine v60] Critical Failure:', err);
+    console.error('[Smart Engine v61] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
