@@ -1,13 +1,12 @@
-
 import * as XLSX from 'xlsx';
 
 /**
- * EXTREME-FLEXIBILITY UNIVERSAL SCANNER (v61.0)
+ * EXTREME-FLEXIBILITY UNIVERSAL SCANNER (v62.0)
  * 
  * DESIGN PHILOSOPHY:
  * 1. ROW-LEVEL HEURISTIC: Treat every row as a potential independent data source.
- * 2. PATTERN RECOGNITION: Use Regex and Numeric ranges to find SKUs and Prices even without headers.
- * 3. EXHAUSTIVE SCAN: No row limits. Scans all 60+ sheets entirely.
+ * 2. PATTERN RECOGNITION: Find SKUs (UF3, UF342) and Prices even without headers.
+ * 3. EXHAUSTIVE SCAN: No row limits. Scans all sheets entirely.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -20,12 +19,10 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     const sheet = workbook.Sheets[sheetName];
     if (!sheet || !sheet['!ref']) continue;
 
-    // Use raw: false to get formatted strings which are better for SKU cleaning
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }) as any[][];
     if (rows.length < 1) continue;
 
     const currentSheetName = sheetName.toUpperCase().trim();
-    // Prioritize "Universal" matching for known accessory sheets
     const isGlobalSheet = currentSheetName.includes("ACCESSORY") || 
                          currentSheetName.includes("OPTION") || 
                          currentSheetName.includes("FILLER") ||
@@ -33,7 +30,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
                          currentSheetName.includes("MOLDING") ||
                          currentSheetName.includes("SKU GUIDE");
 
-    console.log(`[Parser v61] Quad-Engine Scan: ${sheetName} (${rows.length} rows)`);
+    console.log(`[Parser v62] Greedy Pattern Scan: ${sheetName} (${rows.length} rows)`);
 
     let activeSkuColIdx = -1;
     let activePriceColIdx = -1;
@@ -42,7 +39,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       const row = rows[r];
       if (!row || row.length < 2) continue;
 
-      // STAGE 1: DYNAMIC HEADER DISCOVERY (Attempts discovery on every row to catch nested tables)
+      // STAGE 1: DYNAMIC HEADER DISCOVERY
       const foundSkuIdx = row.findIndex(cell => {
         const val = String(cell || "").toUpperCase().trim();
         return skuKeywords.some(k => val === k);
@@ -63,16 +60,16 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       let extractedSku = "";
       let extractedPrice = 0;
 
-      // Method A: Use active columns if they look valid for this row
+      // Method A: Anchored Search
       if (activeSkuColIdx !== -1 && activePriceColIdx !== -1) {
         extractedSku = String(row[activeSkuColIdx] || "").trim();
         const priceVal = String(row[activePriceColIdx] || "").replace(/[^\d.-]/g, "");
         extractedPrice = parseFloat(priceVal);
       } 
       
-      // Method B: Greedy Pattern Matcher (Critical for Row 626+ deep data where headers are distant)
+      // Method B: Greedy Grid Pattern Matcher (Critical for Row 626+ Accessories)
       if (!extractedSku || isNaN(extractedPrice) || extractedPrice <= 0) {
-        // Find ANY cell that looks like a cabinet SKU (regex allows for short codes like UF3)
+        // Find ANY cell matching Cabinet SKU pattern (short codes like UF3 included)
         const heuristicSkuIdx = row.findIndex(cell => {
           const s = String(cell || "").trim();
           return s.length >= 2 && s.length < 20 && /^[A-Z]{1,3}[A-Z0-9-\s.]{1,15}$/i.test(s);
@@ -80,7 +77,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
         if (heuristicSkuIdx !== -1) {
           extractedSku = String(row[heuristicSkuIdx] || "").trim();
-          // Scan ALL other cells for the first logical price candidate
+          // Find first logical price cell in the same row
           for (let i = 0; i < row.length; i++) {
             if (i === heuristicSkuIdx) continue;
             const rawVal = String(row[i] || "").trim();
@@ -88,18 +85,16 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
             
             const val = rawVal.replace(/[^\d.-]/g, "");
             const num = parseFloat(val);
-            // Heuristic: Cabinet items usually cost between $5 and $20,000
+            // Cabinet item price range $1 - $30k
             if (!isNaN(num) && num > 1 && num < 30000) {
               extractedPrice = num;
-              // If we didn't have active columns, anchor them now for speed
-              if (activePriceColIdx === -1) activePriceColIdx = i;
               break;
             }
           }
         }
       }
 
-      // STAGE 3: DATA NORMALIZATION & PERSISTENCE
+      // STAGE 3: DATA NORMALIZATION
       if (extractedSku && !isNaN(extractedPrice) && extractedPrice > 0) {
         const upperSku = extractedSku.toUpperCase();
         if (skuKeywords.some(k => upperSku === k)) continue;
@@ -117,6 +112,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   }
 
-  console.log(`[Parser v61] Completed. Extracted ${pricing.length} total records.`);
+  console.log(`[Parser v62] Extraction complete. ${pricing.length} total records.`);
   return pricing;
 }

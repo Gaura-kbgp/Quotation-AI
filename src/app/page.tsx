@@ -1,7 +1,6 @@
-
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck, ArrowRight, Sparkles } from 'lucide-react';
+import { Sparkles, ArrowRight } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -33,7 +32,7 @@ export default function Home() {
             <Sparkles className="w-3 h-3" />
             Empowering Precision
           </div>
-          <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-slate-900 leading-[1.1]">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tighter text-slate-900 leading-[1.1]">
             KABS <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 to-sky-600">Quotation AI</span>
           </h1>

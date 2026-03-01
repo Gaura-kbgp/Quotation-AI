@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview High-Precision Extraction Flow (v35.0).
- * Improved instruction set for accessory detection and alphanumeric integrity.
+ * @fileOverview High-Precision Extraction Flow (v62.0).
+ * Improved instructions for Room Consolidation and Accessory classification.
  */
 
 import { ai } from '@/ai/genkit';
@@ -28,29 +28,31 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow] Starting High-Precision Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow v62] Starting High-Precision Analysis for: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.0-flash',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator specialized in cabinetry takeoffs.
+      { text: `You are a professional architectural estimator specialized in high-end cabinetry takeoffs.
       
       GOAL:
       Extract EVERY single SKU-like code from the drawings.
       
+      STRICT ROOM GROUPING RULES:
+      - Identify primary rooms like "Kitchen", "Master Bath", "Laundry Room".
+      - CRITICAL: Do NOT create separate rooms for optional sub-sections or labels like "OPT LAUNDRY", "WASH/DRY", or "ACCESSORIES". 
+      - If you see "OPT LAUNDRY" or similar labels, MERGE these items into the primary Room they belong to (usually the Kitchen or the main room on that page).
+      - Treat "Hardware" or "Laundry" as a component list within a room, not as a new room.
+      
       STRICT SKU RULES:
-      - Extract the EXACT code (e.g. W3042, SB36, UF3, UF342, RR120FL).
-      - Look for Fillers (UF), oven Cabinets (OVD), and molding (RR) in schedules and floor plans.
+      - Extract EXACT codes (e.g. W3042, SB36, UF3, UF342, RR120FL).
+      - Look for Fillers (UF), oven Cabinets (OVD), and molding (RR).
       - MERGE multi-line vertical text (e.g. "U" over "F" over "3" becomes "UF3").
       - PRESERVE "BUTT" as part of the code if it appears next to a SKU.
-      - DO NOT add extra spaces within codes.
-      
-      ROOM ISOLATION:
-      Identify rooms like "STD 42 Kitchen", "Owners Bath", "Bath 2".
       
       OUTPUT:
-      Return a JSON array: [ { "room": "Room Name", "code": "SKU", "qty": 1 } ]` }
+      Return a JSON array: [ { "room": "Parent Room Name", "code": "SKU", "qty": 1 } ]` }
     ],
     config: {
       temperature: 0,
@@ -81,8 +83,15 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     const rawCode = String(item.code || '').trim();
     if (!rawCode) return;
 
+    // Post-processing: Consolidated Room Naming
+    let roomName = String(item.room || 'General Area').toUpperCase().trim();
+    if (roomName.includes("OPT LAUNDRY") || roomName.includes("LAUNDRY") && !roomName.includes("ROOM")) {
+       // Heuristic: If it's a sub-title like OPT LAUNDRY, group it with the main Kitchen if possible
+       // For this tool, we will simplify to the core area name
+       roomName = roomName.replace("OPT ", "").split(" ")[0]; 
+    }
+
     const displayCode = cleanSkuForDisplay(rawCode);
-    const roomName = String(item.room || 'General Area').toUpperCase().trim();
     const normCode = normalizeSku(rawCode);
     
     if (!roomsMap.has(roomName)) {
@@ -96,7 +105,6 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     const room = roomsMap.get(roomName);
     const qty = Number(item.qty) || 1;
 
-    // Use isPrimaryCabinet to decide which list it goes into
     if (isPrimaryCabinet(rawCode)) {
       const existing = room.primaryMap.get(normCode);
       if (existing) {
