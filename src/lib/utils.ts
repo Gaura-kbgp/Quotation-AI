@@ -20,10 +20,15 @@ export function compressSku(sku: string | any): string {
   return String(sku).toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
+/**
+ * Determines if an item is a primary cabinet box.
+ * Fillers (UF) and Molding (RR) are excluded to allow manual selection in BOM.
+ */
 export function isPrimaryCabinet(sku: string): boolean {
   const s = String(sku || "").toUpperCase().trim();
   if (!s) return false;
-  const primaryPrefixes = ['W', 'B', 'SB', 'VSB', 'UF', 'RR', 'OVD', 'TP', 'PANTRY', 'OVEN', 'REF', 'DW', 'MICRO', 'V', 'SV', 'VB'];
+  // Box prefixes: Wall, Base, Oven/Tall, Vanity
+  const primaryPrefixes = ['W', 'B', 'SB', 'VSB', 'OVD', 'TP', 'PANTRY', 'OVEN', 'REF', 'DW', 'MICRO', 'V', 'SV', 'VB'];
   return primaryPrefixes.some(p => s.startsWith(p));
 }
 

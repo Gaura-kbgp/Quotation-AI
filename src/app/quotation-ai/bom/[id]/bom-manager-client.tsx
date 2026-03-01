@@ -62,10 +62,15 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const { toast } = useToast();
   const router = useRouter();
   
+  /**
+   * Initialize BOM state.
+   * CRITICAL: Only primary cabinets are auto-selected (is_billable: true).
+   * Fillers, Molding, and Accessories are unselected by default (is_billable: false).
+   */
   const [bom, setBom] = useState<BomItem[]>(() => 
     initialBom.map(item => ({
       ...item,
-      is_billable: item.is_billable ?? (item.precision_level !== 'NOT_FOUND')
+      is_billable: item.is_billable ?? (isPrimaryCabinet(item.sku) && item.precision_level !== 'NOT_FOUND')
     }))
   );
 
