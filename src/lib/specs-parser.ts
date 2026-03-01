@@ -2,13 +2,12 @@
 import * as XLSX from 'xlsx';
 
 /**
- * UNIVERSAL ANCHOR-FREE PRICING PARSER (v59.0)
+ * EXTREME-FLEXIBILITY UNIVERSAL SCANNER (v60.0)
  * 
- * "SUPER QUALITY" FEATURES:
- * 1. ROW-LEVEL HEURISTIC PATTERN MATCHING: Treats every row as a potential data pair.
- * 2. NO-LIMIT GRID SCAN: Processes 100% of rows/cols in all 60+ sheets.
- * 3. DYNAMIC SKU/PRICE RECOGNITION: Identifies cabinet codes even without headers.
- * 4. GLOBAL ACCESSORY PRIORITY: Deep scans specialized accessory sheets (Row 626+).
+ * DESIGN PHILOSOPHY:
+ * Treat every sheet and every row as a potential independent data source.
+ * Use content-based heuristics (Regex for SKUs, Numeric ranges for Prices) 
+ * to extract data even when headers are missing, shifted, or inconsistent.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -33,7 +32,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
                          currentSheetName.includes("MOLDING") ||
                          currentSheetName.includes("SKU GUIDE");
 
-    console.log(`[Parser v59] Deep Pattern Scan: ${sheetName} (${rows.length} rows)`);
+    console.log(`[Parser v60] Format-Agnostic Scan: ${sheetName} (${rows.length} rows)`);
 
     let activeSkuColIdx = -1;
     let activePriceColIdx = -1;
@@ -42,7 +41,8 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
       const row = rows[r];
       if (!row || row.length < 2) continue;
 
-      // STAGE 1: HEADER ANCHOR DISCOVERY (Look for row-level anchors)
+      // STAGE 1: DYNAMIC HEADER DISCOVERY
+      // We look for headers on every row to handle multi-section sheets
       const foundSkuIdx = row.findIndex(cell => {
         const val = String(cell || "").toUpperCase().trim();
         return skuKeywords.some(k => val === k);
@@ -56,27 +56,27 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
           return priceKeywords.some(k => val.includes(k));
         });
         if (foundPriceIdx !== -1) activePriceColIdx = foundPriceIdx;
-        continue; 
+        continue; // Skip header row itself
       }
 
-      // STAGE 2: ROW-LEVEL PATTERN HEURISTIC (Independent of headers)
+      // STAGE 2: ROW-LEVEL CONTENT HEURISTIC
       let extractedSku = "";
       let extractedPrice = 0;
 
-      // Use discovered columns if they exist
+      // Tier A: Check known columns if they were discovered
       if (activeSkuColIdx !== -1 && activePriceColIdx !== -1) {
         extractedSku = String(row[activeSkuColIdx] || "").trim();
         const priceVal = String(row[activePriceColIdx] || "").replace(/[^\d.-]/g, "");
         extractedPrice = parseFloat(priceVal);
       } 
       
-      // STAGE 3: RAW GRID SEARCH (Crucial for Row 626+ deep data)
+      // Tier B: Raw Grid Heuristic (Crucial for Row 626+ deep data where headers might be lost)
       if (!extractedSku || isNaN(extractedPrice) || extractedPrice <= 0) {
         // Look for any cell that looks like a cabinet SKU (e.g. UF3, B15, W3624)
         const heuristicSkuIdx = row.findIndex(cell => {
           const s = String(cell || "").trim();
-          // Heuristic: Alphanumeric string, 2-15 chars, starts with a letter
-          return s.length >= 2 && s.length < 20 && /^[A-Z][A-Z0-9-\s]{1,15}$/i.test(s);
+          // Regex: Starts with 1-3 letters, followed by alphanumeric, 2-15 chars long
+          return s.length >= 2 && s.length < 20 && /^[A-Z]{1,3}[A-Z0-9-\s]{1,15}$/i.test(s);
         });
 
         if (heuristicSkuIdx !== -1) {
@@ -86,10 +86,10 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
             if (i === heuristicSkuIdx) continue;
             const val = String(row[i] || "").replace(/[^\d.-]/g, "");
             const num = parseFloat(val);
-            // Heuristic: Logical price range for cabinets/accessories
-            if (!isNaN(num) && num > 1 && num < 30000) {
+            // Heuristic: Valid logical cabinet price range
+            if (!isNaN(num) && num > 1 && num < 40000) {
               extractedPrice = num;
-              // Stabilize for future rows in this sheet
+              // Stabilize the column for the rest of this section if not already set
               if (activePriceColIdx === -1) activePriceColIdx = i;
               break;
             }
@@ -97,9 +97,9 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         }
       }
 
-      // STAGE 4: PERSISTENCE (Clean and push to DB)
+      // STAGE 3: DATA PERSISTENCE
       if (extractedSku && !isNaN(extractedPrice) && extractedPrice > 0) {
-        // Skip common header words if they were misidentified
+        // Validation: Ensure the SKU isn't just a header word we missed
         if (skuKeywords.some(k => extractedSku.toUpperCase() === k)) continue;
 
         pricing.push({
@@ -115,6 +115,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   }
 
-  console.log(`[Parser v59] Final Scan Results: ${pricing.length} pricing records extracted.`);
+  console.log(`[Parser v60] Finished. Extracted ${pricing.length} total records from all sheets.`);
   return pricing;
 }

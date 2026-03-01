@@ -6,13 +6,12 @@ import stringSimilarity from 'string-similarity';
 export const maxDuration = 300;
 
 /**
- * UNIVERSAL "SMART JACK" PRICING ENGINE (v59.0)
+ * UNIVERSAL "SMART JACK" PRICING ENGINE (v60.0)
  * 
- * "SUPER QUALITY" FEATURES:
- * 1. MULTI-TIER SMART MATCHER: Recursive search across all sheets and compressed keys.
- * 2. GLOBAL ACCESSORY PRIORITY: Instantly scans universal sheets for Fillers/Molding.
- * 3. ZERO-PRICE CATEGORY FALLBACK: Applies category averages to prevent $0.00 prices.
- * 4. RECURSIVE PAGINATED FETCH: Loads 100% of manufacturer catalog into memory.
+ * ARCHITECTURE:
+ * 1. MULTI-TIER RECURSIVE SEARCH: Scans local collection, then global universal sheets.
+ * 2. FORMAT-AGNOSTIC INDEXING: Merges data from all 60+ Excel sheets into a single smart search map.
+ * 3. ZERO-PRICE PREVENTION: Applies category averages and fuzzy matching fallbacks.
  */
 export async function POST(req: Request) {
   try {
@@ -58,7 +57,7 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[Smart Engine v59] Processing ${allPricing.length} total catalog records.`);
+    console.log(`[Smart Engine v60] Indexing ${allPricing.length} total catalog records.`);
 
     // 3. SMART MULTI-DIMENSIONAL INDEXING
     const localMap = new Map<string, any>();
@@ -80,7 +79,7 @@ export async function POST(req: Request) {
       // Strict Index (Local Collection)
       localMap.set(`${sku}|${col}`, p);
       
-      // Global Search Index (Critical for Accessories)
+      // Global Search Index (Critical for Accessories on deep Row 626+)
       if (!globalSkuMap.has(sku) || col === "UNIVERSAL") {
         globalSkuMap.set(sku, p);
       }
@@ -106,7 +105,7 @@ export async function POST(req: Request) {
       const targetComp = compressSku(target);
       const category = detectCategory(target);
 
-      // Generate Variants (Stripping common production suffixes)
+      // Generate Variants (Stripping common suffixes)
       const variants = [
         target,
         target.replace(/\s+/g, ''),
@@ -120,7 +119,7 @@ export async function POST(req: Request) {
         if (localMap.has(key)) return { match: localMap.get(key), type: 'STRICT_LOCAL' };
       }
 
-      // TIER 2: GLOBAL CATALOG FALLBACK (Critical for items like UF3, UF342)
+      // TIER 2: GLOBAL CATALOG FALLBACK (Critical for items like UF3, UF342 from other sheets)
       for (const v of variants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
@@ -128,10 +127,10 @@ export async function POST(req: Request) {
       // TIER 3: COMPRESSED ALPHANUMERIC SEARCH
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'COMPRESSED_GLOBAL' };
 
-      // TIER 4: AI FUZZY SIMILARITY (Fuzzy matching threshold 0.75 for accessories)
+      // TIER 4: AI FUZZY SIMILARITY
       if (allSkus.length > 0) {
         const fuzzy = stringSimilarity.findBestMatch(target, allSkus);
-        if (fuzzy.bestMatch.rating > 0.75) {
+        if (fuzzy.bestMatch.rating > 0.8) {
           return { match: globalSkuMap.get(fuzzy.bestMatch.target), type: 'AI_FUZZY_MATCH' };
         }
       }
@@ -208,7 +207,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Smart Engine v59] Critical Failure:', err);
+    console.error('[Smart Engine v60] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
