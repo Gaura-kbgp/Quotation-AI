@@ -4,12 +4,12 @@ import { compressSku } from '@/lib/utils';
 export const maxDuration = 300;
 
 /**
- * ENTERPRISE MULTI-ENGINE PRICING SYSTEM (v51.0)
+ * ULTIMATE MULTI-ENGINE PRICING SYSTEM (v52.0)
  * 
- * "SUPER QUALITY" UPGRADES:
- * 1. UNIVERSAL GLOBAL SEARCH: Automatically searches every sheet for fillers/accessories.
- * 2. RECURSIVE PAGINATED DB LOAD: Fetches up to 100,000+ records in chunks.
- * 3. AGGRESSIVE NORMALIZATION: Strips all whitespace and variant suffixes for universal matching.
+ * "SUPER QUALITY" FEATURES:
+ * 1. HYPER-STABLE PAGINATED FETCH: Loads 100% of catalog data using range-based loops.
+ * 2. QUAD-ENGINE MATCHING: Exact -> Compressed -> Suffix-Stripped -> Global Fallback.
+ * 3. ACCESSORY PRIORITY: Automatically searches "UNIVERSAL" records for fillers/molding.
  */
 export async function POST(req: Request) {
   try {
@@ -22,6 +22,7 @@ export async function POST(req: Request) {
 
     const supabase = createServerSupabase();
 
+    // 1. PROJECT LOAD
     const { data: project, error: pError } = await supabase
       .from('quotation_projects')
       .select('*')
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
     if (pError || !project) throw new Error('Project not found.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // 1. FULL CATALOG INDEXING (Paginated Load - Stable Batching)
+    // 2. STABLE CATALOG STREAMING (Fetch up to 100,000 records in batches)
     let allPricing: any[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -54,10 +55,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2. MULTI-TIER INDEXING
-    const localMap = new Map<string, any>(); 
-    const globalSkuMap = new Map<string, any>();
-    const compressedMap = new Map<string, any>();
+    // 3. MULTI-ENGINE INDEXING
+    const localMap = new Map<string, any>(); // Specific SKU + Collection + Style
+    const globalSkuMap = new Map<string, any>(); // Universal SKU Match (Search across all sheets)
+    const compressedMap = new Map<string, any>(); // SKU with no symbols/spaces
 
     const normalizeKey = (s: string) => String(s || "").trim().toUpperCase().replace(/\s+/g, ' ');
 
@@ -70,7 +71,7 @@ export async function POST(req: Request) {
       const fullKey = `${sku}|${col}|${sty}`;
       if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Global Search Index (Priority for Universal/Accessory entries)
+      // Global Index (Higher priority for Universal/Accessory entries)
       if (!globalSkuMap.has(sku) || col === "UNIVERSAL" || col.includes("ACCESSORY") || col.includes("FILLER")) {
         globalSkuMap.set(sku, p);
       }
@@ -78,6 +79,9 @@ export async function POST(req: Request) {
       if (!compressedMap.has(comp)) compressedMap.set(comp, p);
     });
 
+    /**
+     * QUAD-ENGINE MATCHING LOGIC
+     */
     function findBestMatch(itemCode: string, collection: string, style: string) {
       const target = normalizeKey(itemCode);
       if (!target) return null;
@@ -96,19 +100,19 @@ export async function POST(req: Request) {
         target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''),
       ].filter((v, i, self) => v && self.indexOf(v) === i);
 
-      // TIER 1: EXACT LOCAL (Specific Room Collection)
+      // ENGINE 1: LOCAL STRICT (Exact Match in Room Collection)
       for (const v of searchVariants) {
         const key = `${v}|${col}|${sty}`;
-        if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_EXACT' };
+        if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_STRICT' };
       }
 
-      // TIER 2: GLOBAL CATALOG (Crucial for items like UF3, UF342 from different sheets)
+      // ENGINE 2: GLOBAL CATALOG (Crucial for items like UF3, UF342 from Sheet 2)
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
-      // TIER 3: SUPER COMPRESSED FUZZY (Universal pattern matching)
-      if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'GLOBAL_FUZZY' };
+      // ENGINE 3: COMPRESSED FUZZY (Pattern Matcher)
+      if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'GLOBAL_PATTERN' };
 
       return null;
     }

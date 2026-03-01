@@ -17,12 +17,13 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * SKU NORMALIZATION (v49.0)
+ * SKU NORMALIZATION (v52.0)
  * Standardizes for strict matching by stripping excessive whitespace and common noise.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  return String(sku).toUpperCase().replace(/\s+/g, '').trim();
+  // Strips all special characters except alpha-numeric
+  return String(sku).toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
 }
 
 /**
