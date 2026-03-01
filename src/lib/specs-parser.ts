@@ -1,12 +1,12 @@
 import * as XLSX from 'xlsx';
 
 /**
- * UNIVERSAL HIGH-PRECISION PRICING PARSER (v54.0)
+ * UNIVERSAL HIGH-PRECISION PRICING PARSER (v55.0)
  * 
  * "SUPER QUALITY" IMPROVEMENTS:
- * 1. ROW-FIRST HEURISTIC: Scans every row independently for SKU + Price pairs.
- * 2. HEADER-INDEPENDENT: Successfully extracts data from Row 626+ even without top headers.
- * 3. AGGRESSIVE PATTERN MATCHING: Captures 'UF1', 'UF 342', and 'UF E3'.
+ * 1. HEADER-AGNOSTIC EXTRACTION: If no header is found, it uses row heuristics (SKU pattern + Number).
+ * 2. EXHAUSTIVE SCAN: Reads 100% of rows in every sheet (resolves Row 626+ issues).
+ * 3. GLOBAL ACCESSORY DETECTION: Automatically maps accessory sheets to the UNIVERSAL catalog.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -22,23 +22,23 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }) as any[][];
     if (rows.length < 1) continue;
 
-    let skuColIdx = -1;
-    let priceCols: number[] = [];
-    const currentCollection = sheetName.toUpperCase().trim();
-    
-    const isGlobalSheet = currentCollection.includes("ACCESSORY") || 
-                         currentCollection.includes("OPTION") || 
-                         currentCollection.includes("FILLER") ||
-                         currentCollection.includes("UNIVERSAL") ||
-                         currentCollection.includes("MOLDING");
+    const currentSheetName = sheetName.toUpperCase().trim();
+    const isGlobalSheet = currentSheetName.includes("ACCESSORY") || 
+                         currentSheetName.includes("OPTION") || 
+                         currentSheetName.includes("FILLER") ||
+                         currentSheetName.includes("UNIVERSAL") ||
+                         currentSheetName.includes("MOLDING");
 
-    console.log(`[Parser] Exhaustive scan on: ${sheetName} (${rows.length} rows)...`);
+    let skuColIdx = -1;
+    let priceColIdx = -1;
+
+    console.log(`[Parser v55] Exhaustive scan: ${sheetName} (${rows.length} rows)`);
 
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       if (!row || row.length < 2) continue;
 
-      // 1. DYNAMIC HEADER SYNC (Look for anchors on every row)
+      // 1. SYNC HEADERS (Try to find column anchors if not already found)
       const foundSkuIdx = row.findIndex(cell => {
         const val = String(cell || "").toUpperCase().trim();
         return skuKeywords.some(k => val === k);
@@ -46,67 +46,63 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
       if (foundSkuIdx !== -1) {
         skuColIdx = foundSkuIdx;
-        priceCols = [];
-        row.forEach((cell, cIdx) => {
+        const foundPriceIdx = row.findIndex((cell, idx) => {
+          if (idx === skuColIdx) return false;
           const val = String(cell || "").toUpperCase().trim();
-          if (priceKeywords.some(k => val.includes(k))) {
-            priceCols.push(cIdx);
-          }
+          return priceKeywords.some(k => val.includes(k));
         });
-        continue; // It's a header row
+        if (foundPriceIdx !== -1) priceColIdx = foundPriceIdx;
+        continue; // Header row found
       }
 
-      // 2. ROW-LEVEL HEURISTIC (Capture data even without a header anchor)
-      let potentialSkuIdx = skuColIdx !== -1 ? skuColIdx : -1;
-      let potentialPriceIdxs = priceCols.length > 0 ? priceCols : [];
+      // 2. DATA EXTRACTION (Use identified columns or Heuristic Pair Search)
+      let finalSku = "";
+      let finalPrice = 0;
 
-      // If we don't know the columns yet, look for a SKU/Price pattern in this specific row
-      if (potentialSkuIdx === -1) {
-        potentialSkuIdx = row.findIndex(cell => {
+      if (skuColIdx !== -1 && priceColIdx !== -1) {
+        // We have columns, extract directly
+        finalSku = String(row[skuColIdx] || "").trim();
+        const priceVal = String(row[priceColIdx] || "").replace(/[^\d.-]/g, "");
+        finalPrice = parseFloat(priceVal);
+      } else {
+        // HEURISTIC PAIR SEARCH (For deep rows like 626 with no headers)
+        // Find an alphanumeric cell that looks like a cabinet code
+        const pSkuIdx = row.findIndex(cell => {
           const s = String(cell || "").trim();
-          // Regex to catch UF1, UF342, UF E3, B24, W3624, etc.
-          return /^[A-Z]{1,5}\s?[0-9]{1,6}[A-Z]{0,5}$/i.test(s) || /^[A-Z]{1,5}\s[A-Z0-9]{1,6}$/i.test(s);
+          return s.length > 1 && s.length < 20 && /^[A-Z]{1,5}\s?[0-9]{1,6}/i.test(s);
         });
-      }
 
-      if (potentialPriceIdxs.length === 0) {
-        row.forEach((cell, idx) => {
-          if (idx === potentialSkuIdx) return;
-          const valStr = String(cell).replace(/[^\d.-]/g, "");
-          const num = parseFloat(valStr);
-          // Look for a realistic price (e.g., 5 to 10,000)
-          if (!isNaN(num) && num > 5 && num < 15000) {
-            potentialPriceIdxs.push(idx);
+        if (pSkuIdx !== -1) {
+          finalSku = String(row[pSkuIdx] || "").trim();
+          // Find the first logical number after the SKU that looks like a price
+          for (let i = pSkuIdx + 1; i < row.length; i++) {
+            const val = String(row[i] || "").replace(/[^\d.-]/g, "");
+            const num = parseFloat(val);
+            if (!isNaN(num) && num > 5 && num < 15000) {
+              finalPrice = num;
+              break;
+            }
           }
-        });
+        }
       }
 
-      // 3. DATA EXTRACTION
-      if (potentialSkuIdx !== -1 && potentialPriceIdxs.length > 0) {
-        const rawSku = String(row[potentialSkuIdx] || "").trim();
-        if (!rawSku || skuKeywords.some(k => rawSku.toUpperCase() === k)) continue;
+      // 3. PERSIST VALID PAIR
+      if (finalSku && !isNaN(finalPrice) && finalPrice > 0) {
+        if (skuKeywords.some(k => finalSku.toUpperCase() === k)) continue;
 
-        // Use the first potential price index as the primary one
-        const primaryPriceIdx = potentialPriceIdxs[0];
-        const rawValue = row[primaryPriceIdx];
-        const valStr = String(rawValue).replace(/[^\d.-]/g, "");
-        const priceNum = parseFloat(valStr);
-
-        if (!isNaN(priceNum) && priceNum > 0) {
-          pricing.push({
-            manufacturer_id: manufacturerId,
-            collection_name: isGlobalSheet ? "UNIVERSAL" : currentCollection,
-            door_style: "UNIVERSAL",
-            sku: rawSku.toUpperCase(),
-            price: priceNum,
-            raw_source_file_id: fileId,
-            created_at: new Date().toISOString()
-          });
-        }
+        pricing.push({
+          manufacturer_id: manufacturerId,
+          collection_name: isGlobalSheet ? "UNIVERSAL" : currentSheetName,
+          door_style: "UNIVERSAL",
+          sku: finalSku.toUpperCase(),
+          price: finalPrice,
+          raw_source_file_id: fileId,
+          created_at: new Date().toISOString()
+        });
       }
     }
   }
 
-  console.log(`[Parser] Global scan complete. Captured ${pricing.length} pricing records.`);
+  console.log(`[Parser v55] Extraction complete. Total records: ${pricing.length}`);
   return pricing;
 }
