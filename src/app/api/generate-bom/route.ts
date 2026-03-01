@@ -5,12 +5,12 @@ import stringSimilarity from 'string-similarity';
 export const maxDuration = 300;
 
 /**
- * UNIVERSAL HIGH-PRECISION PRICING SYSTEM (v53.0)
+ * UNIVERSAL HIGH-PRECISION PRICING ENGINE (v54.0)
  * 
  * "SUPER QUALITY" FEATURES:
- * 1. FULL-WORKBOOK SCAN: Fetches 100% of data across 60+ sheets.
- * 2. CATEGORY-AWARE FALLBACK: Prevents $0.00 prices by using category averages.
- * 3. FUZZY STRING MATCHING: Uses string-similarity for resilient SKU lookups.
+ * 1. MULTI-ENGINE SEARCH: Tries Local, Global, Compressed, and Fuzzy matches.
+ * 2. CATEGORY ESTIMATION: Prevents $0.00 prices by calculating category averages.
+ * 3. AGGRESSIVE SUFFIX STRIPPING: Handles 'BUTT', 'H', 'L', 'R', 'FL', etc.
  */
 export async function POST(req: Request) {
   try {
@@ -77,14 +77,14 @@ export async function POST(req: Request) {
       const fullKey = `${sku}|${col}|${sty}`;
       if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Global Index (Accessories priority)
+      // Global Index (Accessories priority - handles items from "Accessory Pricing" sheet)
       if (!globalSkuMap.has(sku) || col === "UNIVERSAL" || col.includes("ACCESSORY")) {
         globalSkuMap.set(sku, p);
       }
       
       if (!compressedMap.has(comp)) compressedMap.set(comp, p);
 
-      // Category Stats
+      // Category Stats for Fallback Estimation
       const stats = categoryAverages.get(cat) || { total: 0, count: 0 };
       stats.total += Number(p.price) || 0;
       stats.count += 1;
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
         target,
         target.replace(/\s+/g, ''),
         target.replace(/\s*(BUTT|H|L|R|FL|S|D)$/g, ''),
-        target.substring(0, target.length - 1), // Try stripping last character
+        target.substring(0, target.length - 1), 
       ].filter((v, i, self) => v && self.indexOf(v) === i);
 
       // ENGINE 1: LOCAL STRICT
@@ -116,15 +116,15 @@ export async function POST(req: Request) {
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_STRICT' };
       }
 
-      // ENGINE 2: GLOBAL CATALOG (Accessories)
+      // ENGINE 2: GLOBAL CATALOG (Universal Accessories check)
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
-      // ENGINE 3: COMPRESSED PATTERN
+      // ENGINE 3: COMPRESSED PATTERN (matches 'UF 342' to 'UF342')
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'GLOBAL_PATTERN' };
 
-      // ENGINE 4: FUZZY SIMILARITY
+      // ENGINE 4: FUZZY SIMILARITY (Failsafe for spelling differences)
       if (allSkus.length > 0) {
         const fuzzy = stringSimilarity.findBestMatch(target, allSkus);
         if (fuzzy.bestMatch.rating > 0.8) {
@@ -133,6 +133,7 @@ export async function POST(req: Request) {
       }
 
       // FALLBACK: CATEGORY AVERAGE (Prevents $0.00)
+      // If a filler or cabinet is truly not found, use the average price for its category
       const stats = categoryAverages.get(category);
       if (stats && stats.count > 0) {
         const avgPrice = stats.total / stats.count;
