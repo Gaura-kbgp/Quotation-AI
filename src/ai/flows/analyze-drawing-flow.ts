@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview High-Precision Extraction Flow (v63.0).
- * Strictly enforces Architectural Room Titles and suppresses sub-sections.
+ * @fileOverview Strict 5-Room Architectural Extraction Flow (v64.0).
+ * Enforces exactly 5 official room titles and suppresses sub-sections like Laundry.
  */
 
 import { ai } from '@/ai/genkit';
@@ -28,7 +28,7 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow v63] Starting Strict Architectural Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow v64] Starting Strict 5-Room Analysis for: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.0-flash',
@@ -36,41 +36,29 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
       { text: `You are a professional architectural estimator. 
       
-      CRITICAL: Room titles must be extracted ONLY from official PDF header titles.
-      
-      DO NOT create rooms based on these sub-sections or fragments:
-      - ISLAND
-      - PERIMETER
-      - HARDWARE
-      - MASTER BATH (Fragment)
-      - KITCHEN (Fragment)
-      - BATH 2 (Fragment)
-      - BATH 3 (Fragment)
-      - LAUNDRY (Fragment)
-      - TRIM LIST
+      CRITICAL: You must ONLY extract data into these 5 EXACT rooms. 
       
       ----------------------------
-      VALID ROOM TITLES (EXACT LIST)
+      OFFICIAL ROOM TITLES (STRICT)
       ----------------------------
-      You must ONLY use these titles for room names:
       1. STANDARD 42" KITCHEN
       2. OPT GOURMET KITCHEN
       3. STANDARD OWNERS BATH
       4. STANDARD BATH 2
       5. STANDARD BATH 3 UPSTAIRS
-      6. OPT LAUNDRY (See Rule 4)
 
       ----------------------------
-      DETECTION & MERGING RULES
+      RULES FOR EXTRACTION
       ----------------------------
-      1. If a page contains one of the VALID TITLES in uppercase at the top, set that as the active room.
-      2. If you see items listed under "ISLAND" or "PERIMETER", MERGE them into the parent KITCHEN room.
-      3. If a page has no clear title, inherit the room from the previous page.
-      4. OVERRIDE RULE: If the Header says "STANDARD BATH 3 UPSTAIRS" but the specific content area contains "OPT LAUNDRY", set the room for those specific items to "OPT LAUNDRY".
-      5. Extract EVERY SKU (e.g., W3042, SB36, UF3).
+      1. IGNORE labels like "OPT LAUNDRY", "ISLAND", "PERIMETER", "HARDWARE", or "TRIM LIST" as room titles.
+      2. Any item found under "OPT LAUNDRY" (usually on Page 8) must be merged into "STANDARD BATH 3 UPSTAIRS".
+      3. Any item found under "ISLAND" or "PERIMETER" must be merged into the active KITCHEN room.
+      4. Header Detection: Extract the official room title from the TOP header of the PDF page.
+      5. Inheritance: If a page (like Page 8) has no top header but follows a "STANDARD BATH 3 UPSTAIRS" page, assign those items to that room.
+      6. Do NOT invent or split rooms based on fragments.
       
       OUTPUT FORMAT:
-      Return a JSON array: [ { "room": "VALID ROOM TITLE", "code": "SKU", "qty": 1 } ]` }
+      Return a JSON array of objects: [ { "room": "OFFICIAL ROOM TITLE", "code": "SKU", "qty": 1 } ]` }
     ],
     config: {
       temperature: 0,
@@ -98,8 +86,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     'OPT GOURMET KITCHEN',
     'STANDARD OWNERS BATH',
     'STANDARD BATH 2',
-    'STANDARD BATH 3 UPSTAIRS',
-    'OPT LAUNDRY'
+    'STANDARD BATH 3 UPSTAIRS'
   ];
 
   const roomsMap = new Map<string, any>();
@@ -110,25 +97,22 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     const rawCode = String(item.code || '').trim();
     if (!rawCode) return;
 
-    // Strict Post-Processing Sanitizer
+    // Strict Post-Processing Sanitizer to force 5-room adherence
     let roomName = String(item.room || '').toUpperCase().trim();
     
-    // Enforce mapping of sub-sections to parent if the AI missed it
-    if (roomName === 'ISLAND' || roomName === 'PERIMETER' || roomName.includes('KITCHEN')) {
-        roomName = 'STANDARD 42" KITCHEN'; // Default Kitchen fallback
+    if (roomName.includes('KITCHEN') || roomName === 'ISLAND' || roomName === 'PERIMETER') {
+        roomName = roomName.includes('GOURMET') ? 'OPT GOURMET KITCHEN' : 'STANDARD 42" KITCHEN';
     } else if (roomName.includes('OWNER') || roomName.includes('MASTER')) {
         roomName = 'STANDARD OWNERS BATH';
     } else if (roomName.includes('BATH 2')) {
         roomName = 'STANDARD BATH 2';
-    } else if (roomName.includes('BATH 3')) {
+    } else if (roomName.includes('BATH 3') || roomName.includes('LAUNDRY')) {
         roomName = 'STANDARD BATH 3 UPSTAIRS';
-    } else if (roomName.includes('LAUNDRY')) {
-        roomName = 'OPT LAUNDRY';
     }
 
-    // Final check against exact valid list
+    // Ultimate Fallback: If still not in the valid 5, push to standard kitchen
     if (!VALID_TITLES.includes(roomName)) {
-        roomName = 'STANDARD 42" KITCHEN'; // Absolute fallback
+        roomName = 'STANDARD 42" KITCHEN';
     }
 
     const displayCode = cleanSkuForDisplay(rawCode);
@@ -172,7 +156,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Takeoff complete: ${totalPrimary} primary units in official rooms.`,
+    summary: `Takeoff complete: ${totalPrimary} units in 5 architectural rooms.`,
     totalPrimary,
     totalOther
   };
