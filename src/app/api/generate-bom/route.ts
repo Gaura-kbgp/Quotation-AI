@@ -1,4 +1,3 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 import { compressSku, detectCategory, normalizeSku } from '@/lib/utils';
 import stringSimilarity from 'string-similarity';
@@ -6,12 +5,12 @@ import stringSimilarity from 'string-similarity';
 export const maxDuration = 300;
 
 /**
- * UNIVERSAL "SMART JACK" PRICING ENGINE (v61.0)
+ * UNIVERSAL "SMART JACK" PRICING ENGINE (v65.0)
  * 
  * ARCHITECTURE:
- * 1. PAGINATED STREAMING: Loads 100% of catalog records from DB using recursive fetching.
- * 2. MULTI-TIER RECURSIVE SEARCH: Prioritizes universal accessory sheets for Fillers/Molding.
- * 3. ZERO-PRICE PREVENTION: Applies category averages if all matching tiers fail.
+ * 1. EXHAUSTIVE CATALOG STREAMING: Loads all records from DB in stable batches.
+ * 2. MULTI-TIER GLOBAL SEARCH: Prioritizes Universal sheets for Fillers/Molding.
+ * 3. FUZZY & CATEGORY FALLBACKS: Prevents zero-price quotations.
  */
 export async function POST(req: Request) {
   try {
@@ -34,7 +33,7 @@ export async function POST(req: Request) {
     if (pError || !project) throw new Error('Project not found.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. EXHAUSTIVE CATALOG FETCH (recursive paginated streaming)
+    // 2. EXHAUSTIVE CATALOG FETCH
     let allPricing: any[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -57,9 +56,9 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[Smart Engine v61] Loaded ${allPricing.length} records into memory.`);
+    console.log(`[Smart Engine v65] Indexed ${allPricing.length} pricing records.`);
 
-    // 3. MULTI-DIMENSIONAL SMART INDEXING
+    // 3. SMART INDEXING
     const localMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
     const compressedMap = new Map<string, any>();
@@ -79,15 +78,17 @@ export async function POST(req: Request) {
       // Strict Index (Local Collection)
       localMap.set(`${sku}|${col}`, p);
       
-      // Global Search Index (Critical for Accessories like Row 626+)
+      // Global Search Index (Prioritize Universal sheets for Accessories)
       if (!globalSkuMap.has(sku) || col === "UNIVERSAL") {
         globalSkuMap.set(sku, p);
       }
       
-      // Compressed Search Index (Matches "UF 3" to "UF3")
-      if (!compressedMap.has(comp)) compressedMap.set(comp, p);
+      // Compressed Search Index
+      if (!compressedMap.has(comp) || col === "UNIVERSAL") {
+        compressedMap.set(comp, p);
+      }
 
-      // Category Metrics for Smart Fallback Estimator
+      // Category Metrics for Smart Fallback
       const stats = categoryStats.get(cat) || { total: 0, count: 0 };
       stats.total += Number(p.price) || 0;
       stats.count += 1;
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
       const targetComp = compressSku(target);
       const category = detectCategory(target);
 
-      // Generate Matching Variants
+      // Match Variants
       const variants = [
         target,
         target.replace(/\s+/g, ''),
@@ -119,7 +120,7 @@ export async function POST(req: Request) {
         if (localMap.has(key)) return { match: localMap.get(key), type: 'STRICT_LOCAL' };
       }
 
-      // TIER 2: GLOBAL CATALOG FALLBACK (Critical for items like UF3 from other sheets)
+      // TIER 2: GLOBAL CATALOG FALLBACK (Critical for Accessories on other sheets)
       for (const v of variants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
@@ -127,7 +128,7 @@ export async function POST(req: Request) {
       // TIER 3: COMPRESSED ALPHANUMERIC SEARCH
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'COMPRESSED_GLOBAL' };
 
-      // TIER 4: AI FUZZY SIMILARITY (90% Confidence)
+      // TIER 4: FUZZY SIMILARITY (90% Confidence)
       if (allSkus.length > 0) {
         const fuzzy = stringSimilarity.findBestMatch(target, allSkus);
         if (fuzzy.bestMatch.rating > 0.9) {
@@ -135,7 +136,7 @@ export async function POST(req: Request) {
         }
       }
 
-      // TIER 5: CATEGORY-AVERAGE FALLBACK (Zero-Price Prevention)
+      // TIER 5: CATEGORY-AVERAGE FALLBACK
       const stats = categoryStats.get(category);
       if (stats && stats.count > 0) {
         const avg = stats.total / stats.count;
@@ -207,7 +208,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Smart Engine v61] Critical Failure:', err);
+    console.error('[Smart Engine v65] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }

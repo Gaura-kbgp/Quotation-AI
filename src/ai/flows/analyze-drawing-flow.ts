@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview Strict 5-Room Architectural Extraction Flow (v64.0).
- * Enforces exactly 5 official room titles and suppresses sub-sections like Laundry.
+ * @fileOverview Strict 5-Room Architectural Extraction Flow (v65.0).
+ * Enforces exactly 5 official room titles and consolidates sub-sections.
  */
 
 import { ai } from '@/ai/genkit';
@@ -28,7 +28,7 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow v64] Starting Strict 5-Room Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow v65] Starting Strict 5-Room Analysis for: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.0-flash',
@@ -50,12 +50,11 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       ----------------------------
       RULES FOR EXTRACTION
       ----------------------------
-      1. IGNORE labels like "OPT LAUNDRY", "ISLAND", "PERIMETER", "HARDWARE", or "TRIM LIST" as room titles.
-      2. Any item found under "OPT LAUNDRY" (usually on Page 8) must be merged into "STANDARD BATH 3 UPSTAIRS".
-      3. Any item found under "ISLAND" or "PERIMETER" must be merged into the active KITCHEN room.
+      1. IGNORE labels like "OPT LAUNDRY", "ISLAND", "PERIMETER", "HARDWARE", or "TRIM LIST" as top-level room titles.
+      2. Items found under "OPT LAUNDRY" (usually Page 8) must be merged into "STANDARD BATH 3 UPSTAIRS".
+      3. Items found under "ISLAND" or "PERIMETER" must be merged into the active KITCHEN room.
       4. Header Detection: Extract the official room title from the TOP header of the PDF page.
-      5. Inheritance: If a page (like Page 8) has no top header but follows a "STANDARD BATH 3 UPSTAIRS" page, assign those items to that room.
-      6. Do NOT invent or split rooms based on fragments.
+      5. Inheritance: If a page follows a "STANDARD BATH 3 UPSTAIRS" header, assign those items to that room even if sub-labels like "Laundry" appear.
       
       OUTPUT FORMAT:
       Return a JSON array of objects: [ { "room": "OFFICIAL ROOM TITLE", "code": "SKU", "qty": 1 } ]` }
@@ -97,9 +96,9 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     const rawCode = String(item.code || '').trim();
     if (!rawCode) return;
 
-    // Strict Post-Processing Sanitizer to force 5-room adherence
     let roomName = String(item.room || '').toUpperCase().trim();
     
+    // Strict Sanitizer: Force everything into one of the 5 official rooms
     if (roomName.includes('KITCHEN') || roomName === 'ISLAND' || roomName === 'PERIMETER') {
         roomName = roomName.includes('GOURMET') ? 'OPT GOURMET KITCHEN' : 'STANDARD 42" KITCHEN';
     } else if (roomName.includes('OWNER') || roomName.includes('MASTER')) {
@@ -110,7 +109,6 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
         roomName = 'STANDARD BATH 3 UPSTAIRS';
     }
 
-    // Ultimate Fallback: If still not in the valid 5, push to standard kitchen
     if (!VALID_TITLES.includes(roomName)) {
         roomName = 'STANDARD 42" KITCHEN';
     }
@@ -156,7 +154,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Takeoff complete: ${totalPrimary} units in 5 architectural rooms.`,
+    summary: `Takeoff complete: ${totalPrimary} cabinets consolidated into 5 official architectural rooms.`,
     totalPrimary,
     totalOther
   };
