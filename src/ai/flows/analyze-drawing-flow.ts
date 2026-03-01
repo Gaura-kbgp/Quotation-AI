@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview Strict 5-Room Architectural Extraction Flow (v65.0).
- * Enforces exactly 5 official room titles and consolidates sub-sections.
+ * @fileOverview Strict 5-Room Architectural Extraction Flow (v66.0).
+ * Enforces exactly 5 official room titles and consolidates ALL sub-sections.
  */
 
 import { ai } from '@/ai/genkit';
@@ -28,7 +28,7 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow v65] Starting Strict 5-Room Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow v66] Starting Strict 5-Room Analysis for: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.0-flash',
@@ -48,13 +48,12 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       5. STANDARD BATH 3 UPSTAIRS
 
       ----------------------------
-      RULES FOR EXTRACTION
+      CONSOLIDATION RULES
       ----------------------------
       1. IGNORE labels like "OPT LAUNDRY", "ISLAND", "PERIMETER", "HARDWARE", or "TRIM LIST" as top-level room titles.
-      2. Items found under "OPT LAUNDRY" (usually Page 8) must be merged into "STANDARD BATH 3 UPSTAIRS".
-      3. Items found under "ISLAND" or "PERIMETER" must be merged into the active KITCHEN room.
-      4. Header Detection: Extract the official room title from the TOP header of the PDF page.
-      5. Inheritance: If a page follows a "STANDARD BATH 3 UPSTAIRS" header, assign those items to that room even if sub-labels like "Laundry" appear.
+      2. Page 8 (OPT LAUNDRY) items MUST be merged into "STANDARD BATH 3 UPSTAIRS".
+      3. Items under "ISLAND" or "PERIMETER" MUST be merged into the active KITCHEN room.
+      4. If you see "LAUNDRY" items on Page 8, they belong to the "STANDARD BATH 3 UPSTAIRS" MATERIAL SET.
       
       OUTPUT FORMAT:
       Return a JSON array of objects: [ { "room": "OFFICIAL ROOM TITLE", "code": "SKU", "qty": 1 } ]` }
@@ -98,10 +97,10 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
     let roomName = String(item.room || '').toUpperCase().trim();
     
-    // Strict Sanitizer: Force everything into one of the 5 official rooms
+    // Strict Mapper: Force sub-sections into their parent rooms
     if (roomName.includes('KITCHEN') || roomName === 'ISLAND' || roomName === 'PERIMETER') {
         roomName = roomName.includes('GOURMET') ? 'OPT GOURMET KITCHEN' : 'STANDARD 42" KITCHEN';
-    } else if (roomName.includes('OWNER') || roomName.includes('MASTER')) {
+    } else if (roomName.includes('OWNER') || roomName.includes('MASTER') || roomName.includes('OWNERS')) {
         roomName = 'STANDARD OWNERS BATH';
     } else if (roomName.includes('BATH 2')) {
         roomName = 'STANDARD BATH 2';
@@ -129,19 +128,13 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
     if (isPrimaryCabinet(rawCode)) {
       const existing = room.primaryMap.get(normCode);
-      if (existing) {
-        existing.qty += qty;
-      } else {
-        room.primaryMap.set(normCode, { code: displayCode, qty });
-      }
+      if (existing) existing.qty += qty;
+      else room.primaryMap.set(normCode, { code: displayCode, qty });
       totalPrimary += qty;
     } else {
       const existing = room.otherMap.get(normCode);
-      if (existing) {
-        existing.qty += qty;
-      } else {
-        room.otherMap.set(normCode, { code: displayCode, qty });
-      }
+      if (existing) existing.qty += qty;
+      else room.otherMap.set(normCode, { code: displayCode, qty });
       totalOther += qty;
     }
   });
@@ -154,17 +147,12 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Takeoff complete: ${totalPrimary} cabinets consolidated into 5 official architectural rooms.`,
+    summary: `Takeoff complete: ${totalPrimary} cabinets consolidated into 5 official rooms.`,
     totalPrimary,
     totalOther
   };
 }
 
 function getEmptyResult(message: string): AnalyzeDrawingOutput {
-  return {
-    rooms: [],
-    summary: message,
-    totalPrimary: 0,
-    totalOther: 0
-  };
+  return { rooms: [], summary: message, totalPrimary: 0, totalOther: 0 };
 }

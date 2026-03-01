@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 
 /**
- * EXTREME-FLEXIBILITY UNIVERSAL SCANNER (v65.0)
+ * EXTREME-FLEXIBILITY UNIVERSAL SCANNER (v66.0)
  * 
  * DESIGN PHILOSOPHY:
  * 1. ROW-LEVEL HEURISTIC: Treat every row as a potential independent data source.
@@ -31,7 +31,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
                          currentSheetName.includes("MOLDING") ||
                          currentSheetName.includes("SKU GUIDE");
 
-    console.log(`[Parser v65] Greedy Pattern Scan: ${sheetName} (${rows.length} rows)`);
+    console.log(`[Parser v66] Greedy Pattern Scan: ${sheetName} (${rows.length} rows)`);
 
     let activeSkuColIdx = -1;
     let activePriceColIdx = -1;
@@ -54,7 +54,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
           return priceKeywords.some(k => val.includes(k));
         });
         if (foundPriceIdx !== -1) activePriceColIdx = foundPriceIdx;
-        continue; // Header row itself usually doesn't have data
+        continue; 
       }
 
       // STAGE 2: ROW-LEVEL CONTENT HEURISTIC (GREEDY SCAN)
@@ -68,18 +68,16 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         extractedPrice = parseFloat(priceVal);
       } 
       
-      // Method B: Greedy Grid Pattern Matcher (Fallback for Header-less Sections like Row 626+)
+      // Method B: Greedy Grid Pattern Matcher (Fallback for Header-less Sections)
       if (!extractedSku || isNaN(extractedPrice) || extractedPrice <= 0) {
-        // Find ANY cell matching Cabinet SKU pattern (e.g., UF3, W3624, etc)
         const heuristicSkuIdx = row.findIndex(cell => {
           const s = String(cell || "").trim();
-          // Heuristic: Starts with letters, followed by alphanumeric, length 2-15
+          // Matches Cabinet SKU patterns like UF3, W3624, OVD3396
           return s.length >= 2 && s.length < 16 && /^[A-Z]{1,4}[A-Z0-9-\s.]{1,12}$/i.test(s);
         });
 
         if (heuristicSkuIdx !== -1) {
           extractedSku = String(row[heuristicSkuIdx] || "").trim();
-          // Scan for first cell that looks like a valid cabinet price ($5 - $30,000)
           for (let i = 0; i < row.length; i++) {
             if (i === heuristicSkuIdx) continue;
             const rawVal = String(row[i] || "").trim();
@@ -89,17 +87,15 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
             const num = parseFloat(val);
             if (!isNaN(num) && num >= 1 && num < 30000) {
               extractedPrice = num;
-              // If we found a SKU and a Price in the same row, we're likely in the data grid
               break;
             }
           }
         }
       }
 
-      // STAGE 3: DATA NORMALIZATION & PERSISTENCE
+      // STAGE 3: DATA NORMALIZATION
       if (extractedSku && !isNaN(extractedPrice) && extractedPrice > 0) {
         const upperSku = extractedSku.toUpperCase();
-        // Ignore keywords if they were accidentally captured as SKUs
         if (skuKeywords.some(k => upperSku === k)) continue;
 
         pricing.push({
@@ -115,6 +111,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   }
 
-  console.log(`[Parser v65] Extraction complete. Captured ${pricing.length} pricing records.`);
+  console.log(`[Parser v66] Captured ${pricing.length} pricing records.`);
   return pricing;
 }
