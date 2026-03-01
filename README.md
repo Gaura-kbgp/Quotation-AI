@@ -1,3 +1,4 @@
+
 # KABS Quotation AI - Technical Documentation & User Manual
 
 KABS Quotation AI is a high-precision architectural cabinetry takeoff and pricing platform. It leverages **Gemini 2.0 Flash** for multi-page PDF reasoning and a proprietary **"Universal Jack" Pricing Engine** to automate complex estimations.
@@ -11,7 +12,7 @@ To push this project to your repository, run these commands in your local termin
 ```bash
 git init
 git add .
-git commit -m "Initial commit: KABS Quotation AI v71.0"
+git commit -m "Initial commit: KABS Quotation AI v72.0"
 git branch -M main
 git remote add origin https://github.com/Gaura-kbgp/Quotation-AI.git
 git push -u origin main
@@ -24,7 +25,7 @@ git push -u origin main
 - **AI Engine**: Google Genkit + Gemini 2.0 Flash (Vision & Reasoning)
 - **Database**: Supabase (PostgreSQL)
 - **Styling**: Tailwind CSS + ShadCN UI
-- **Deployment**: Render / Docker Optimized
+- **Deployment**: Render / Docker Optimized (Node.js 20.x LTS)
 
 ---
 
@@ -77,7 +78,7 @@ Create a `.env` file in the root directory. Use `.env.example` as a template.
 
 1. **GitHub Connection**: Connect your repository to Render.
 2. **Build Settings**:
-   - **Runtime**: Node.js
+   - **Runtime**: Node.js (Version locked to 20.x in package.json)
    - **Build Command**: `npm run build`
    - **Start Command**: `npm start`
 3. **Environment Variables**: Add all keys from your `.env` to the Render Dashboard.
