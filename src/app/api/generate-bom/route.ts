@@ -1,16 +1,17 @@
 import { createServerSupabase } from '@/lib/supabase-server';
-import { compressSku, detectCategory } from '@/lib/utils';
+import { compressSku, detectCategory, normalizeSku } from '@/lib/utils';
 import stringSimilarity from 'string-similarity';
 
 export const maxDuration = 300;
 
 /**
- * UNIVERSAL HIGH-PRECISION PRICING ENGINE (v56.0)
+ * UNIVERSAL HIGH-PRECISION SMART PRICING ENGINE (v57.0)
  * 
  * "SUPER QUALITY" FEATURES:
- * 1. RECURSIVE PAGINATED FETCH: Loads 100% of catalog data from all sheets.
- * 2. MULTI-TIER GLOBAL MATCHING: Local -> Global -> Compressed -> Fuzzy.
- * 3. ZERO-PRICE PREVENTION: Applies category averages if SKU is missing.
+ * 1. MULTI-TIER SMART MATCHER: Local -> Global -> Compressed -> Suffix -> Fuzzy.
+ * 2. ZERO-PRICE CATEGORY FALLBACK: Applies category averages if SKU is missing.
+ * 3. RECURSIVE PAGINATED FETCH: Loads 100% of catalog data from all sheets.
+ * 4. UNIVERSAL ACCESSORY PRIORITY: Automatically searches global sheets for Fillers/Molding.
  */
 export async function POST(req: Request) {
   try {
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     const { projectId, manufacturerId } = body;
 
     if (!projectId || !manufacturerId) {
-      return Response.json({ success: false, error: "Missing IDs." }, { status: 400 });
+      return Response.json({ success: false, error: "Missing required IDs." }, { status: 400 });
     }
 
     const supabase = createServerSupabase();
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
     if (pError || !project) throw new Error('Project not found.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. EXHAUSTIVE CATALOG FETCH (Recursively fetch all rows from all sheets)
+    // 2. EXHAUSTIVE CATALOG FETCH (Stream all rows from all sheets)
     let allPricing: any[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -56,9 +57,9 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[Pricing Engine v56] Loaded ${allPricing.length} total catalog records.`);
+    console.log(`[Smart Engine v57] Loaded ${allPricing.length} total records from all catalog sheets.`);
 
-    // 3. MULTI-TIER INDEXING
+    // 3. SMART INDEXING
     const localMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
     const compressedMap = new Map<string, any>();
@@ -75,10 +76,10 @@ export async function POST(req: Request) {
 
       allSkus.push(sku);
       
-      // Strict Local Index (Collection Specific)
+      // Local Index (Collection Specific)
       localMap.set(`${sku}|${col}`, p);
       
-      // Global Catalog Index (Crucial for items on the Accessory sheets)
+      // Global Catalog Index (Essential for accessories on separate sheets)
       if (!globalSkuMap.has(sku) || col === "UNIVERSAL" || col.includes("ACCESSORY")) {
         globalSkuMap.set(sku, p);
       }
@@ -94,7 +95,7 @@ export async function POST(req: Request) {
     });
 
     /**
-     * RECURSIVE MULTI-TIER MATCHER
+     * MULTI-TIER RECURSIVE SMART MATCHER
      */
     function findBestMatch(itemCode: string, roomCollection: string) {
       const target = normalizeKey(itemCode);
@@ -104,32 +105,33 @@ export async function POST(req: Request) {
       const targetComp = compressSku(target);
       const category = detectCategory(target);
 
-      // Variants: Strip production suffixes (BUTT, H, L, R, FL)
-      const searchVariants = [
+      // Variant Generation: Strip production suffixes (BUTT, H, L, R, FL)
+      const variants = [
         target,
         target.replace(/\s+/g, ''),
         target.replace(/\s*(BUTT|H|L|R|FL|S|D)$/g, ''),
+        target.replace(/[^A-Z0-9]/g, '')
       ].filter((v, i, self) => v && self.indexOf(v) === i);
 
-      // TIER 1: STRICT COLLECTION MATCH
-      for (const v of searchVariants) {
+      // TIER 1: STRICT LOCAL COLLECTION MATCH
+      for (const v of variants) {
         const key = `${v}|${col}`;
         if (localMap.has(key)) return { match: localMap.get(key), type: 'STRICT_LOCAL' };
       }
 
-      // TIER 2: GLOBAL CATALOG SEARCH (Finds accessories from other sheets)
-      for (const v of searchVariants) {
+      // TIER 2: GLOBAL CATALOG SEARCH (Checks all sheets for the item)
+      for (const v of variants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
       // TIER 3: COMPRESSED ALPHANUMERIC SEARCH
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'COMPRESSED_GLOBAL' };
 
-      // TIER 4: FUZZY SIMILARITY
+      // TIER 4: AI FUZZY SIMILARITY (Smart fallback)
       if (allSkus.length > 0) {
         const fuzzy = stringSimilarity.findBestMatch(target, allSkus);
-        if (fuzzy.bestMatch.rating > 0.9) {
-          return { match: globalSkuMap.get(fuzzy.bestMatch.target), type: 'FUZZY_MATCH' };
+        if (fuzzy.bestMatch.rating > 0.85) {
+          return { match: globalSkuMap.get(fuzzy.bestMatch.target), type: 'AI_FUZZY_MATCH' };
         }
       }
 
@@ -138,8 +140,8 @@ export async function POST(req: Request) {
       if (stats && stats.count > 0) {
         const avg = stats.total / stats.count;
         return { 
-          match: { sku: `${category} Estimate`, price: avg, collection_name: 'SYSTEM_ESTIMATE' }, 
-          type: 'CATEGORY_AVERAGE' 
+          match: { sku: `${category} Est.`, price: avg, collection_name: 'CATEGORY_AVERAGE' }, 
+          type: 'CATEGORY_FALLBACK' 
         };
       }
 
@@ -170,7 +172,7 @@ export async function POST(req: Request) {
             room: room.room_name,
             collection: room.collection || match.collection_name,
             door_style: room.door_style || 'UNIVERSAL',
-            price_source: `Matcher (${type})`,
+            price_source: `Smart Matcher (${type})`,
             precision_level: type,
             created_at: new Date().toISOString()
           });
@@ -205,7 +207,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Pricing Engine v56] Critical Failure:', err);
+    console.error('[Smart Pricing Engine v57] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
