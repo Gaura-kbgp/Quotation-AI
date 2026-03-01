@@ -1,14 +1,14 @@
+
 import * as XLSX from 'xlsx';
 
 /**
- * UNIVERSAL HIGH-PRECISION PRICING PARSER (v57.0)
+ * UNIVERSAL HIGH-PRECISION PRICING PARSER (v58.0)
  * 
  * "SUPER QUALITY" FEATURES:
- * 1. ANCHOR-FREE GRID SCANNING: Evaluates every row independently for SKU/Price pairs.
- *    No longer requires headers to be at the top of the sheet.
- * 2. PATTERN-BASED DETECTION: Uses Alphanumeric and Numeric heuristics to find data.
- * 3. INFINITE DEPTH: Processes 100% of rows in every sheet (resolves Row 626+ issues).
- * 4. GLOBAL ACCESSORY MAPPING: Automatically handles "Accessory" and "Filler" sheets.
+ * 1. ANCHOR-FREE DEEP SCAN: Evaluates every row independently for SKU/Price pairs.
+ * 2. PATTERN-BASED HEURISTICS: Uses Alphanumeric and Numeric heuristics to find data deep in files (Row 600+).
+ * 3. INFINITE DEPTH: Processes 100% of rows in every sheet (resolves accessory matching issues).
+ * 4. GLOBAL ACCESSORY PRIORITY: Automatically handles "Accessory" and "Filler" sheets.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -33,7 +33,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
                          currentSheetName.includes("UNIVERSAL") ||
                          currentSheetName.includes("MOLDING");
 
-    console.log(`[Parser v57] Deep scanning sheet: ${sheetName} (${rows.length} rows)`);
+    console.log(`[Parser v58] AI-Enhanced Deep Scan on sheet: ${sheetName} (${rows.length} rows)`);
 
     let activeSkuColIdx = -1;
     let activePriceColIdx = -1;
@@ -59,35 +59,38 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
         continue; // Skip the header row itself
       }
 
-      // TIER 2: ANCHOR-FREE CONTENT ANALYSIS
+      // TIER 2: SMART GRID HEURISTIC (Independent of headers)
       let extractedSku = "";
       let extractedPrice = 0;
 
-      // If we have an active column pair, try them first
+      // Check current column anchors if discovered
       if (activeSkuColIdx !== -1 && activePriceColIdx !== -1) {
         extractedSku = String(row[activeSkuColIdx] || "").trim();
         const priceVal = String(row[activePriceColIdx] || "").replace(/[^\d.-]/g, "");
         extractedPrice = parseFloat(priceVal);
       } 
       
-      // TIER 3: HEURISTIC FALLBACK (For rows without active anchors, or if they failed)
-      // This is the "Smart Engine" that finds UF342 at row 626 even if headers are missing.
+      // TIER 3: ANCHOR-FREE PATTERN RECOGNITION (Row 626+ Fallback)
       if (!extractedSku || isNaN(extractedPrice) || extractedPrice <= 0) {
-        // Find a cell matching a SKU-like regex (Alphanumeric, starts with letter, e.g. UF3)
+        // Find a cell matching a SKU-like regex (Alphanumeric, e.g. UF3, UF342)
         const heuristicSkuIdx = row.findIndex(cell => {
           const s = String(cell || "").trim();
-          return s.length >= 2 && s.length < 30 && /^[A-Z]{1,5}\s?[0-9]{1,8}/i.test(s);
+          // Match codes like UF3, UF342, W3624, etc.
+          return s.length >= 2 && s.length < 35 && /^[A-Z]{1,5}\s?[0-9]{1,10}/i.test(s);
         });
 
         if (heuristicSkuIdx !== -1) {
           extractedSku = String(row[heuristicSkuIdx] || "").trim();
-          // Find the first valid numerical price in the same row after the SKU
-          for (let i = heuristicSkuIdx + 1; i < row.length; i++) {
+          // Scan remaining cells in the row for a logical price
+          for (let i = 0; i < row.length; i++) {
+            if (i === heuristicSkuIdx) continue;
             const val = String(row[i] || "").replace(/[^\d.-]/g, "");
             const num = parseFloat(val);
-            // Price pattern: positive, logical range for cabinetry
-            if (!isNaN(num) && num > 5 && num < 25000) {
+            // Price pattern: positive, logical range for cabinetry or fillers
+            if (!isNaN(num) && num > 1 && num < 25000) {
               extractedPrice = num;
+              // If we find a price in a column, it's likely the price column for the rest of the sheet
+              if (activePriceColIdx === -1) activePriceColIdx = i;
               break;
             }
           }
@@ -112,6 +115,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   }
 
-  console.log(`[Parser v57] Extraction finished. Captured ${pricing.length} pricing records across all sheets.`);
+  console.log(`[Parser v58] Scan complete. Extracted ${pricing.length} pricing records.`);
   return pricing;
 }

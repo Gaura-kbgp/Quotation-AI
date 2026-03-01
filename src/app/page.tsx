@@ -27,13 +27,13 @@ export default function Home() {
       </div>
 
       {/* Hero Section */}
-      <div className="max-w-4xl mx-auto space-y-12">
+      <div className="max-w-4xl mx-auto space-y-10">
         <div className="space-y-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 border border-sky-100 text-sky-600 text-[10px] font-bold uppercase tracking-widest mx-auto">
             <Sparkles className="w-3 h-3" />
             Empowering Precision
           </div>
-          <h1 className="text-6xl md:text-8xl font-black tracking-tighter text-slate-900 leading-[0.9]">
+          <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-slate-900 leading-[0.9]">
             KABS <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 to-sky-600">Quotation AI</span>
           </h1>
