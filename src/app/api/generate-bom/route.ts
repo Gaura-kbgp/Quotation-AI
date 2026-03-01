@@ -1,15 +1,16 @@
 import { createServerSupabase } from '@/lib/supabase-server';
-import { compressSku } from '@/lib/utils';
+import { compressSku, detectCategory } from '@/lib/utils';
+import stringSimilarity from 'string-similarity';
 
 export const maxDuration = 300;
 
 /**
- * ULTIMATE MULTI-ENGINE PRICING SYSTEM (v52.0)
+ * UNIVERSAL HIGH-PRECISION PRICING SYSTEM (v53.0)
  * 
  * "SUPER QUALITY" FEATURES:
- * 1. HYPER-STABLE PAGINATED FETCH: Loads 100% of catalog data using range-based loops.
- * 2. QUAD-ENGINE MATCHING: Exact -> Compressed -> Suffix-Stripped -> Global Fallback.
- * 3. ACCESSORY PRIORITY: Automatically searches "UNIVERSAL" records for fillers/molding.
+ * 1. FULL-WORKBOOK SCAN: Fetches 100% of data across 60+ sheets.
+ * 2. CATEGORY-AWARE FALLBACK: Prevents $0.00 prices by using category averages.
+ * 3. FUZZY STRING MATCHING: Uses string-similarity for resilient SKU lookups.
  */
 export async function POST(req: Request) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
     if (pError || !project) throw new Error('Project not found.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. STABLE CATALOG STREAMING (Fetch up to 100,000 records in batches)
+    // 2. STABLE CATALOG STREAMING (Paginated Load)
     let allPricing: any[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -56,31 +57,42 @@ export async function POST(req: Request) {
     }
 
     // 3. MULTI-ENGINE INDEXING
-    const localMap = new Map<string, any>(); // Specific SKU + Collection + Style
-    const globalSkuMap = new Map<string, any>(); // Universal SKU Match (Search across all sheets)
-    const compressedMap = new Map<string, any>(); // SKU with no symbols/spaces
+    const localMap = new Map<string, any>();
+    const globalSkuMap = new Map<string, any>();
+    const compressedMap = new Map<string, any>();
+    const categoryAverages = new Map<string, { total: number, count: number }>();
+    const allSkus: string[] = [];
 
-    const normalizeKey = (s: string) => String(s || "").trim().toUpperCase().replace(/\s+/g, ' ');
+    const normalizeKey = (s: string) => String(s || "").trim().toUpperCase();
 
     allPricing.forEach(p => {
       const sku = normalizeKey(p.sku);
       const col = normalizeKey(p.collection_name);
       const sty = normalizeKey(p.door_style || "UNIVERSAL");
       const comp = compressSku(sku);
+      const cat = detectCategory(sku);
+
+      allSkus.push(sku);
       
       const fullKey = `${sku}|${col}|${sty}`;
       if (!localMap.has(fullKey)) localMap.set(fullKey, p);
       
-      // Global Index (Higher priority for Universal/Accessory entries)
-      if (!globalSkuMap.has(sku) || col === "UNIVERSAL" || col.includes("ACCESSORY") || col.includes("FILLER")) {
+      // Global Index (Accessories priority)
+      if (!globalSkuMap.has(sku) || col === "UNIVERSAL" || col.includes("ACCESSORY")) {
         globalSkuMap.set(sku, p);
       }
       
       if (!compressedMap.has(comp)) compressedMap.set(comp, p);
+
+      // Category Stats
+      const stats = categoryAverages.get(cat) || { total: 0, count: 0 };
+      stats.total += Number(p.price) || 0;
+      stats.count += 1;
+      categoryAverages.set(cat, stats);
     });
 
     /**
-     * QUAD-ENGINE MATCHING LOGIC
+     * QUAD-ENGINE MATCHING + CATEGORY FALLBACK
      */
     function findBestMatch(itemCode: string, collection: string, style: string) {
       const target = normalizeKey(itemCode);
@@ -89,30 +101,46 @@ export async function POST(req: Request) {
       const col = normalizeKey(collection);
       const sty = normalizeKey(style);
       const targetComp = compressSku(target);
+      const category = detectCategory(target);
 
-      // Recursive Suffix Fallback List
       const searchVariants = [
         target,
         target.replace(/\s+/g, ''),
-        target.replace(/\s*BUTT$/g, ''),
-        target.replace(/\s*[HLR]$/g, ''),
-        target.replace(/\s*FL$/g, ''),
-        target.replace(/\s*(BUTT|H|L|R|FL)$/g, ''),
+        target.replace(/\s*(BUTT|H|L|R|FL|S|D)$/g, ''),
+        target.substring(0, target.length - 1), // Try stripping last character
       ].filter((v, i, self) => v && self.indexOf(v) === i);
 
-      // ENGINE 1: LOCAL STRICT (Exact Match in Room Collection)
+      // ENGINE 1: LOCAL STRICT
       for (const v of searchVariants) {
         const key = `${v}|${col}|${sty}`;
         if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_STRICT' };
       }
 
-      // ENGINE 2: GLOBAL CATALOG (Crucial for items like UF3, UF342 from Sheet 2)
+      // ENGINE 2: GLOBAL CATALOG (Accessories)
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
-      // ENGINE 3: COMPRESSED FUZZY (Pattern Matcher)
+      // ENGINE 3: COMPRESSED PATTERN
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'GLOBAL_PATTERN' };
+
+      // ENGINE 4: FUZZY SIMILARITY
+      if (allSkus.length > 0) {
+        const fuzzy = stringSimilarity.findBestMatch(target, allSkus);
+        if (fuzzy.bestMatch.rating > 0.8) {
+          return { match: globalSkuMap.get(fuzzy.bestMatch.target), type: 'FUZZY_MATCH' };
+        }
+      }
+
+      // FALLBACK: CATEGORY AVERAGE (Prevents $0.00)
+      const stats = categoryAverages.get(category);
+      if (stats && stats.count > 0) {
+        const avgPrice = stats.total / stats.count;
+        return { 
+          match: { sku: `${category} Estimate`, price: avgPrice, collection_name: 'ESTIMATED', door_style: 'ESTIMATED' }, 
+          type: 'CATEGORY_FALLBACK' 
+        };
+      }
 
       return null;
     }
@@ -123,7 +151,6 @@ export async function POST(req: Request) {
     for (const room of rooms) {
       const roomCol = room.collection || "";
       const roomSty = room.door_style || "";
-      
       const allItems = [...(room.primaryCabinets || []), ...(room.otherItems || [])];
 
       for (const item of allItems) {
@@ -144,7 +171,7 @@ export async function POST(req: Request) {
             room: room.room_name,
             collection: room.collection || match.collection_name,
             door_style: room.door_style || match.door_style,
-            price_source: `Catalog (${type})`,
+            price_source: `Match Engine (${type})`,
             precision_level: type,
             created_at: new Date().toISOString()
           });
@@ -167,7 +194,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Atomically swap the BOM data
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     
     if (bomItems.length > 0) {

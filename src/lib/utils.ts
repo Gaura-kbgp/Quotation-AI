@@ -17,12 +17,11 @@ export function cleanSkuForDisplay(sku: string | any): string {
 }
 
 /**
- * SKU NORMALIZATION (v52.0)
+ * SKU NORMALIZATION (v53.0)
  * Standardizes for strict matching by stripping excessive whitespace and common noise.
  */
 export function normalizeSku(sku: string | any): string {
   if (!sku) return '';
-  // Strips all special characters except alpha-numeric
   return String(sku).toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
 }
 
@@ -52,16 +51,20 @@ export function isPrimaryCabinet(sku: string): boolean {
 }
 
 /**
- * INTELLIGENT PREFIX MAPPING
+ * INTELLIGENT PREFIX MAPPING (v53.0)
+ * Expanded for high-precision category fallbacks.
  */
 export function detectCategory(sku: string): string {
   if (!sku) return 'Accessories';
   const s = String(sku || "").toUpperCase().trim();
   
   if (s.startsWith('W')) return 'Wall Cabinets';
-  if (s.startsWith('SB') || s.startsWith('B')) return 'Base Cabinets';
+  if (s.startsWith('SB') || s.startsWith('B') || s.startsWith('VSB')) return 'Base Cabinets';
   if (s.startsWith('V')) return 'Vanity Cabinets';
-  if (s.startsWith('T') || s.startsWith('P') || s.startsWith('O')) return 'Tall Cabinets';
+  if (s.startsWith('T') || s.startsWith('P') || s.startsWith('O') || s.startsWith('UTIL')) return 'Tall Cabinets';
+  if (s.startsWith('UF')) return 'Fillers';
+  if (s.startsWith('RR') || s.startsWith('CM') || s.startsWith('M')) return 'Molding';
+  if (s.startsWith('HW')) return 'Hardware';
   
   return 'Accessories';
 }
