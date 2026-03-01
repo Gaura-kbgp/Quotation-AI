@@ -1,3 +1,4 @@
+
 import { createServerSupabase } from '@/lib/supabase-server';
 import { compressSku, detectCategory, normalizeSku } from '@/lib/utils';
 import stringSimilarity from 'string-similarity';
@@ -5,13 +6,13 @@ import stringSimilarity from 'string-similarity';
 export const maxDuration = 300;
 
 /**
- * UNIVERSAL HIGH-PRECISION SMART PRICING ENGINE (v57.0)
+ * UNIVERSAL "SMART JACK" PRICING ENGINE (v59.0)
  * 
  * "SUPER QUALITY" FEATURES:
- * 1. MULTI-TIER SMART MATCHER: Local -> Global -> Compressed -> Suffix -> Fuzzy.
- * 2. ZERO-PRICE CATEGORY FALLBACK: Applies category averages if SKU is missing.
- * 3. RECURSIVE PAGINATED FETCH: Loads 100% of catalog data from all sheets.
- * 4. UNIVERSAL ACCESSORY PRIORITY: Automatically searches global sheets for Fillers/Molding.
+ * 1. MULTI-TIER SMART MATCHER: Recursive search across all sheets and compressed keys.
+ * 2. GLOBAL ACCESSORY PRIORITY: Instantly scans universal sheets for Fillers/Molding.
+ * 3. ZERO-PRICE CATEGORY FALLBACK: Applies category averages to prevent $0.00 prices.
+ * 4. RECURSIVE PAGINATED FETCH: Loads 100% of manufacturer catalog into memory.
  */
 export async function POST(req: Request) {
   try {
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
     if (pError || !project) throw new Error('Project not found.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. EXHAUSTIVE CATALOG FETCH (Stream all rows from all sheets)
+    // 2. EXHAUSTIVE CATALOG FETCH (recursive paginated streaming)
     let allPricing: any[] = [];
     let from = 0;
     const pageSize = 1000;
@@ -57,9 +58,9 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[Smart Engine v57] Loaded ${allPricing.length} total records from all catalog sheets.`);
+    console.log(`[Smart Engine v59] Processing ${allPricing.length} total catalog records.`);
 
-    // 3. SMART INDEXING
+    // 3. SMART MULTI-DIMENSIONAL INDEXING
     const localMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
     const compressedMap = new Map<string, any>();
@@ -76,18 +77,18 @@ export async function POST(req: Request) {
 
       allSkus.push(sku);
       
-      // Local Index (Collection Specific)
+      // Strict Index (Local Collection)
       localMap.set(`${sku}|${col}`, p);
       
-      // Global Catalog Index (Essential for accessories on separate sheets)
-      if (!globalSkuMap.has(sku) || col === "UNIVERSAL" || col.includes("ACCESSORY")) {
+      // Global Search Index (Critical for Accessories)
+      if (!globalSkuMap.has(sku) || col === "UNIVERSAL") {
         globalSkuMap.set(sku, p);
       }
       
-      // Compressed Index (Matches "UF 3" to "UF3")
+      // Compressed Search Index (Matches "UF 3" to "UF3")
       if (!compressedMap.has(comp)) compressedMap.set(comp, p);
 
-      // Category Metrics for Fallback Estimates
+      // Category Metrics for Smart Fallback
       const stats = categoryStats.get(cat) || { total: 0, count: 0 };
       stats.total += Number(p.price) || 0;
       stats.count += 1;
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
       const targetComp = compressSku(target);
       const category = detectCategory(target);
 
-      // Variant Generation: Strip production suffixes (BUTT, H, L, R, FL)
+      // Generate Variants (Stripping common production suffixes)
       const variants = [
         target,
         target.replace(/\s+/g, ''),
@@ -119,7 +120,7 @@ export async function POST(req: Request) {
         if (localMap.has(key)) return { match: localMap.get(key), type: 'STRICT_LOCAL' };
       }
 
-      // TIER 2: GLOBAL CATALOG SEARCH (Checks all sheets for the item)
+      // TIER 2: GLOBAL CATALOG FALLBACK (Critical for items like UF3, UF342)
       for (const v of variants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
@@ -127,15 +128,15 @@ export async function POST(req: Request) {
       // TIER 3: COMPRESSED ALPHANUMERIC SEARCH
       if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'COMPRESSED_GLOBAL' };
 
-      // TIER 4: AI FUZZY SIMILARITY (Smart fallback)
+      // TIER 4: AI FUZZY SIMILARITY (Fuzzy matching threshold 0.75 for accessories)
       if (allSkus.length > 0) {
         const fuzzy = stringSimilarity.findBestMatch(target, allSkus);
-        if (fuzzy.bestMatch.rating > 0.85) {
+        if (fuzzy.bestMatch.rating > 0.75) {
           return { match: globalSkuMap.get(fuzzy.bestMatch.target), type: 'AI_FUZZY_MATCH' };
         }
       }
 
-      // TIER 5: CATEGORY-AVERAGE FALLBACK (Ensures no $0.00 prices)
+      // TIER 5: CATEGORY-AVERAGE FALLBACK (Zero-Price Prevention)
       const stats = categoryStats.get(category);
       if (stats && stats.count > 0) {
         const avg = stats.total / stats.count;
@@ -172,7 +173,7 @@ export async function POST(req: Request) {
             room: room.room_name,
             collection: room.collection || match.collection_name,
             door_style: room.door_style || 'UNIVERSAL',
-            price_source: `Smart Matcher (${type})`,
+            price_source: `Smart Engine (${type})`,
             precision_level: type,
             created_at: new Date().toISOString()
           });
@@ -207,7 +208,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Smart Pricing Engine v57] Critical Failure:', err);
+    console.error('[Smart Engine v59] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }

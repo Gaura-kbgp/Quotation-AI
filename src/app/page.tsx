@@ -33,7 +33,7 @@ export default function Home() {
             <Sparkles className="w-3 h-3" />
             Empowering Precision
           </div>
-          <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-slate-900 leading-[0.9]">
+          <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-slate-900 leading-[1.1]">
             KABS <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 to-sky-600">Quotation AI</span>
           </h1>
