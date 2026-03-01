@@ -29,7 +29,9 @@ import {
   ChevronDown,
   AlertCircle,
   Phone,
-  RefreshCcw
+  RefreshCcw,
+  ArrowDownCircle,
+  ArrowUpCircle
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn, isPrimaryCabinet } from '@/lib/utils';
@@ -47,6 +49,7 @@ interface BomItem {
   room: string;
   precision_level: string;
   is_billable?: boolean;
+  manual_classification?: 'primary' | 'other';
 }
 
 interface BomManagerClientProps {
@@ -64,8 +67,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   
   /**
    * Initialize BOM state.
-   * CRITICAL: Only primary cabinets are auto-selected (is_billable: true).
-   * Fillers, Molding, and Accessories are unselected by default (is_billable: false).
+   * Only primary cabinets are auto-selected (is_billable: true).
+   * Fillers, Molding, and Accessories are unselected by default.
    */
   const [bom, setBom] = useState<BomItem[]>(() => 
     initialBom.map(item => ({
@@ -114,6 +117,20 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     }
     newBom[idx] = item;
     setBom(newBom);
+  };
+
+  const handleMoveItem = (id: string, target: 'primary' | 'other') => {
+    setBom(prev => prev.map(item => {
+      if (item.id === id) {
+        return { 
+          ...item, 
+          manual_classification: target,
+          // When moving to other, uncheck it. When moving to primary, check it.
+          is_billable: target === 'primary' 
+        };
+      }
+      return item;
+    }));
   };
 
   const handleReprice = async () => {
@@ -201,8 +218,19 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           <div className="space-y-12 animate-in fade-in duration-500">
             {allRooms.map(room => {
               const roomItems = bom.filter(i => i.room === room);
-              const primaryItems = roomItems.filter(i => isPrimaryCabinet(i.sku));
-              const otherItems = roomItems.filter(i => !isPrimaryCabinet(i.sku));
+              
+              // Filter logic for dynamic classification
+              const primaryItems = roomItems.filter(i => {
+                if (i.manual_classification === 'other') return false;
+                if (i.manual_classification === 'primary') return true;
+                return isPrimaryCabinet(i.sku);
+              });
+
+              const otherItems = roomItems.filter(i => {
+                if (i.manual_classification === 'primary') return false;
+                if (i.manual_classification === 'other') return true;
+                return !isPrimaryCabinet(i.sku);
+              });
 
               return (
                 <section key={room} className={cn("space-y-6 transition-all", !selectedRooms.includes(room) && "opacity-40 grayscale")}>
@@ -218,7 +246,10 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                           const itemIdx = bom.findIndex(b => b.id === item.id);
                           const isMissing = item.precision_level === 'NOT_FOUND' || item.matched_sku.includes('not present');
                           return (
-                            <TableRow key={item.id} className={cn("h-16 hover:bg-white border-b border-slate-50", isMissing && "bg-red-50/30")}>
+                            <TableRow key={item.id} className={cn("h-16 hover:bg-white border-b border-slate-50", isMissing && "bg-red-50/30", !item.is_billable && "opacity-40")}>
+                              <TableCell className="w-10">
+                                <Checkbox checked={item.is_billable} onCheckedChange={(c) => handleUpdateItem(itemIdx, { is_billable: !!c })} />
+                              </TableCell>
                               <TableCell className="w-1/2">
                                 <div className="font-bold text-slate-900">{item.sku}</div>
                                 <div className={cn("text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 mt-1", isMissing ? "text-red-500" : "text-sky-600")}>
@@ -230,12 +261,15 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                                 <Input type="number" value={item.qty} onChange={(e) => handleUpdateItem(itemIdx, { qty: parseInt(e.target.value) || 0 })} className="w-16 mx-auto text-center font-bold border-none bg-slate-50 h-9" />
                               </TableCell>
                               <TableCell className="text-right">
-                                <div className="relative">
-                                  <Input type="number" value={item.unit_price} onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })} className={cn("w-24 ml-auto text-right font-mono font-bold bg-white h-9", isMissing ? "border-red-300 ring-red-100" : "border-slate-200")} />
-                                </div>
+                                <Input type="number" value={item.unit_price} onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })} className={cn("w-24 ml-auto text-right font-mono font-bold bg-white h-9", isMissing ? "border-red-300 ring-red-100" : "border-slate-200")} />
                               </TableCell>
-                              <TableCell className="text-right font-black text-slate-900 pr-6 font-mono">
+                              <TableCell className="text-right font-black text-slate-900 pr-4 font-mono">
                                 ${item.line_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </TableCell>
+                              <TableCell className="w-10">
+                                <Button variant="ghost" size="icon" onClick={() => handleMoveItem(item.id, 'other')} className="text-slate-300 hover:text-amber-500" title="Move to Accessories">
+                                  <ArrowDownCircle className="w-5 h-5" />
+                                </Button>
                               </TableCell>
                             </TableRow>
                           );
@@ -260,7 +294,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                                   const isMissing = item.precision_level === 'NOT_FOUND' || item.matched_sku.includes('not present');
                                   return (
                                     <TableRow key={item.id} className={cn("h-12 border-b border-slate-50/50", !item.is_billable && "opacity-40", isMissing && "bg-red-50/20")}>
-                                      <TableCell className="pl-4">
+                                      <TableCell className="pl-4 w-10">
                                         <Checkbox checked={item.is_billable} onCheckedChange={(checked) => handleUpdateItem(itemIdx, { is_billable: !!checked })} />
                                       </TableCell>
                                       <TableCell className="font-bold text-xs">
@@ -271,8 +305,13 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                                       <TableCell className="text-right">
                                         <Input type="number" value={item.unit_price} onChange={(e) => handleUpdateItem(itemIdx, { unit_price: parseFloat(e.target.value) || 0 })} className={cn("w-20 ml-auto h-7 text-right text-xs font-mono", isMissing && "border-red-200")} />
                                       </TableCell>
-                                      <TableCell className="text-right font-bold pr-6 text-xs">
+                                      <TableCell className="text-right font-bold text-xs">
                                         ${item.line_total.toFixed(2)}
+                                      </TableCell>
+                                      <TableCell className="w-10 pr-4">
+                                        <Button variant="ghost" size="icon" onClick={() => handleMoveItem(item.id, 'primary')} className="text-slate-300 hover:text-sky-500" title="Move to Primary">
+                                          <ArrowUpCircle className="w-5 h-5" />
+                                        </Button>
                                       </TableCell>
                                     </TableRow>
                                   );
