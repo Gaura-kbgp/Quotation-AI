@@ -2,7 +2,8 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  /* Optimized for production deployment */
+  output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
   },
