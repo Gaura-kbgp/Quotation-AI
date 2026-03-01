@@ -1,4 +1,3 @@
-
 # KABS Quotation AI - Technical Documentation & User Manual
 
 KABS Quotation AI is a high-precision architectural cabinetry takeoff and pricing platform. It leverages **Gemini 2.0 Flash** for multi-page PDF reasoning and a proprietary **"Universal Jack" Pricing Engine** to automate complex estimations.
@@ -18,26 +17,7 @@ KABS Quotation AI is a high-precision architectural cabinetry takeoff and pricin
 Create a `.env` file in the root directory and populate it with the following keys. 
 *Note: Public keys (NEXT_PUBLIC_) are accessible to the browser, while private keys stay on the server.*
 
-```bash
-# === Firebase & Genkit (Private) ===
-GEMINI_API_KEY=your_gemini_api_key
-
-# === Supabase (Private Server-Side) ===
-SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# === Firebase Client (Public) ===
-NEXT_PUBLIC_FIREBASE_API_KEY=...
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
-NEXT_PUBLIC_FIREBASE_APP_ID=...
-
-# === Supabase Client (Public) ===
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-```
+Refer to `.env.example` for the required keys.
 
 ---
 
@@ -95,75 +75,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
    - **Build Command**: `npm run build`
    - **Start Command**: `npm start`
 
-### Standalone Optimization
-This app is pre-configured with `standalone` output. For maximum efficiency, Render will only serve the minimal files required to run the server.
-
 ---
 
 ## 🗄️ 6. Supabase SQL Schema
-Run this in the Supabase SQL Editor to initialize your database tables:
-
-```sql
--- Manufacturers Table
-CREATE TABLE IF NOT EXISTS manufacturers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  status TEXT DEFAULT 'Active',
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Manufacturer Files
-CREATE TABLE IF NOT EXISTS manufacturer_files (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  manufacturer_id UUID REFERENCES manufacturers(id) ON DELETE CASCADE,
-  file_type TEXT,
-  file_name TEXT,
-  file_url TEXT,
-  file_format TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Manufacturer Pricing
-CREATE TABLE IF NOT EXISTS manufacturer_pricing (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  manufacturer_id UUID REFERENCES manufacturers(id) ON DELETE CASCADE,
-  collection_name TEXT,
-  door_style TEXT,
-  sku TEXT,
-  price DECIMAL,
-  raw_source_file_id UUID REFERENCES manufacturer_files(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Quotation Projects
-CREATE TABLE IF NOT EXISTS quotation_projects (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_name TEXT,
-  status TEXT DEFAULT 'Draft',
-  manufacturer_id UUID REFERENCES manufacturers(id) ON DELETE SET NULL,
-  selected_collection TEXT,
-  selected_door_style TEXT,
-  extracted_data JSONB,
-  bom_data JSONB,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Quotation BOMs
-CREATE TABLE IF NOT EXISTS quotation_boms (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID REFERENCES quotation_projects(id) ON DELETE CASCADE,
-  sku TEXT,
-  matched_sku TEXT,
-  qty INTEGER DEFAULT 1,
-  unit_price DECIMAL,
-  line_total DECIMAL,
-  room TEXT,
-  collection TEXT,
-  door_style TEXT,
-  price_source TEXT,
-  precision_level TEXT,
-  is_billable BOOLEAN DEFAULT true,
-  manual_classification TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-```
+Run the SQL found in the project documentation within your Supabase SQL Editor to initialize your database tables.
