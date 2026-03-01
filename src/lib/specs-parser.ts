@@ -1,11 +1,11 @@
 import * as XLSX from 'xlsx';
 
 /**
- * UNIVERSAL HIGH-PRECISION PRICING PARSER (v55.0)
+ * UNIVERSAL HIGH-PRECISION PRICING PARSER (v56.0)
  * 
- * "SUPER QUALITY" IMPROVEMENTS:
- * 1. HEADER-AGNOSTIC EXTRACTION: If no header is found, it uses row heuristics (SKU pattern + Number).
- * 2. EXHAUSTIVE SCAN: Reads 100% of rows in every sheet (resolves Row 626+ issues).
+ * "SUPER QUALITY" FEATURES:
+ * 1. HEADER-AGNOSTIC EXTRACTION: Evaluates every row for SKU and Price patterns.
+ * 2. INFINITE DEPTH SCAN: Processes 100% of rows in every sheet (resolves Row 626+ issues).
  * 3. GLOBAL ACCESSORY DETECTION: Automatically maps accessory sheets to the UNIVERSAL catalog.
  */
 export async function parseSpecifications(buffer: Buffer, manufacturerId: string, fileId: string) {
@@ -23,6 +23,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     if (rows.length < 1) continue;
 
     const currentSheetName = sheetName.toUpperCase().trim();
+    // Mark sheets that are clearly universal accessories
     const isGlobalSheet = currentSheetName.includes("ACCESSORY") || 
                          currentSheetName.includes("OPTION") || 
                          currentSheetName.includes("FILLER") ||
@@ -32,13 +33,13 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     let skuColIdx = -1;
     let priceColIdx = -1;
 
-    console.log(`[Parser v55] Exhaustive scan: ${sheetName} (${rows.length} rows)`);
+    console.log(`[Parser v56] Deep scanning sheet: ${sheetName} (${rows.length} rows)`);
 
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
       if (!row || row.length < 2) continue;
 
-      // 1. SYNC HEADERS (Try to find column anchors if not already found)
+      // 1. SYNC HEADERS (Look for column anchors)
       const foundSkuIdx = row.findIndex(cell => {
         const val = String(cell || "").toUpperCase().trim();
         return skuKeywords.some(k => val === k);
@@ -52,33 +53,36 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
           return priceKeywords.some(k => val.includes(k));
         });
         if (foundPriceIdx !== -1) priceColIdx = foundPriceIdx;
-        continue; // Header row found
+        continue; // Skip header row from data processing
       }
 
-      // 2. DATA EXTRACTION (Use identified columns or Heuristic Pair Search)
+      // 2. DATA EXTRACTION (Heuristic Fallback for deep rows or missing headers)
       let finalSku = "";
       let finalPrice = 0;
 
       if (skuColIdx !== -1 && priceColIdx !== -1) {
-        // We have columns, extract directly
+        // Standard column-based extraction
         finalSku = String(row[skuColIdx] || "").trim();
         const priceVal = String(row[priceColIdx] || "").replace(/[^\d.-]/g, "");
         finalPrice = parseFloat(priceVal);
       } else {
-        // HEURISTIC PAIR SEARCH (For deep rows like 626 with no headers)
-        // Find an alphanumeric cell that looks like a cabinet code
+        // HEURISTIC GRID SCAN (Crucial for rows like 626-641 in accessory sheets)
+        // Find a cell matching SKU-like pattern (e.g. UF3, B24, W36)
         const pSkuIdx = row.findIndex(cell => {
           const s = String(cell || "").trim();
-          return s.length > 1 && s.length < 20 && /^[A-Z]{1,5}\s?[0-9]{1,6}/i.test(s);
+          // SKU Heuristic: Alphanumeric, short-to-medium length, starts with a letter
+          return s.length > 1 && s.length < 25 && /^[A-Z]{1,5}\s?[0-9]{1,6}/i.test(s);
         });
 
         if (pSkuIdx !== -1) {
           finalSku = String(row[pSkuIdx] || "").trim();
-          // Find the first logical number after the SKU that looks like a price
-          for (let i = pSkuIdx + 1; i < row.length; i++) {
+          // Look for the first numerical cell after the SKU that looks like a cabinet price
+          for (let i = 0; i < row.length; i++) {
+            if (i === pSkuIdx) continue;
             const val = String(row[i] || "").replace(/[^\d.-]/g, "");
             const num = parseFloat(val);
-            if (!isNaN(num) && num > 5 && num < 15000) {
+            // Price Heuristic: Positive number, not too small (avoids qty), not astronomical
+            if (!isNaN(num) && num > 5 && num < 20000) {
               finalPrice = num;
               break;
             }
@@ -88,6 +92,7 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
 
       // 3. PERSIST VALID PAIR
       if (finalSku && !isNaN(finalPrice) && finalPrice > 0) {
+        // Avoid adding headers as data
         if (skuKeywords.some(k => finalSku.toUpperCase() === k)) continue;
 
         pricing.push({
@@ -103,6 +108,6 @@ export async function parseSpecifications(buffer: Buffer, manufacturerId: string
     }
   }
 
-  console.log(`[Parser v55] Extraction complete. Total records: ${pricing.length}`);
+  console.log(`[Parser v56] Extraction complete. Successfully captured ${pricing.length} pricing records.`);
   return pricing;
 }

@@ -5,12 +5,12 @@ import stringSimilarity from 'string-similarity';
 export const maxDuration = 300;
 
 /**
- * UNIVERSAL HIGH-PRECISION PRICING ENGINE (v55.0)
+ * UNIVERSAL HIGH-PRECISION PRICING ENGINE (v56.0)
  * 
  * "SUPER QUALITY" FEATURES:
- * 1. UNIVERSAL ACCESSORY PRIORITY: Immediately searches global map for items like UF3.
- * 2. CATEGORY ESTIMATION: Prevents $0.00 prices using collection-wide averages.
- * 3. PAGINATED DATA STREAM: Fetches 100% of catalog records from all sheets.
+ * 1. RECURSIVE PAGINATED FETCH: Loads 100% of catalog data from all sheets.
+ * 2. MULTI-TIER GLOBAL MATCHING: Local -> Global -> Compressed -> Fuzzy.
+ * 3. ZERO-PRICE PREVENTION: Applies category averages if SKU is missing.
  */
 export async function POST(req: Request) {
   try {
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
 
     const supabase = createServerSupabase();
 
-    // 1. PROJECT LOAD
+    // 1. PROJECT DATA LOAD
     const { data: project, error: pError } = await supabase
       .from('quotation_projects')
       .select('*')
@@ -33,10 +33,10 @@ export async function POST(req: Request) {
     if (pError || !project) throw new Error('Project not found.');
     const rooms = project.extracted_data?.rooms || [];
     
-    // 2. EXHAUSTIVE CATALOG FETCH (Paginated)
+    // 2. EXHAUSTIVE CATALOG FETCH (Recursively fetch all rows from all sheets)
     let allPricing: any[] = [];
     let from = 0;
-    const pageSize = 2000;
+    const pageSize = 1000;
     let hasMore = true;
 
     while (hasMore) {
@@ -56,7 +56,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. MULTI-ENGINE INDEXING
+    console.log(`[Pricing Engine v56] Loaded ${allPricing.length} total catalog records.`);
+
+    // 3. MULTI-TIER INDEXING
     const localMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
     const compressedMap = new Map<string, any>();
@@ -73,17 +75,18 @@ export async function POST(req: Request) {
 
       allSkus.push(sku);
       
-      // Strict Index
+      // Strict Local Index (Collection Specific)
       localMap.set(`${sku}|${col}`, p);
       
-      // Global Index (Accessories priority)
+      // Global Catalog Index (Crucial for items on the Accessory sheets)
       if (!globalSkuMap.has(sku) || col === "UNIVERSAL" || col.includes("ACCESSORY")) {
         globalSkuMap.set(sku, p);
       }
       
+      // Compressed Index (Matches "UF 3" to "UF3")
       if (!compressedMap.has(comp)) compressedMap.set(comp, p);
 
-      // Category Averages for Fallback
+      // Category Metrics for Fallback Estimates
       const stats = categoryStats.get(cat) || { total: 0, count: 0 };
       stats.total += Number(p.price) || 0;
       stats.count += 1;
@@ -91,7 +94,7 @@ export async function POST(req: Request) {
     });
 
     /**
-     * QUAD-ENGINE MATCHING + CATEGORY FALLBACK
+     * RECURSIVE MULTI-TIER MATCHER
      */
     function findBestMatch(itemCode: string, roomCollection: string) {
       const target = normalizeKey(itemCode);
@@ -101,42 +104,42 @@ export async function POST(req: Request) {
       const targetComp = compressSku(target);
       const category = detectCategory(target);
 
-      // Variants to try: Exact, NoSpaces, NoSuffix
+      // Variants: Strip production suffixes (BUTT, H, L, R, FL)
       const searchVariants = [
         target,
         target.replace(/\s+/g, ''),
         target.replace(/\s*(BUTT|H|L|R|FL|S|D)$/g, ''),
       ].filter((v, i, self) => v && self.indexOf(v) === i);
 
-      // ENGINE 1: LOCAL COLLECTION SEARCH
+      // TIER 1: STRICT COLLECTION MATCH
       for (const v of searchVariants) {
         const key = `${v}|${col}`;
-        if (localMap.has(key)) return { match: localMap.get(key), type: 'LOCAL_STRICT' };
+        if (localMap.has(key)) return { match: localMap.get(key), type: 'STRICT_LOCAL' };
       }
 
-      // ENGINE 2: GLOBAL CATALOG SEARCH (Critical for accessories like UF3)
+      // TIER 2: GLOBAL CATALOG SEARCH (Finds accessories from other sheets)
       for (const v of searchVariants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
-      // ENGINE 3: COMPRESSED GLOBAL SEARCH
-      if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'GLOBAL_COMPRESSED' };
+      // TIER 3: COMPRESSED ALPHANUMERIC SEARCH
+      if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'COMPRESSED_GLOBAL' };
 
-      // ENGINE 4: FUZZY SEARCH (Closest alphabetical match)
+      // TIER 4: FUZZY SIMILARITY
       if (allSkus.length > 0) {
         const fuzzy = stringSimilarity.findBestMatch(target, allSkus);
-        if (fuzzy.bestMatch.rating > 0.85) {
+        if (fuzzy.bestMatch.rating > 0.9) {
           return { match: globalSkuMap.get(fuzzy.bestMatch.target), type: 'FUZZY_MATCH' };
         }
       }
 
-      // FALLBACK: CATEGORY AVERAGE (Never return $0 if we can estimate)
+      // TIER 5: CATEGORY-AVERAGE FALLBACK (Ensures no $0.00 prices)
       const stats = categoryStats.get(category);
       if (stats && stats.count > 0) {
         const avg = stats.total / stats.count;
         return { 
-          match: { sku: `${category} Estimate`, price: avg, collection_name: 'ESTIMATED' }, 
-          type: 'CATEGORY_ESTIMATE' 
+          match: { sku: `${category} Estimate`, price: avg, collection_name: 'SYSTEM_ESTIMATE' }, 
+          type: 'CATEGORY_AVERAGE' 
         };
       }
 
@@ -190,7 +193,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Persist Results
+    // Persist to Database
     await supabase.from('quotation_boms').delete().eq('project_id', projectId);
     if (bomItems.length > 0) {
       for (let i = 0; i < bomItems.length; i += 500) {
@@ -202,7 +205,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Pricing Engine] Critical Error:', err);
+    console.error('[Pricing Engine v56] Critical Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
