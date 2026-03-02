@@ -1,7 +1,8 @@
+
 'use server';
 /**
- * @fileOverview Strict 5-Room Architectural Extraction Flow (v66.0).
- * Enforces exactly 5 official room titles and consolidates ALL sub-sections.
+ * @fileOverview Strict 5-Room Architectural Extraction Flow (v75.0).
+ * Uses Gemini 1.5 Pro for high-precision architectural reasoning and quota stability.
  */
 
 import { ai } from '@/ai/genkit';
@@ -28,13 +29,13 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow v66] Starting Strict 5-Room Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow v75] Starting Pro-Tier Analysis for: ${input.projectName}`);
 
   const response = await ai.generate({
-    model: 'googleai/gemini-2.0-flash',
+    model: 'googleai/gemini-1.5-pro',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator. 
+      { text: `You are a professional architectural estimator specializing in cabinetry takeoffs. 
       
       CRITICAL: You must ONLY extract data into these 5 EXACT rooms. 
       
@@ -53,7 +54,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       1. IGNORE labels like "OPT LAUNDRY", "ISLAND", "PERIMETER", "HARDWARE", or "TRIM LIST" as top-level room titles.
       2. Page 8 (OPT LAUNDRY) items MUST be merged into "STANDARD BATH 3 UPSTAIRS".
       3. Items under "ISLAND" or "PERIMETER" MUST be merged into the active KITCHEN room.
-      4. If you see "LAUNDRY" items on Page 8, they belong to the "STANDARD BATH 3 UPSTAIRS" MATERIAL SET.
+      4. Any item found in the drawing MUST be assigned to one of the 5 official rooms above.
       
       OUTPUT FORMAT:
       Return a JSON array of objects: [ { "room": "OFFICIAL ROOM TITLE", "code": "SKU", "qty": 1 } ]` }
@@ -147,7 +148,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Takeoff complete: ${totalPrimary} cabinets consolidated into 5 official rooms.`,
+    summary: `Takeoff complete: ${totalPrimary} cabinets consolidated into 5 official rooms using Pro-tier reasoning.`,
     totalPrimary,
     totalOther
   };
