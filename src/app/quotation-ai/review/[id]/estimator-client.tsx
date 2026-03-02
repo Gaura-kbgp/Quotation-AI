@@ -29,12 +29,14 @@ import {
   ArrowUpCircle,
   Loader2,
   CheckCircle2,
-  Factory
+  Factory,
+  PlusCircle,
+  Layout
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { updateProjectAction } from '../../actions';
 import { useRouter } from 'next/navigation';
-import { cn } from '@/lib/utils';
+import { cn, detectCategory } from '@/lib/utils';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 interface Item {
@@ -119,6 +121,27 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     setRooms(nr);
   };
 
+  const handleAddRoom = () => {
+    setRooms(prev => [...prev, {
+      room_name: `NEW ROOM ${prev.length + 1}`,
+      primaryCabinets: [],
+      otherItems: []
+    }]);
+    toast({ title: 'Room Added', description: 'Scroll down to configure your new room.' });
+  };
+
+  const handleRemoveRoom = (idx: number) => {
+    if (!confirm('Are you sure you want to remove this entire room?')) return;
+    setRooms(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleAddItem = (rIdx: number, type: 'primary' | 'other') => {
+    const nr = [...rooms];
+    if (type === 'primary') nr[rIdx].primaryCabinets.push({ code: 'NEW_ITEM', qty: 1 });
+    else nr[rIdx].otherItems.push({ code: 'NEW_ACCESSORY', qty: 1 });
+    setRooms(nr);
+  };
+
   const handleBack = () => {
     if (step === 'manufacturer') setStep('review');
     else if (step === 'specifications') setStep('manufacturer');
@@ -135,8 +158,10 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       const processedRooms = rooms.map(r => ({
         ...r,
         sections: {
-          'Wall Cabinets': r.primaryCabinets,
-          'Other Items': r.otherItems
+          'Wall Cabinets': r.primaryCabinets.filter(c => detectCategory(c.code) === 'Wall Cabinets'),
+          'Base Cabinets': r.primaryCabinets.filter(c => detectCategory(c.code) === 'Base Cabinets'),
+          'Tall & Other Cabinets': r.primaryCabinets.filter(c => !['Wall Cabinets', 'Base Cabinets'].includes(detectCategory(c.code))),
+          'Accessories & Other': r.otherItems
         }
       }));
 
@@ -189,6 +214,12 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         </div>
 
         <div className="flex items-center gap-4">
+          {step === 'review' && (
+            <Button onClick={handleAddRoom} variant="outline" size="sm" className="rounded-xl border-sky-100 text-sky-600 font-bold hover:bg-sky-50">
+              <PlusCircle className="w-4 h-4 mr-2" />
+              Add Room
+            </Button>
+          )}
           <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-100">
             <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">Live Sync</span>
@@ -223,100 +254,138 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
             </div>
 
             <div className="space-y-12">
-              {rooms.map((room, rIdx) => (
-                <div key={rIdx} className="space-y-6">
-                   <h3 className="text-xl font-bold text-slate-900 px-2 border-l-4 border-sky-500 pl-4">{room.room_name}</h3>
-                   
-                   <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-white">
-                      <div className="px-6 py-3 bg-sky-50/50 border-b border-sky-100 flex justify-between items-center">
-                        <span className="text-xs font-black uppercase tracking-widest text-sky-700">Kitchen & Bathroom Cabinets</span>
-                        <span className="text-[10px] font-bold text-sky-600 bg-white px-2 py-0.5 rounded-full border border-sky-100">{room.primaryCabinets.length} Types</span>
-                      </div>
-                      <Table>
-                        <TableBody>
-                          {room.primaryCabinets.map((item, iIdx) => (
-                            <TableRow key={iIdx} className="h-14 hover:bg-slate-50/50 border-slate-50">
-                              <TableCell className="w-20 pl-6">
-                                <Input 
-                                  type="number" 
-                                  value={item.qty} 
-                                  onChange={(e) => handleUpdateQty(rIdx, 'primary', iIdx, parseInt(e.target.value) || 0)}
-                                  className="w-12 h-9 text-center font-bold text-sm bg-slate-50 border-none rounded-lg"
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Input 
-                                  value={item.code}
-                                  onChange={(e) => handleUpdateCode(rIdx, 'primary', iIdx, e.target.value)}
-                                  className="border-none bg-transparent font-bold text-slate-900 text-base p-0 h-9"
-                                />
-                              </TableCell>
-                              <TableCell className="text-right pr-6 space-x-2">
-                                <Button variant="ghost" size="icon" onClick={() => handleMove(rIdx, iIdx, 'primary')} className="text-slate-400 hover:text-amber-600" title="Move to Other">
-                                  <ArrowDownCircle className="w-5 h-5" />
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleDelete(rIdx, 'primary', iIdx)} className="text-slate-300 hover:text-red-500">
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                   </Card>
+              {rooms.map((room, rIdx) => {
+                const groupedPrimary = {
+                  'Wall Cabinets': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Wall Cabinets'),
+                  'Base Cabinets': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Base Cabinets'),
+                  'Tall & Other Cabinets': room.primaryCabinets.filter(c => !['Wall Cabinets', 'Base Cabinets'].includes(detectCategory(c.code))),
+                };
 
-                   <Accordion type="single" collapsible className="w-full">
-                      <AccordionItem value="other" className="border-none">
-                        <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-slate-50/30">
-                          <AccordionTrigger className="px-6 py-3 hover:no-underline">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs font-black uppercase tracking-widest text-slate-500">Other Items & Accessories</span>
-                              <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">{room.otherItems.length} Items</span>
+                return (
+                  <div key={rIdx} className="space-y-6 animate-in fade-in duration-300">
+                     <div className="flex items-center justify-between group">
+                        <div className="flex items-center gap-3 w-full">
+                           <Layout className="w-5 h-5 text-sky-400" />
+                           <Input 
+                             value={room.room_name} 
+                             onChange={(e) => {
+                               const nr = [...rooms];
+                               nr[rIdx].room_name = e.target.value.toUpperCase();
+                               setRooms(nr);
+                             }}
+                             className="text-xl font-bold text-slate-900 border-none bg-transparent h-auto p-0 focus-visible:ring-0 w-full"
+                           />
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(rIdx)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                           <Trash2 className="w-5 h-5" />
+                        </Button>
+                     </div>
+                     
+                     <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-white">
+                        {Object.entries(groupedPrimary).map(([category, items], catIdx) => (
+                          <div key={category} className={cn("space-y-0", catIdx !== 0 && "border-t border-slate-50")}>
+                            <div className="px-6 py-2 bg-slate-50/50 flex items-center justify-between">
+                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{category}</span>
+                               <span className="text-[10px] font-bold text-slate-400">{items.length} SKUs</span>
                             </div>
-                          </AccordionTrigger>
-                          <AccordionContent>
                             <Table>
                               <TableBody>
-                                {room.otherItems.map((item, iIdx) => (
-                                  <TableRow key={iIdx} className="h-12 hover:bg-white border-slate-100/50">
-                                    <TableCell className="w-20 pl-6">
-                                      <Input 
-                                        type="number" 
-                                        value={item.qty} 
-                                        onChange={(e) => handleUpdateQty(rIdx, 'other', iIdx, parseInt(e.target.value) || 0)}
-                                        className="w-10 h-8 text-center font-bold text-xs bg-white border-slate-200"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input 
-                                        value={item.code}
-                                        onChange={(e) => handleUpdateCode(rIdx, 'other', iIdx, e.target.value)}
-                                        className="border-none bg-transparent text-slate-500 text-sm p-0 h-8"
-                                      />
-                                    </TableCell>
-                                    <TableCell className="text-right pr-6 space-x-2">
-                                      <Button variant="ghost" size="icon" onClick={() => handleMove(rIdx, iIdx, 'other')} className="text-slate-400 hover:text-sky-600" title="Move to Primary">
-                                        <ArrowUpCircle className="w-5 h-5" />
-                                      </Button>
-                                      <Button variant="ghost" size="icon" onClick={() => handleDelete(rIdx, 'other', iIdx)} className="text-slate-300 hover:text-red-500">
-                                        <Trash2 className="w-4 h-4" />
-                                      </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                                {room.otherItems.length === 0 && (
-                                  <TableRow>
-                                    <TableCell colSpan={3} className="text-center py-8 text-slate-400 text-xs italic">No other items detected in this room.</TableCell>
-                                  </TableRow>
-                                )}
+                                {items.map((item, iIdx) => {
+                                  const actualIdx = room.primaryCabinets.findIndex(pc => pc.code === item.code && pc.qty === item.qty);
+                                  return (
+                                    <TableRow key={iIdx} className="h-14 hover:bg-slate-50/50 border-slate-50">
+                                      <TableCell className="w-20 pl-6">
+                                        <Input 
+                                          type="number" 
+                                          value={item.qty} 
+                                          onChange={(e) => handleUpdateQty(rIdx, 'primary', actualIdx, parseInt(e.target.value) || 0)}
+                                          className="w-12 h-9 text-center font-bold text-sm bg-slate-50 border-none rounded-lg"
+                                        />
+                                      </TableCell>
+                                      <TableCell>
+                                        <Input 
+                                          value={item.code}
+                                          onChange={(e) => handleUpdateCode(rIdx, 'primary', actualIdx, e.target.value)}
+                                          className="border-none bg-transparent font-bold text-slate-900 text-base p-0 h-9"
+                                        />
+                                      </TableCell>
+                                      <TableCell className="text-right pr-6 space-x-2">
+                                        <Button variant="ghost" size="icon" onClick={() => handleMove(rIdx, actualIdx, 'primary')} className="text-slate-400 hover:text-amber-600" title="Move to Accessories">
+                                          <ArrowDownCircle className="w-5 h-5" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(rIdx, 'primary', actualIdx)} className="text-slate-300 hover:text-red-500">
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
                               </TableBody>
                             </Table>
-                          </AccordionContent>
-                        </Card>
-                      </AccordionItem>
-                   </Accordion>
-                </div>
-              ))}
+                          </div>
+                        ))}
+                        <div className="p-4 bg-slate-50/20 border-t border-slate-100 flex justify-center">
+                           <Button variant="ghost" size="sm" onClick={() => handleAddItem(rIdx, 'primary')} className="text-sky-600 hover:bg-sky-50 font-bold uppercase text-[10px] tracking-widest">
+                              <Plus className="w-3 h-3 mr-2" />
+                              Add Cabinet to {room.room_name}
+                           </Button>
+                        </div>
+                     </Card>
+
+                     <Accordion type="single" collapsible className="w-full">
+                        <AccordionItem value="other" className="border-none">
+                          <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-slate-50/30">
+                            <AccordionTrigger className="px-6 py-3 hover:no-underline">
+                              <div className="flex items-center gap-3 text-left">
+                                <span className="text-xs font-black uppercase tracking-widest text-slate-500">Accessories, Fillers & Molding</span>
+                                <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">{room.otherItems.length} Items</span>
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent>
+                              <Table>
+                                <TableBody>
+                                  {room.otherItems.map((item, iIdx) => (
+                                    <TableRow key={iIdx} className="h-12 hover:bg-white border-slate-100/50">
+                                      <TableCell className="w-20 pl-6">
+                                        <Input 
+                                          type="number" 
+                                          value={item.qty} 
+                                          onChange={(e) => handleUpdateQty(rIdx, 'other', iIdx, parseInt(e.target.value) || 0)}
+                                          className="w-10 h-8 text-center font-bold text-xs bg-white border-slate-200"
+                                        />
+                                      </TableCell>
+                                      <TableCell>
+                                        <Input 
+                                          value={item.code}
+                                          onChange={(e) => handleUpdateCode(rIdx, 'other', iIdx, e.target.value)}
+                                          className="border-none bg-transparent text-slate-500 text-sm p-0 h-8"
+                                        />
+                                      </TableCell>
+                                      <TableCell className="text-right pr-6 space-x-2">
+                                        <Button variant="ghost" size="icon" onClick={() => handleMove(rIdx, iIdx, 'other')} className="text-slate-400 hover:text-sky-600" title="Move to Primary">
+                                          <ArrowUpCircle className="w-5 h-5" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(rIdx, 'other', iIdx)} className="text-slate-300 hover:text-red-500">
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                              <div className="p-3 flex justify-center border-t border-slate-100">
+                                <Button variant="ghost" size="sm" onClick={() => handleAddItem(rIdx, 'other')} className="text-slate-400 hover:bg-white font-bold uppercase text-[9px] tracking-widest">
+                                  <Plus className="w-3 h-3 mr-2" />
+                                  Add Accessory
+                                </Button>
+                              </div>
+                            </AccordionContent>
+                          </Card>
+                        </AccordionItem>
+                     </Accordion>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
