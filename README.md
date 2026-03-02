@@ -1,7 +1,7 @@
 
 # KABS Quotation AI - Technical Documentation & User Manual
 
-KABS Quotation AI is a high-precision architectural cabinetry takeoff and pricing platform. It leverages **Gemini 2.0 Flash** for multi-page PDF reasoning and a proprietary **"Universal Jack" Pricing Engine** to automate complex estimations.
+KABS Quotation AI is a high-precision architectural cabinetry takeoff and pricing platform. It leverages **Gemini 2.5 Flash** and **Gemini 2.5 Pro** for multi-page PDF reasoning and a proprietary **"Universal Jack" Pricing Engine** to automate complex estimations.
 
 ---
 
@@ -12,7 +12,7 @@ To push this project to your repository, run these commands in your local termin
 ```bash
 git init
 git add .
-git commit -m "Initial commit: KABS Quotation AI v72.0"
+git commit -m "Initial commit: KABS Quotation AI v77.0"
 git branch -M main
 git remote add origin https://github.com/Gaura-kbgp/Quotation-AI.git
 git push -u origin main
@@ -22,7 +22,7 @@ git push -u origin main
 
 ## 🛠️ 2. Tech Stack
 - **Framework**: Next.js 15 (App Router / Standalone Output)
-- **AI Engine**: Google Genkit + Gemini 2.0 Flash (Vision & Reasoning)
+- **AI Engine**: Google Genkit + Gemini 2.5 Pro (Vision & Reasoning)
 - **Database**: Supabase (PostgreSQL)
 - **Styling**: Tailwind CSS + ShadCN UI
 - **Deployment**: Render / Docker Optimized (Node.js 20.x LTS)
@@ -38,7 +38,7 @@ Create a `.env` file in the root directory. Use `.env.example` as a template.
 ## 🔍 4. File Map (System Architecture)
 
 ### Core AI & Logic
-- `src/ai/flows/analyze-drawing-flow.ts`: The "Brain" for PDF takeoff. Uses Gemini 2.0 to extract cabinets and consolidate them into 5 official rooms.
+- `src/ai/flows/analyze-drawing-flow.ts`: The "Brain" for PDF takeoff. Uses Gemini 2.5 Pro to extract cabinets and consolidate them into 5 official rooms.
 - `src/lib/specs-parser.ts`: **Greedy Grid Scanner**. Extracts pricing from Excel files row-by-row, ignoring inconsistent headers.
 - `src/app/api/generate-bom/route.ts`: **"Universal Jack" Engine**. Performs a 5-tier search (Strict -> Global -> Compressed -> Fuzzy -> Category Average).
 
