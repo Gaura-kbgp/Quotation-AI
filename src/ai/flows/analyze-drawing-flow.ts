@@ -1,8 +1,8 @@
 
 'use server';
 /**
- * @fileOverview Strict 5-Room Architectural Extraction Flow (v75.0).
- * Uses Gemini 1.5 Pro for high-precision architectural reasoning and quota stability.
+ * @fileOverview Strict 5-Room Architectural Extraction Flow (v76.0).
+ * Uses Gemini 2.0 Pro (Experimental) for ultimate architectural precision.
  */
 
 import { ai } from '@/ai/genkit';
@@ -10,6 +10,7 @@ import { z } from 'genkit';
 import { normalizeSku, isPrimaryCabinet, cleanSkuForDisplay } from '@/lib/utils';
 
 const AnalyzeDrawingInputSchema = z.object({
+  photoDataUri: z.string().optional().describe("Legacy field for image data."),
   pdfDataUri: z.string().describe("PDF data URI containing the full architectural set."),
   projectName: z.string().optional().default("4031 MAGNOLIA"),
 });
@@ -29,10 +30,10 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow v75] Starting Pro-Tier Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow v76] Starting Ultra-Precision Analysis for: ${input.projectName}`);
 
   const response = await ai.generate({
-    model: 'googleai/gemini-1.5-pro',
+    model: 'googleai/gemini-2.0-pro-exp-02-05',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
       { text: `You are a professional architectural estimator specializing in cabinetry takeoffs. 
@@ -148,7 +149,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Takeoff complete: ${totalPrimary} cabinets consolidated into 5 official rooms using Pro-tier reasoning.`,
+    summary: `Takeoff complete: ${totalPrimary} cabinets consolidated into 5 official rooms using Gemini 2.0 Pro.`,
     totalPrimary,
     totalOther
   };
