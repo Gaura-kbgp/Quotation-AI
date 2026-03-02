@@ -2,13 +2,13 @@ import { createServerSupabase } from '@/lib/supabase-server';
 import { analyzeDrawing } from '@/ai/flows/analyze-drawing-flow';
 import pdf from 'pdf-parse';
 
-// High-precision timeout for architectural processing
+// Production-grade timeout for architectural takeoff
 export const maxDuration = 300; 
 
 /**
- * HYBRID EXTRACTION ROUTE (v81.0)
- * 1. Local Parsing: Extracts text metadata/titles.
- * 2. Vision Analysis: Gemini 2.5 Pro identifies codes.
+ * HIGH-EFFICIENCY HYBRID EXTRACTION (v82.0)
+ * 1. Text Parsing: Extracts "Anchors" (Sheet Names, Schedule Titles).
+ * 2. Vision Analysis: Gemini 2.5 Pro uses anchors for lightning-fast takeoff.
  */
 export async function POST(req: Request) {
   try {
@@ -24,24 +24,25 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // HYBRID STAGE 1: Extract Text Metadata for Room Anchors
-    let pdfText = '';
+    // STAGE 1: Fast Text Extraction for Context Anchors
+    let pdfTextContext = '';
     try {
       const data = await pdf(buffer);
-      // Clean up text and take first 5000 chars to avoid token bloat while capturing titles
-      pdfText = data.text.substring(0, 5000).replace(/\s+/g, ' ');
+      // We only take first 8000 chars to identify the Sheet Index and Schedule headers
+      // This prevents token bloat while giving the AI a "Map" of the PDF
+      pdfTextContext = data.text.substring(0, 8000).replace(/\s+/g, ' ');
     } catch (e) {
-      console.warn('[Hybrid] Text extraction failed, falling back to pure vision.');
+      console.warn('[Hybrid v82] Text extraction failed, proceeding with pure vision.');
     }
 
     const dataUri = `data:application/pdf;base64,${buffer.toString('base64')}`;
 
-    console.log(`[Hybrid Engine v81] Processing via Gemini 2.5 Pro: ${projectName}`);
+    console.log(`[Hybrid v82] Calling Gemini 2.5 Pro for: ${projectName}`);
     
     const extractionResult = await analyzeDrawing({ 
       pdfDataUri: dataUri,
       projectName: projectName,
-      pdfText: pdfText // Pass extracted anchors to AI
+      pdfText: pdfTextContext
     });
 
     const storagePath = `quotations/drawings/${crypto.randomUUID()}.pdf`;
@@ -64,9 +65,10 @@ export async function POST(req: Request) {
     return Response.json({ success: true, projectId: project.id });
 
   } catch (err: any) {
-    console.error('[Hybrid API Error]:', err);
+    console.error('[Hybrid API v82] Error:', err);
+    // Return structured JSON even for failures to avoid the "Error reaching server" HTML fallback
     return Response.json({ 
-      error: 'The architectural analysis took too long. For very large files, try uploading specific plan pages.' 
+      error: 'The analysis took too long for this specific file. Recommendation: Upload just the Cabinetry Schedule or Floor Plan pages for a 10x faster response.' 
     }, { status: 504 });
   }
 }

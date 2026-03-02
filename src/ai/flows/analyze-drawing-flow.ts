@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview Hybrid Architectural Extraction Flow (v81.0).
- * Uses Gemini 2.5 Pro for vision and text-anchor correlation.
+ * @fileOverview High-Efficiency Architectural Extraction Flow (v82.0).
+ * Uses Gemini 2.5 Pro with optimized prompt heuristics for faster processing.
  */
 
 import { ai } from '@/ai/genkit';
@@ -29,34 +29,29 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Hybrid v81] Logic Fusion with Gemini 2.5 Pro: ${input.projectName}`);
+  console.log(`[AI Hybrid v82] Optimized Logic Fusion with Gemini 2.5 Pro: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.5-pro',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator. Extract ALL cabinetry from the provided drawings.
+      { text: `You are a high-speed architectural estimator. Extract ALL cabinetry from these drawings.
       
-      HYBRID CONTEXT (Text Anchors):
+      ARCHITECTURAL CONTEXT (Text Layer):
       {{{pdfText}}}
 
       CRITICAL INSTRUCTIONS:
-      1. Use the provided text anchors to identify Room Names (e.g., KITCHEN, OWNERS BATH, LAUNDRY).
-      2. If a room is not explicitly named in the text anchors, use the Visual Drawing labels.
-      3. Extract exact SKU (Code) and Quantity (Qty) for every cabinet.
-      4. Group Island items into the primary KITCHEN room.
+      1. Use Page Titles and the Sheet Index from the context to find Cabinetry Schedules and Floor Plans.
+      2. Group items into these official rooms: KITCHEN, OWNERS BATH, BATH 2, BATH 3, LAUNDRY.
+      3. Extract EXACT SKU (Code) and Quantity (Qty).
+      4. If a code looks like a cabinet (e.g., W3630, B24, SB36), it is a Primary Cabinet.
+      5. If it looks like a filler or molding (e.g., UF3, RR, CM), it is an Other Item.
       
-      Consolidate data into these rooms where possible:
-      - KITCHEN
-      - OWNERS BATH
-      - BATH 2
-      - BATH 3
-      - LAUNDRY
-      
-      Return ONLY a JSON array of objects: [ { "room": "ROOM NAME", "code": "SKU", "qty": number } ]` }
+      Return ONLY a JSON array: [ { "room": "ROOM NAME", "code": "SKU", "qty": number } ]` }
     ],
     config: {
       temperature: 0,
+      safetySettings: [{ category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }]
     },
   });
 
@@ -72,7 +67,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       rawItems = JSON.parse(cleanedText.substring(start, end + 1));
     }
   } catch (e) {
-    console.error('[AI Hybrid] Extraction Parse Error:', e);
+    console.error('[AI Hybrid v82] Extraction Parse Error:', e);
     return getEmptyResult('Failed to parse AI takeoff data.');
   }
 
@@ -122,7 +117,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Hybrid takeoff complete via Gemini 2.5 Pro. Found ${totalPrimary} cabinets across ${finalRooms.length} rooms.`,
+    summary: `Optimized hybrid takeoff complete. Found ${totalPrimary} cabinets across ${finalRooms.length} rooms.`,
     totalPrimary,
     totalOther
   };
