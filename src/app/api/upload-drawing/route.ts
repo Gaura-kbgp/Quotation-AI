@@ -5,8 +5,8 @@ import pdf from 'pdf-parse';
 export const maxDuration = 300; 
 
 /**
- * HIGH-SPEED HYBRID EXTRACTION (v84.0)
- * Uses architectural anchors to speed up Gemini 2.5 Pro Vision scan.
+ * HIGH-SPEED HYBRID EXTRACTION (v86.0)
+ * Uses Gemini 2.5 Pro for flagship vision precision.
  */
 export async function POST(req: Request) {
   try {
@@ -22,18 +22,18 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // STAGE 1: Fast Anchor Extraction
+    // STAGE 1: Hybrid Text Anchors
     let pdfTextContext = '';
     try {
       const data = await pdf(buffer);
-      // Scan the first 8000 chars for sheet index to act as AI roadmap
-      pdfTextContext = data.text.substring(0, 8000).replace(/\s+/g, ' ');
+      pdfTextContext = data.text.substring(0, 10000).replace(/\s+/g, ' ');
     } catch (e) {
-      console.warn('[Blueprint v84] Local scan skipped.');
+      console.warn('[Blueprint v86] Context pre-scan skipped.');
     }
 
     const dataUri = `data:application/pdf;base64,${buffer.toString('base64')}`;
     
+    // Calls Flow which is hardcoded to Gemini 2.5 Pro
     const extractionResult = await analyzeDrawing({ 
       pdfDataUri: dataUri,
       projectName: projectName,
@@ -60,9 +60,9 @@ export async function POST(req: Request) {
     return Response.json({ success: true, projectId: project.id });
 
   } catch (err: any) {
-    console.error('[Blueprint v84] Error:', err);
+    console.error('[Blueprint v86] Error:', err);
     return Response.json({ 
-      error: 'The server environment timed out while reading this architectural set. Recommendation: Upload only the Cabinetry Plan/Schedule pages for a 10x faster response.' 
+      error: 'Server processing delay. Recommendation: Upload only the Cabinetry Plan/Schedule sheets for the fastest results.' 
     }, { status: 504 });
   }
 }

@@ -139,15 +139,6 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     const nr = [...rooms];
     const newItem = { code: '', qty: 1 };
     
-    // Set default code based on category
-    if (targetCategory === 'Wall Cabinets') newItem.code = 'W3630';
-    else if (targetCategory === 'Base Cabinets') newItem.code = 'B24';
-    else if (targetCategory === 'Tall Cabinets') newItem.code = 'P2484';
-    else if (targetCategory === 'Vanity Cabinets') newItem.code = 'V36';
-    else if (targetCategory === 'Universal Fillers') newItem.code = 'UF3';
-    else if (targetCategory === 'Hardwares') newItem.code = 'HW-KNOB';
-
-    // Primary categories go to primaryCabinets, others to otherItems
     const primaryCats = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets'];
     if (primaryCats.includes(targetCategory)) {
       nr[rIdx].primaryCabinets.push(newItem);
@@ -165,7 +156,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
   const handleGenerateQuote = async () => {
     if (rooms.some(r => !r.collection || !r.door_style)) {
-      toast({ variant: 'destructive', title: 'Missing Selection', description: 'Apply specs to all rooms.' });
+      toast({ variant: 'destructive', title: 'Missing Specs', description: 'Apply manufacturer specs to all rooms.' });
       return;
     }
     setIsProcessing(true);
@@ -198,7 +189,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
       const data = await res.json();
       setManMapping(data.mapping || {});
     } catch (err) {
-      toast({ variant: 'destructive', title: 'Error loading specs' });
+      toast({ variant: 'destructive', title: 'Error loading brands' });
     }
   };
 
@@ -212,7 +203,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
           <div>
             <h1 className="text-base font-bold tracking-tight text-slate-900">{project.project_name}</h1>
             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-              {step === 'review' ? 'NKBA Review Workstation' : step === 'manufacturer' ? 'Branding' : 'Specifications'}
+              Review Workstation
             </p>
           </div>
         </div>
@@ -401,13 +392,13 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
         {step === 'manufacturer' && (
           <div className="max-w-xl mx-auto py-8 space-y-6">
-            <h2 className="text-xl font-black text-center">Select Manufacturer</h2>
+            <h2 className="text-xl font-black text-center text-slate-900">Select Manufacturer</h2>
             <div className="grid grid-cols-1 gap-3">
               {manufacturers.map(m => (
                 <button 
                   key={m.id}
                   onClick={() => { setSelectedManId(m.id); fetchManConfig(m.id); setStep('specifications'); }}
-                  className="p-4 rounded-xl border border-slate-100 bg-white hover:border-sky-500 transition-all flex items-center gap-4"
+                  className="p-4 rounded-xl border border-slate-100 bg-white hover:border-sky-500 transition-all flex items-center gap-4 text-slate-700"
                 >
                   <Factory className="w-5 h-5 text-sky-600" />
                   <span className="font-bold">{m.name}</span>
@@ -419,11 +410,11 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
 
         {step === 'specifications' && (
           <div className="max-w-4xl mx-auto py-8 space-y-6">
-            <h2 className="text-xl font-black text-center">Configure Specs</h2>
+            <h2 className="text-xl font-black text-center text-slate-900">Configure Brands</h2>
             <div className="grid grid-cols-1 gap-3">
               {rooms.map((room, rIdx) => (
                 <Card key={rIdx} className="p-4 rounded-xl flex items-center justify-between gap-4">
-                  <span className="font-bold truncate">{room.room_name}</span>
+                  <span className="font-bold truncate text-slate-900">{room.room_name}</span>
                   <div className="flex gap-2">
                     <Select value={room.collection} onValueChange={(v) => {
                       const nr = [...rooms];

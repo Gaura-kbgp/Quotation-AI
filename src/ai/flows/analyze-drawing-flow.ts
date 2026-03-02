@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview NKBA-Aligned Architectural Extraction Flow (v85.0).
+ * @fileOverview NKBA-Aligned Hybrid Architectural Extraction Flow (v86.0).
  * Specifically tuned to fetch Wall, Tall, Vanity, Fillers, and Hardware using Gemini 2.5 Pro.
  */
 
@@ -29,7 +29,7 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[Blueprint v85] NKBA-Aligned Scan starting for: ${input.projectName}`);
+  console.log(`[Blueprint v86] Hybrid Scan starting with Gemini 2.5 Pro for: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.5-pro',
@@ -37,7 +37,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
       { text: `You are an expert architectural estimator. Extract cabinetry from Plans and Schedules based on NKBA rules.
       
-      ARCHITECTURAL ROADMAP (Local Text Scan):
+      ARCHITECTURAL ROADMAP (Local Text Anchors):
       {{{pdfText}}}
 
       TARGET CATEGORIES (Identify these specific codes):
@@ -49,7 +49,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       6. Base Cabinets (B, SB...)
 
       INSTRUCTIONS:
-      - Use the Roadmap to find Cabinetry Schedules and Floor Plans.
+      - Scan Floor Plans and Schedules.
       - Extract Room Names from Title Blocks (KITCHEN, BATH, LAUNDRY).
       - Group items by Room.
       - Capture full SKU codes including suffixes (e.g. W3042 BUTT).
@@ -74,7 +74,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       rawItems = JSON.parse(cleanedText.substring(start, end + 1));
     }
   } catch (e) {
-    console.error('[Blueprint v85] Parse Error:', e);
+    console.error('[Blueprint v86] Parse Error:', e);
     return getEmptyResult('Extraction parse failed.');
   }
 

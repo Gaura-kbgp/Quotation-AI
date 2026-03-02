@@ -41,9 +41,8 @@ export default function QuotationAiPage() {
 
       const contentType = res.headers.get("content-type");
       
-      // If response is not JSON, it's a Gateway Timeout (usually from the hosting provider)
       if (!contentType || !contentType.includes("application/json")) {
-        throw new Error('Server timeout. This architectural set is too large for a single-pass AI takeoff. Please try uploading only the Cabinetry Plan/Schedule pages.');
+        throw new Error('Server timeout. This drawing set is too large for a single pass. Try uploading just the Cabinetry/Plan pages.');
       }
 
       const result = await res.json();
@@ -55,10 +54,10 @@ export default function QuotationAiPage() {
         throw new Error(result.error || 'AI analysis encountered an issue.');
       }
     } catch (err: any) {
-      console.error('[Upload Process v82] Error:', err);
+      console.error('[Scan Process v86] Error:', err);
       toast({ 
         variant: 'destructive', 
-        title: 'Takeoff Interrupted', 
+        title: 'Scan Interrupted', 
         description: err.message
       });
       setIsProcessing(false);
@@ -84,7 +83,7 @@ export default function QuotationAiPage() {
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
             Upload your drawing <span className="text-sky-600">PDF</span>
           </h1>
-          <p className="text-sm text-slate-500">Hybrid Text & Vision Extraction Engine.</p>
+          <p className="text-sm text-slate-500">Hybrid AI Extraction Engine.</p>
         </div>
 
         <Card className="bg-white border-slate-200 shadow-lg">
@@ -105,13 +104,13 @@ export default function QuotationAiPage() {
                   <>
                     <FileText className="w-10 h-10 text-emerald-600 mb-2" />
                     <p className="text-sm font-bold text-emerald-700">{file.name}</p>
-                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">Ready for Hybrid Analysis</p>
+                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">Ready for Analysis</p>
                   </>
                 ) : (
                   <>
                     <UploadCloud className="w-10 h-10 text-sky-500 mb-2" />
                     <p className="text-sm font-bold">Select Drawing PDF</p>
-                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">Full sets supported (Hybrid Mode)</p>
+                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">Architectural Sets Supported</p>
                   </>
                 )}
               </label>
@@ -119,25 +118,20 @@ export default function QuotationAiPage() {
 
             <Button onClick={handleUpload} disabled={!file || isProcessing} className="w-full h-14 gradient-button">
               {isProcessing ? <Loader2 className="animate-spin mr-2" /> : <ChevronRight className="mr-2" />}
-              {isProcessing ? 'Analyzing Drawing...' : 'Start Scan'}
+              {isProcessing ? 'Scanning Blueprint...' : 'Start Scan'}
             </Button>
           </CardContent>
         </Card>
 
-        {isProcessing ? (
+        {isProcessing && (
           <div className="p-5 rounded-2xl bg-sky-50 border border-sky-100 flex items-start gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
              <div className="mt-1">
                <AlertCircle className="w-5 h-5 text-sky-600" />
              </div>
              <div>
-               <p className="text-xs font-bold text-sky-800 uppercase tracking-wider mb-1">Hybrid Extraction Active</p>
-               <p className="text-[11px] text-sky-700 leading-relaxed">Reading sheet index and identifying schedule pages. This typically takes 45-90 seconds for large files.</p>
+               <p className="text-xs font-bold text-sky-800 uppercase tracking-wider mb-1">Hybrid Mode Enabled</p>
+               <p className="text-[11px] text-sky-700 leading-relaxed">Processing architectural anchors and cabinetry schedules. This takes 45-90 seconds.</p>
              </div>
-          </div>
-        ) : (
-          <div className="p-4 rounded-xl bg-slate-100 border border-slate-200 flex items-center gap-3">
-            <FileWarning className="w-4 h-4 text-slate-400" />
-            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Tip: For large sets, upload only Plan and Schedule pages for fastest results.</p>
           </div>
         )}
       </div>
