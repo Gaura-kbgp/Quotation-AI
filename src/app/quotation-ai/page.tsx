@@ -82,7 +82,7 @@ export default function QuotationAiPage() {
 
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
-            Architectural <span className="text-sky-600">Takeoff</span>
+            Upload your drawing <span className="text-sky-600">PDF</span>
           </h1>
           <p className="text-sm text-slate-500">Hybrid Text & Vision Extraction Engine.</p>
         </div>
@@ -119,7 +119,7 @@ export default function QuotationAiPage() {
 
             <Button onClick={handleUpload} disabled={!file || isProcessing} className="w-full h-14 gradient-button">
               {isProcessing ? <Loader2 className="animate-spin mr-2" /> : <ChevronRight className="mr-2" />}
-              {isProcessing ? 'Analyzing Drawing...' : 'Start Takeoff'}
+              {isProcessing ? 'Analyzing Drawing...' : 'Start Scan'}
             </Button>
           </CardContent>
         </Card>
