@@ -39,8 +39,10 @@ export default function QuotationAiPage() {
       });
 
       const contentType = res.headers.get("content-type");
+      
+      // If response is not JSON, it's likely a Gateway Timeout or Server Error (HTML)
       if (!contentType || !contentType.includes("application/json")) {
-        throw new Error('Server timeout. The PDF is too complex for a single pass.');
+        throw new Error('Server timeout. This usually happens with very large architectural sets. Try uploading just the Cabinetry/Plan pages.');
       }
 
       const result = await res.json();
@@ -49,13 +51,13 @@ export default function QuotationAiPage() {
         toast({ title: 'Success', description: 'Takeoff complete.' });
         router.push(`/quotation-ai/review/${result.projectId}`);
       } else {
-        throw new Error(result.error || 'AI analysis failed');
+        throw new Error(result.error || 'AI analysis encountered an issue.');
       }
     } catch (err: any) {
-      console.error('Upload Error:', err);
+      console.error('Upload Process Error:', err);
       toast({ 
         variant: 'destructive', 
-        title: 'Upload Error', 
+        title: 'Takeoff Failed', 
         description: err.message
       });
       setIsProcessing(false);
@@ -73,7 +75,7 @@ export default function QuotationAiPage() {
           </Link>
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 border border-sky-100">
             <Sparkles className="w-3 h-3 text-sky-600" />
-            <span className="text-[10px] font-bold uppercase text-sky-600">Gemini 2.5 Pro Engine</span>
+            <span className="text-[10px] font-bold uppercase text-sky-600">Gemini 2.5 Pro Vision</span>
           </div>
         </div>
 
@@ -81,7 +83,7 @@ export default function QuotationAiPage() {
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
             Upload <span className="text-sky-600">Drawings</span>
           </h1>
-          <p className="text-sm text-slate-500">AI-Powered Takeoff & Architectural Analysis.</p>
+          <p className="text-sm text-slate-500">AI-Powered Takeoff & Architectural Extraction.</p>
         </div>
 
         <Card className="bg-white border-slate-200 shadow-lg">
@@ -91,7 +93,7 @@ export default function QuotationAiPage() {
               onDragLeave={() => setIsDragging(false)}
               onDrop={(e) => { e.preventDefault(); setIsDragging(false); setFile(e.dataTransfer.files[0]); }}
               className={cn(
-                "border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer",
+                "border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer transition-all",
                 isDragging ? "border-sky-500 bg-sky-50" : "border-slate-200 hover:border-sky-400",
                 file ? "border-emerald-400 bg-emerald-50/20" : ""
               )}
@@ -102,11 +104,13 @@ export default function QuotationAiPage() {
                   <>
                     <FileText className="w-10 h-10 text-emerald-600 mb-2" />
                     <p className="text-sm font-bold text-emerald-700">{file.name}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">Ready for analysis</p>
                   </>
                 ) : (
                   <>
                     <UploadCloud className="w-10 h-10 text-sky-500 mb-2" />
                     <p className="text-sm font-bold">Select Drawing PDF</p>
+                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">Full sets supported</p>
                   </>
                 )}
               </label>
@@ -114,15 +118,20 @@ export default function QuotationAiPage() {
 
             <Button onClick={handleUpload} disabled={!file || isProcessing} className="w-full h-14 gradient-button">
               {isProcessing ? <Loader2 className="animate-spin mr-2" /> : <ChevronRight className="mr-2" />}
-              {isProcessing ? 'Analyzing...' : 'Start Takeoff'}
+              {isProcessing ? 'Analyzing Drawing...' : 'Start Takeoff'}
             </Button>
           </CardContent>
         </Card>
 
         {isProcessing && (
-          <div className="p-4 rounded-xl bg-sky-50 border border-sky-100 flex items-start gap-3">
-             <AlertCircle className="w-4 h-4 text-sky-600 mt-0.5" />
-             <p className="text-[11px] text-sky-700">Gemini 2.5 Pro is analyzing your drawings. This can take up to 2 minutes for large architectural sets.</p>
+          <div className="p-5 rounded-2xl bg-sky-50 border border-sky-100 flex items-start gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
+             <div className="mt-1">
+               <AlertCircle className="w-5 h-5 text-sky-600" />
+             </div>
+             <div>
+               <p className="text-xs font-bold text-sky-800 uppercase tracking-wider mb-1">Processing via Gemini 2.5 Pro</p>
+               <p className="text-[11px] text-sky-700 leading-relaxed">Large architectural sets can take 1-2 minutes to analyze. Please stay on this page until the extraction is complete.</p>
+             </div>
           </div>
         )}
       </div>

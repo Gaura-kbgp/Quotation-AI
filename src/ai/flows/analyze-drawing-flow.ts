@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview High-Precision Architectural Extraction Flow (v79.0).
+ * @fileOverview High-Precision Architectural Extraction Flow (v80.0).
  * Uses Gemini 2.5 Pro for flagship architectural precision.
  */
 
@@ -10,7 +10,7 @@ import { normalizeSku, isPrimaryCabinet, cleanSkuForDisplay } from '@/lib/utils'
 
 const AnalyzeDrawingInputSchema = z.object({
   pdfDataUri: z.string().describe("PDF data URI containing the full architectural set."),
-  projectName: z.string().optional().default("4031 MAGNOLIA"),
+  projectName: z.string().optional().default("PROJECT TAKEOFF"),
 });
 export type AnalyzeDrawingInput = z.infer<typeof AnalyzeDrawingInputSchema>;
 
@@ -28,24 +28,24 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow v79] Starting High-Precision Analysis with Gemini 2.5 Pro: ${input.projectName}`);
+  console.log(`[AI Flow v80] High-Precision Analysis with Gemini 2.5 Pro: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.5-pro',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator. Extract ALL cabinetry from the PDF.
+      { text: `You are a professional architectural estimator. Extract ALL cabinetry from the provided drawings.
       
-      CRITICAL: Group data into these rooms where possible:
-      1. STANDARD 42" KITCHEN
-      2. OPT GOURMET KITCHEN
-      3. STANDARD OWNERS BATH
-      4. STANDARD BATH 2
-      5. STANDARD BATH 3 UPSTAIRS
+      CRITICAL: Consolidate data into these rooms where possible:
+      1. KITCHEN (Standard or Gourmet)
+      2. OWNERS BATH
+      3. BATH 2
+      4. BATH 3
+      5. LAUNDRY
       
-      Rules:
-      - Consolidate Island and Perimeter items into the respective Kitchen.
-      - Extract SKU (Code) and Quantity (Qty).
+      Output Rules:
+      - Extract exact SKU (Code) and Quantity (Qty).
+      - Include Island items in the Kitchen.
       
       Return ONLY a JSON array of objects: [ { "room": "ROOM NAME", "code": "SKU", "qty": number } ]` }
     ],
@@ -55,7 +55,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   });
 
   const text = response.text;
-  if (!text) return getEmptyResult('No output from AI.');
+  if (!text) return getEmptyResult('No data extracted.');
 
   let rawItems: any[] = [];
   try {
@@ -67,7 +67,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     }
   } catch (e) {
     console.error('[AI Flow] JSON Parse Error:', e);
-    return getEmptyResult('Failed to parse AI takeoff.');
+    return getEmptyResult('Failed to parse AI takeoff data.');
   }
 
   const roomsMap = new Map<string, any>();
@@ -116,7 +116,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Takeoff complete via Gemini 2.5 Pro.`,
+    summary: `Takeoff complete via Gemini 2.5 Pro. Found ${totalPrimary} cabinets.`,
     totalPrimary,
     totalOther
   };

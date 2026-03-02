@@ -1,13 +1,14 @@
 import { createServerSupabase } from '@/lib/supabase-server';
 import { analyzeDrawing } from '@/ai/flows/analyze-drawing-flow';
 
+// Increase timeout to 5 minutes to allow Gemini 2.5 Pro enough time for large PDFs
 export const maxDuration = 300; 
 
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
-    const projectName = (formData.get('projectName') as string) || '4031 MAGNOLIA';
+    const projectName = (formData.get('projectName') as string) || 'NEW PROJECT';
 
     if (!file) {
       return Response.json({ error: 'No drawing PDF provided.' }, { status: 400 });
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(arrayBuffer);
     const dataUri = `data:application/pdf;base64,${buffer.toString('base64')}`;
 
-    console.log(`[Analyzer] Analyzing via Gemini 2.5 Pro...`);
+    console.log(`[Analyzer] Processing via Gemini 2.5 Pro (v80)...`);
     
     const extractionResult = await analyzeDrawing({ 
       pdfDataUri: dataUri,
@@ -45,7 +46,10 @@ export async function POST(req: Request) {
     return Response.json({ success: true, projectId: project.id });
 
   } catch (err: any) {
-    console.error('[API Error]:', err);
-    return Response.json({ error: 'The AI model took too long to respond. Please try a smaller PDF set.' }, { status: 500 });
+    console.error('[API Error v80]:', err);
+    // Return a structured JSON error instead of letting the gateway return an HTML 504
+    return Response.json({ 
+      error: 'The AI model took too long to process. For large files, try splitting the PDF into smaller sets of pages.' 
+    }, { status: 504 });
   }
 }
