@@ -233,7 +233,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
             <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100 sticky top-20 z-40">
                <div className="flex gap-10">
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">NKBA Boxes</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Cabinets</p>
                     <div className="flex items-baseline gap-2">
                       <span className="text-3xl font-black text-slate-900">{totals.primary}</span>
                       <Box className="w-5 h-5 text-sky-500" />
@@ -283,7 +283,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                              className="text-xl font-bold text-slate-900 border-none bg-transparent h-auto p-0 focus-visible:ring-0"
                            />
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(rIdx)} className="text-slate-300 hover:text-red-500">
+                        <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(idx)} className="text-slate-300 hover:text-red-500">
                            <Trash2 className="w-5 h-5" />
                         </Button>
                      </div>
@@ -340,7 +340,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                         <AccordionItem value="other" className="border-none">
                           <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-slate-50/30">
                             <AccordionTrigger className="px-6 py-3">
-                              <span className="text-xs font-black uppercase tracking-widest text-slate-500">NKBA Parts & Accessories</span>
+                              <span className="text-xs font-black uppercase tracking-widest text-slate-500">Accessories And Others</span>
                             </AccordionTrigger>
                             <AccordionContent>
                               {Object.entries(groupedOther).map(([category, items]) => (

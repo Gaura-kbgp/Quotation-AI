@@ -283,7 +283,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                           <AccordionTrigger className="px-4 py-3 bg-slate-50 rounded-xl hover:no-underline group">
                             <div className="flex items-center gap-3">
                               <Package className="w-4 h-4 text-slate-400" />
-                              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Accessories & Other ({otherItems.length})</span>
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Accessories And Others ({otherItems.length})</span>
                             </div>
                           </AccordionTrigger>
                           <AccordionContent className="pt-4">
