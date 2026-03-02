@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview High-Speed Segmented Architectural Extraction Flow (v84.0).
- * Specifically optimized for Gemini 2.5 Pro to prevent timeouts on large sets.
+ * @fileOverview NKBA-Aligned Architectural Extraction Flow (v85.0).
+ * Specifically tuned to fetch Wall, Tall, Vanity, Fillers, and Hardware using Gemini 2.5 Pro.
  */
 
 import { ai } from '@/ai/genkit';
@@ -29,22 +29,30 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[Blueprint v84] Segmented Scan starting for: ${input.projectName}`);
+  console.log(`[Blueprint v85] NKBA-Aligned Scan starting for: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.5-pro',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a high-speed estimator. Extract cabinetry from Plans and Schedules.
+      { text: `You are an expert architectural estimator. Extract cabinetry from Plans and Schedules based on NKBA rules.
       
       ARCHITECTURAL ROADMAP (Local Text Scan):
       {{{pdfText}}}
 
+      TARGET CATEGORIES (Identify these specific codes):
+      1. Wall Cabinets (W...)
+      2. Tall Cabinets (T, P, O, REF, UTIL...)
+      3. Vanity Cabinets (V, VSB...)
+      4. Universal Fillers (UF, F...)
+      5. Hardwares (HW, KNOB, PULL...)
+      6. Base Cabinets (B, SB...)
+
       INSTRUCTIONS:
-      1. Use the roadmap to find Floor Plans and Cabinetry Schedules.
-      2. Identify cabinets in plan views (e.g. W3042, SB36, B24).
-      3. Extract Room Names from Title Blocks (e.g. KITCHEN, BATH 1).
-      4. Group everything by Room.
+      - Use the Roadmap to find Cabinetry Schedules and Floor Plans.
+      - Extract Room Names from Title Blocks (KITCHEN, BATH, LAUNDRY).
+      - Group items by Room.
+      - Capture full SKU codes including suffixes (e.g. W3042 BUTT).
       
       Return ONLY a flat JSON array: [ { "room": "ROOM NAME", "code": "SKU", "qty": number } ]` }
     ],
@@ -66,7 +74,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       rawItems = JSON.parse(cleanedText.substring(start, end + 1));
     }
   } catch (e) {
-    console.error('[Blueprint v84] Parse Error:', e);
+    console.error('[Blueprint v85] Parse Error:', e);
     return getEmptyResult('Extraction parse failed.');
   }
 
@@ -112,7 +120,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       primaryCabinets: Array.from(r.primaryMap.values()),
       otherItems: Array.from(r.otherMap.values())
     })),
-    summary: `Takeoff complete. ${totalPrimary} cabinets found.`,
+    summary: `Takeoff complete. ${totalPrimary} boxes identified.`,
     totalPrimary,
     totalOther
   };

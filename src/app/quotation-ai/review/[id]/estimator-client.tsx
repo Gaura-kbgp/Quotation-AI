@@ -30,7 +30,8 @@ import {
   CheckCircle2,
   Factory,
   PlusCircle,
-  Layout
+  Layout,
+  Package
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { updateProjectAction } from '../../actions';
@@ -134,10 +135,25 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     setRooms(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const handleAddItem = (rIdx: number, type: 'primary' | 'other') => {
+  const handleAddItem = (rIdx: number, targetCategory: string) => {
     const nr = [...rooms];
-    if (type === 'primary') nr[rIdx].primaryCabinets.push({ code: 'W3630', qty: 1 });
-    else nr[rIdx].otherItems.push({ code: 'UF3', qty: 1 });
+    const newItem = { code: '', qty: 1 };
+    
+    // Set default code based on category
+    if (targetCategory === 'Wall Cabinets') newItem.code = 'W3630';
+    else if (targetCategory === 'Base Cabinets') newItem.code = 'B24';
+    else if (targetCategory === 'Tall Cabinets') newItem.code = 'P2484';
+    else if (targetCategory === 'Vanity Cabinets') newItem.code = 'V36';
+    else if (targetCategory === 'Universal Fillers') newItem.code = 'UF3';
+    else if (targetCategory === 'Hardwares') newItem.code = 'HW-KNOB';
+
+    // Primary categories go to primaryCabinets, others to otherItems
+    const primaryCats = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets'];
+    if (primaryCats.includes(targetCategory)) {
+      nr[rIdx].primaryCabinets.push(newItem);
+    } else {
+      nr[rIdx].otherItems.push(newItem);
+    }
     setRooms(nr);
   };
 
@@ -196,7 +212,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
           <div>
             <h1 className="text-base font-bold tracking-tight text-slate-900">{project.project_name}</h1>
             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-              {step === 'review' ? 'Takeoff Review' : step === 'manufacturer' ? 'Branding' : 'Specifications'}
+              {step === 'review' ? 'NKBA Review Workstation' : step === 'manufacturer' ? 'Branding' : 'Specifications'}
             </p>
           </div>
         </div>
@@ -217,16 +233,17 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
             <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100 sticky top-20 z-40">
                <div className="flex gap-10">
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Primary Boxes</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">NKBA Boxes</p>
                     <div className="flex items-baseline gap-2">
                       <span className="text-3xl font-black text-slate-900">{totals.primary}</span>
                       <Box className="w-5 h-5 text-sky-500" />
                     </div>
                   </div>
                   <div className="border-l border-slate-100 pl-10">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Other Items</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Parts & Hardware</p>
                     <div className="flex items-baseline gap-2">
                       <span className="text-3xl font-black text-slate-500">{totals.other}</span>
+                      <Package className="w-5 h-5 text-slate-400" />
                     </div>
                   </div>
                </div>
@@ -241,7 +258,14 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                 const groupedPrimary = {
                   'Wall Cabinets': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Wall Cabinets'),
                   'Base Cabinets': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Base Cabinets'),
-                  'Tall & Other Cabinets': room.primaryCabinets.filter(c => !['Wall Cabinets', 'Base Cabinets'].includes(detectCategory(c.code))),
+                  'Tall Cabinets': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Tall Cabinets'),
+                  'Vanity Cabinets': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Vanity Cabinets'),
+                };
+
+                const groupedOther = {
+                  'Universal Fillers': room.otherItems.filter(c => detectCategory(c.code) === 'Universal Fillers'),
+                  'Hardwares': room.otherItems.filter(c => detectCategory(c.code) === 'Hardwares'),
+                  'Other Accessories': room.otherItems.filter(c => !['Universal Fillers', 'Hardwares'].includes(detectCategory(c.code))),
                 };
 
                 return (
@@ -269,13 +293,16 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                           <div key={category} className={cn("space-y-0", catIdx !== 0 && "border-t border-slate-50")}>
                             <div className="px-6 py-2 bg-slate-50/50 flex items-center justify-between">
                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{category}</span>
+                               <Button variant="ghost" size="sm" onClick={() => handleAddItem(rIdx, category)} className="h-6 text-[9px] uppercase font-bold text-sky-600">
+                                 <Plus className="w-3 h-3 mr-1" /> Add
+                               </Button>
                             </div>
                             <Table>
                               <TableBody>
-                                {items.map((item, iIdx) => {
+                                {items.map((item) => {
                                   const actualIdx = room.primaryCabinets.findIndex(pc => pc === item);
                                   return (
-                                    <TableRow key={iIdx} className="h-14 hover:bg-slate-50 border-slate-50">
+                                    <TableRow key={`${category}-${actualIdx}`} className="h-14 hover:bg-slate-50 border-slate-50">
                                       <TableCell className="w-20 pl-6">
                                         <Input 
                                           type="number" 
@@ -289,6 +316,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                           value={item.code}
                                           onChange={(e) => handleUpdateCode(rIdx, 'primary', actualIdx, e.target.value)}
                                           className="border-none bg-transparent font-bold text-slate-900 text-base"
+                                          placeholder="SKU Code"
                                         />
                                       </TableCell>
                                       <TableCell className="text-right pr-6 space-x-2">
@@ -306,58 +334,60 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                             </Table>
                           </div>
                         ))}
-                        <div className="p-4 bg-slate-50/20 border-t border-slate-100 flex justify-center">
-                           <Button variant="ghost" size="sm" onClick={() => handleAddItem(rIdx, 'primary')} className="text-sky-600 font-bold uppercase text-[10px]">
-                              <Plus className="w-3 h-3 mr-2" />
-                              Add Cabinet
-                           </Button>
-                        </div>
                      </Card>
 
                      <Accordion type="single" collapsible className="w-full">
                         <AccordionItem value="other" className="border-none">
                           <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-slate-50/30">
                             <AccordionTrigger className="px-6 py-3">
-                              <span className="text-xs font-black uppercase tracking-widest text-slate-500">Accessories & Other</span>
+                              <span className="text-xs font-black uppercase tracking-widest text-slate-500">NKBA Parts & Accessories</span>
                             </AccordionTrigger>
                             <AccordionContent>
-                              <Table>
-                                <TableBody>
-                                  {room.otherItems.map((item, iIdx) => (
-                                    <TableRow key={iIdx} className="h-12 border-slate-100/50">
-                                      <TableCell className="w-20 pl-6">
-                                        <Input 
-                                          type="number" 
-                                          value={item.qty} 
-                                          onChange={(e) => handleUpdateQty(rIdx, 'other', iIdx, parseInt(e.target.value) || 0)}
-                                          className="w-10 h-8 text-center font-bold text-xs bg-white"
-                                        />
-                                      </TableCell>
-                                      <TableCell>
-                                        <Input 
-                                          value={item.code}
-                                          onChange={(e) => handleUpdateCode(rIdx, 'other', iIdx, e.target.value)}
-                                          className="border-none bg-transparent text-slate-500 text-sm"
-                                        />
-                                      </TableCell>
-                                      <TableCell className="text-right pr-6">
-                                        <Button variant="ghost" size="icon" onClick={() => handleMove(rIdx, iIdx, 'other')} className="text-slate-400 hover:text-sky-600">
-                                          <ArrowUpCircle className="w-5 h-5" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(rIdx, 'other', iIdx)} className="text-slate-300 hover:text-red-500">
-                                          <Trash2 className="w-4 h-4" />
-                                        </Button>
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                              <div className="p-3 flex justify-center border-t border-slate-100">
-                                <Button variant="ghost" size="sm" onClick={() => handleAddItem(rIdx, 'other')} className="text-slate-400 font-bold uppercase text-[9px]">
-                                  <Plus className="w-3 h-3 mr-2" />
-                                  Add Accessory
-                                </Button>
-                              </div>
+                              {Object.entries(groupedOther).map(([category, items]) => (
+                                <div key={category} className="space-y-0">
+                                  <div className="px-6 py-1.5 bg-slate-100/50 flex items-center justify-between">
+                                    <span className="text-[9px] font-bold uppercase text-slate-400">{category}</span>
+                                    <Button variant="ghost" size="sm" onClick={() => handleAddItem(rIdx, category)} className="h-5 text-[8px] uppercase font-bold text-slate-400">
+                                      <Plus className="w-2 h-2 mr-1" /> Add
+                                    </Button>
+                                  </div>
+                                  <Table>
+                                    <TableBody>
+                                      {items.map((item) => {
+                                        const actualIdx = room.otherItems.findIndex(oi => oi === item);
+                                        return (
+                                          <TableRow key={`${category}-${actualIdx}`} className="h-12 border-slate-100/50">
+                                            <TableCell className="w-20 pl-6">
+                                              <Input 
+                                                type="number" 
+                                                value={item.qty} 
+                                                onChange={(e) => handleUpdateQty(rIdx, 'other', actualIdx, parseInt(e.target.value) || 0)}
+                                                className="w-10 h-8 text-center font-bold text-xs bg-white"
+                                              />
+                                            </TableCell>
+                                            <TableCell>
+                                              <Input 
+                                                value={item.code}
+                                                onChange={(e) => handleUpdateCode(rIdx, 'other', actualIdx, e.target.value)}
+                                                className="border-none bg-transparent text-slate-500 text-sm"
+                                                placeholder="Part Code"
+                                              />
+                                            </TableCell>
+                                            <TableCell className="text-right pr-6">
+                                              <Button variant="ghost" size="icon" onClick={() => handleMove(rIdx, actualIdx, 'other')} className="text-slate-400 hover:text-sky-600">
+                                                <ArrowUpCircle className="w-5 h-5" />
+                                              </Button>
+                                              <Button variant="ghost" size="icon" onClick={() => handleDelete(rIdx, 'other', actualIdx)} className="text-slate-300 hover:text-red-500">
+                                                <Trash2 className="w-4 h-4" />
+                                              </Button>
+                                            </TableCell>
+                                          </TableRow>
+                                        );
+                                      })}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              ))}
                             </AccordionContent>
                           </Card>
                         </AccordionItem>

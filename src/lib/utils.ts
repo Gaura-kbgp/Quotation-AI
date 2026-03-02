@@ -22,38 +22,62 @@ export function compressSku(sku: string | any): string {
 }
 
 /**
- * Determines if an item is a primary cabinet box.
- * Suffixes like "BUTT" are ignored for the classification check.
+ * Determines if an item is a primary cabinet box based on NKBA standard prefixes.
  */
 export function isPrimaryCabinet(sku: string): boolean {
   const s = String(sku || "").toUpperCase().trim();
   if (!s) return false;
   
-  // Box prefixes common in architectural layouts
-  const primaryPrefixes = ['W', 'B', 'SB', 'VSB', 'OVD', 'TP', 'PANTRY', 'OVEN', 'REF', 'DW', 'MICRO', 'V', 'SV', 'VB'];
+  // Standard NKBA/Architectural Prefixes
+  const primaryPrefixes = [
+    'W',    // Wall
+    'B',    // Base
+    'SB',   // Sink Base
+    'VSB',  // Vanity Sink Base
+    'V',    // Vanity
+    'T',    // Tall
+    'P',    // Pantry
+    'O',    // Oven
+    'REF',  // Refrigerator Cabinet
+    'DW',   // Dishwasher Return
+    'MICRO' // Microwave Cabinet
+  ];
   
-  // Check if it starts with a primary prefix followed by a number (typical of cabinet boxes)
   return primaryPrefixes.some(p => {
+    // Matches prefix followed by numbers (e.g., W3042, B24)
     const regex = new RegExp(`^${p}\\d+`, 'i');
     return regex.test(s);
   });
 }
 
 /**
- * Architectural Categorization Logic.
- * Groups items into sections for the Estimator Review page.
+ * Architectural Categorization Logic (NKBA Aligned).
+ * Groups items into specific architectural sections for professional review.
  */
 export function detectCategory(sku: string): string {
   if (!sku) return 'Accessories';
   const s = String(sku || "").toUpperCase().trim();
   
+  // 1. Wall Cabinets
   if (s.startsWith('W')) return 'Wall Cabinets';
-  if (s.startsWith('SB') || s.startsWith('B') || s.startsWith('VSB')) return 'Base Cabinets';
-  if (s.startsWith('V') && !s.startsWith('VSB')) return 'Vanity Cabinets';
-  if (s.startsWith('T') || s.startsWith('P') || s.startsWith('O') || s.startsWith('UTIL')) return 'Tall Cabinets';
-  if (s.startsWith('UF')) return 'Fillers';
-  if (s.startsWith('RR') || s.startsWith('CM') || s.startsWith('M')) return 'Molding';
-  if (s.startsWith('HW')) return 'Hardware';
+  
+  // 2. Base Cabinets (Standard & Sink)
+  if (s.startsWith('SB') || s.startsWith('B')) return 'Base Cabinets';
+  
+  // 3. Vanity Cabinets (Excluding Vanity Sink Base if grouped with Sink Bases)
+  if (s.startsWith('V')) return 'Vanity Cabinets';
+  
+  // 4. Tall Cabinets (Pantry, Oven, Utility)
+  if (s.startsWith('T') || s.startsWith('P') || s.startsWith('O') || s.startsWith('UTIL') || s.startsWith('REF')) return 'Tall Cabinets';
+  
+  // 5. Universal Fillers
+  if (s.startsWith('UF') || s.startsWith('F')) return 'Universal Fillers';
+  
+  // 6. Hardwares
+  if (s.startsWith('HW') || s.includes('KNOB') || s.includes('PULL') || s.includes('HINGE')) return 'Hardwares';
+  
+  // 7. Molding & Trim
+  if (s.startsWith('CM') || s.startsWith('M') || s.startsWith('RR')) return 'Molding & Trim';
   
   return 'Accessories';
 }
