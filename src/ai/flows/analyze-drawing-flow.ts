@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview Strict 5-Room Architectural Extraction Flow (v77.0).
+ * @fileOverview High-Precision Architectural Extraction Flow (v79.0).
  * Uses Gemini 2.5 Pro for flagship architectural precision.
  */
 
@@ -9,7 +9,6 @@ import { z } from 'genkit';
 import { normalizeSku, isPrimaryCabinet, cleanSkuForDisplay } from '@/lib/utils';
 
 const AnalyzeDrawingInputSchema = z.object({
-  photoDataUri: z.string().optional().describe("Legacy field for image data."),
   pdfDataUri: z.string().describe("PDF data URI containing the full architectural set."),
   projectName: z.string().optional().default("4031 MAGNOLIA"),
 });
@@ -29,35 +28,26 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow v77] Starting High-Precision Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow v79] Starting High-Precision Analysis with Gemini 2.5 Pro: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.5-pro',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a professional architectural estimator specializing in cabinetry takeoffs. 
+      { text: `You are a professional architectural estimator. Extract ALL cabinetry from the PDF.
       
-      CRITICAL: You must ONLY extract data into these 5 EXACT rooms. 
-      
-      ----------------------------
-      OFFICIAL ROOM TITLES (STRICT)
-      ----------------------------
+      CRITICAL: Group data into these rooms where possible:
       1. STANDARD 42" KITCHEN
       2. OPT GOURMET KITCHEN
       3. STANDARD OWNERS BATH
       4. STANDARD BATH 2
       5. STANDARD BATH 3 UPSTAIRS
-
-      ----------------------------
-      CONSOLIDATION RULES
-      ----------------------------
-      1. IGNORE labels like "OPT LAUNDRY", "ISLAND", "PERIMETER", "HARDWARE", or "TRIM LIST" as top-level room titles.
-      2. Page 8 (OPT LAUNDRY) items MUST be merged into "STANDARD BATH 3 UPSTAIRS".
-      3. Items under "ISLAND" or "PERIMETER" MUST be merged into the active KITCHEN room.
-      4. Any item found in the drawing MUST be assigned to one of the 5 official rooms above.
       
-      OUTPUT FORMAT:
-      Return a JSON array of objects: [ { "room": "OFFICIAL ROOM TITLE", "code": "SKU", "qty": 1 } ]` }
+      Rules:
+      - Consolidate Island and Perimeter items into the respective Kitchen.
+      - Extract SKU (Code) and Quantity (Qty).
+      
+      Return ONLY a JSON array of objects: [ { "room": "ROOM NAME", "code": "SKU", "qty": number } ]` }
     ],
     config: {
       temperature: 0,
@@ -80,14 +70,6 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     return getEmptyResult('Failed to parse AI takeoff.');
   }
 
-  const VALID_TITLES = [
-    'STANDARD 42" KITCHEN',
-    'OPT GOURMET KITCHEN',
-    'STANDARD OWNERS BATH',
-    'STANDARD BATH 2',
-    'STANDARD BATH 3 UPSTAIRS'
-  ];
-
   const roomsMap = new Map<string, any>();
   let totalPrimary = 0;
   let totalOther = 0;
@@ -97,21 +79,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     if (!rawCode) return;
 
     let roomName = String(item.room || '').toUpperCase().trim();
-    
-    // Strict Mapper: Force sub-sections into their parent rooms
-    if (roomName.includes('KITCHEN') || roomName === 'ISLAND' || roomName === 'PERIMETER') {
-        roomName = roomName.includes('GOURMET') ? 'OPT GOURMET KITCHEN' : 'STANDARD 42" KITCHEN';
-    } else if (roomName.includes('OWNER') || roomName.includes('MASTER') || roomName.includes('OWNERS')) {
-        roomName = 'STANDARD OWNERS BATH';
-    } else if (roomName.includes('BATH 2')) {
-        roomName = 'STANDARD BATH 2';
-    } else if (roomName.includes('BATH 3') || roomName.includes('LAUNDRY')) {
-        roomName = 'STANDARD BATH 3 UPSTAIRS';
-    }
-
-    if (!VALID_TITLES.includes(roomName)) {
-        roomName = 'STANDARD 42" KITCHEN';
-    }
+    if (!roomName) roomName = 'KITCHEN';
 
     const displayCode = cleanSkuForDisplay(rawCode);
     const normCode = normalizeSku(rawCode);
@@ -148,7 +116,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Takeoff complete using Gemini 2.5 Pro.`,
+    summary: `Takeoff complete via Gemini 2.5 Pro.`,
     totalPrimary,
     totalOther
   };
