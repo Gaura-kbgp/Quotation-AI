@@ -274,7 +274,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                              className="text-xl font-bold text-slate-900 border-none bg-transparent h-auto p-0 focus-visible:ring-0"
                            />
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(idx)} className="text-slate-300 hover:text-red-500">
+                        <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(rIdx)} className="text-slate-300 hover:text-red-500">
                            <Trash2 className="w-5 h-5" />
                         </Button>
                      </div>
@@ -321,6 +321,9 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                                     </TableRow>
                                   );
                                 })}
+                                {items.length === 0 && (
+                                  <TableRow><TableCell colSpan={3} className="text-center py-4 text-[10px] text-slate-300">No {category} detected.</TableCell></TableRow>
+                                )}
                               </TableBody>
                             </Table>
                           </div>
@@ -330,7 +333,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                      <Accordion type="single" collapsible className="w-full">
                         <AccordionItem value="other" className="border-none">
                           <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-slate-50/30">
-                            <AccordionTrigger className="px-6 py-3">
+                            <AccordionTrigger className="px-6 py-3 hover:no-underline">
                               <span className="text-xs font-black uppercase tracking-widest text-slate-500">Accessories And Others</span>
                             </AccordionTrigger>
                             <AccordionContent>
@@ -391,7 +394,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         )}
 
         {step === 'manufacturer' && (
-          <div className="max-w-xl mx-auto py-8 space-y-6">
+          <div className="max-w-xl mx-auto py-8 space-y-6 animate-in fade-in duration-500">
             <h2 className="text-xl font-black text-center text-slate-900">Select Manufacturer</h2>
             <div className="grid grid-cols-1 gap-3">
               {manufacturers.map(m => (
@@ -409,7 +412,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
         )}
 
         {step === 'specifications' && (
-          <div className="max-w-4xl mx-auto py-8 space-y-6">
+          <div className="max-w-4xl mx-auto py-8 space-y-6 animate-in fade-in duration-500">
             <h2 className="text-xl font-black text-center text-slate-900">Configure Brands</h2>
             <div className="grid grid-cols-1 gap-3">
               {rooms.map((room, rIdx) => (

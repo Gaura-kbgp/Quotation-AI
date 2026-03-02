@@ -10,8 +10,7 @@ import {
   ArrowLeft, 
   Sparkles,
   ChevronRight,
-  AlertCircle,
-  FileWarning
+  AlertCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';

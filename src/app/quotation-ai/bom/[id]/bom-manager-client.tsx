@@ -31,7 +31,8 @@ import {
   Phone,
   RefreshCcw,
   ArrowDownCircle,
-  ArrowUpCircle
+  ArrowUpCircle,
+  Loader2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn, isPrimaryCabinet } from '@/lib/utils';
@@ -112,19 +113,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     }
     newBom[idx] = item;
     setBom(newBom);
-  };
-
-  const handleMoveItem = (id: string, target: 'primary' | 'other') => {
-    setBom(prev => prev.map(item => {
-      if (item.id === id) {
-        return { 
-          ...item, 
-          manual_classification: target,
-          is_billable: target === 'primary' 
-        };
-      }
-      return item;
-    }));
   };
 
   const handleReprice = async () => {
@@ -212,8 +200,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           <div className="space-y-12 animate-in fade-in duration-500">
             {allRooms.map(room => {
               const roomItems = bom.filter(i => i.room === room);
-              const primaryItems = roomItems.filter(i => i.manual_classification === 'primary' || (isPrimaryCabinet(i.sku) && i.manual_classification !== 'other'));
-              const otherItems = roomItems.filter(i => i.manual_classification === 'other' || (!isPrimaryCabinet(i.sku) && i.manual_classification !== 'primary'));
+              const primaryItems = roomItems.filter(i => isPrimaryCabinet(i.sku));
+              const otherItems = roomItems.filter(i => !isPrimaryCabinet(i.sku));
 
               return (
                 <section key={room} className={cn("space-y-6", !selectedRooms.includes(room) && "opacity-40 grayscale")}>
@@ -223,6 +211,15 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                   </div>
 
                   <Table>
+                    <TableHeader className="bg-slate-50/50">
+                       <TableRow>
+                          <TableHead className="w-10"></TableHead>
+                          <TableHead>Cabinets</TableHead>
+                          <TableHead className="text-center w-24">Qty</TableHead>
+                          <TableHead className="text-right w-32">Unit Price</TableHead>
+                          <TableHead className="text-right w-32">Total</TableHead>
+                       </TableRow>
+                    </TableHeader>
                     <TableBody>
                       {primaryItems.map((item) => {
                         const itemIdx = bom.findIndex(b => b.id === item.id);
@@ -310,7 +307,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         )}
 
         {step === 'customer' && (
-          <div className="max-w-md mx-auto py-20">
+          <div className="max-w-md mx-auto py-20 animate-in fade-in duration-500">
              <Card className="p-8 rounded-[2rem] shadow-2xl bg-white border border-slate-100">
                 <h2 className="text-xl font-black text-slate-900 mb-6">Client Information</h2>
                 <div className="space-y-5">
