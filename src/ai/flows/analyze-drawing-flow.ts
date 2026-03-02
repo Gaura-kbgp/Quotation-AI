@@ -1,8 +1,7 @@
-
 'use server';
 /**
  * @fileOverview Strict 5-Room Architectural Extraction Flow (v77.0).
- * Uses Gemini 2.5 Pro for ultimate architectural precision.
+ * Uses Gemini 2.5 Pro for flagship architectural precision.
  */
 
 import { ai } from '@/ai/genkit';
@@ -30,7 +29,7 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow v77] Starting Ultra-Precision Analysis for: ${input.projectName}`);
+  console.log(`[AI Flow v77] Starting High-Precision Analysis for: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.5-pro',
@@ -149,7 +148,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Takeoff complete: ${totalPrimary} cabinets consolidated into 5 official rooms using Gemini 2.5 Pro.`,
+    summary: `Takeoff complete using Gemini 2.5 Pro.`,
     totalPrimary,
     totalOther
   };

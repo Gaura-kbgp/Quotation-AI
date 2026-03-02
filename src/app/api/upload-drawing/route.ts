@@ -1,10 +1,9 @@
-
 import { createServerSupabase } from '@/lib/supabase-server';
 import { analyzeDrawing } from '@/ai/flows/analyze-drawing-flow';
 
 /**
  * Extended timeout for complex architectural vision analysis.
- * Supports processing of 20+ page PDFs via Gemini 2.5 Vision.
+ * Supports processing of 20+ page PDFs via Gemini 2.5 Pro.
  */
 export const maxDuration = 300; 
 
@@ -23,9 +22,9 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(arrayBuffer);
     const dataUri = `data:application/pdf;base64,${buffer.toString('base64')}`;
 
-    console.log(`[Analyzer] Initiating High-Precision Analysis for ${projectName}...`);
+    console.log(`[Analyzer] Initiating Gemini 2.5 Pro Analysis for ${projectName}...`);
     
-    // Call the AI flow using Gemini 2.5 Pro for flagship multi-page reasoning
+    // Call the AI flow using Gemini 2.5 Pro
     const extractionResult = await analyzeDrawing({ 
       pdfDataUri: dataUri,
       projectName: projectName
