@@ -274,7 +274,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                              className="text-xl font-bold text-slate-900 border-none bg-transparent h-auto p-0 focus-visible:ring-0"
                            />
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(rIdx)} className="text-slate-300 hover:text-red-500">
+                        <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(idx)} className="text-slate-300 hover:text-red-500">
                            <Trash2 className="w-5 h-5" />
                         </Button>
                      </div>
