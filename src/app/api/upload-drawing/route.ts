@@ -2,13 +2,13 @@ import { createServerSupabase } from '@/lib/supabase-server';
 import { analyzeDrawing } from '@/ai/flows/analyze-drawing-flow';
 import pdf from 'pdf-parse';
 
-// Production-grade timeout for architectural takeoff
+// High-capacity timeout for complex blueprint sets
 export const maxDuration = 300; 
 
 /**
- * HIGH-EFFICIENCY HYBRID EXTRACTION (v82.0)
- * 1. Text Parsing: Extracts "Anchors" (Sheet Names, Schedule Titles).
- * 2. Vision Analysis: Gemini 2.5 Pro uses anchors for lightning-fast takeoff.
+ * HYBRID BLUEPRINT EXTRACTION (v83.0)
+ * 1. Sheet Title Scan: Local text parsing finds room headers and title blocks.
+ * 2. Vision Mapping: Gemini 2.5 Pro scans plan views using sheet headers as anchors.
  */
 export async function POST(req: Request) {
   try {
@@ -24,20 +24,19 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // STAGE 1: Fast Text Extraction for Context Anchors
+    // STAGE 1: Architectural Anchor Extraction
     let pdfTextContext = '';
     try {
       const data = await pdf(buffer);
-      // We only take first 8000 chars to identify the Sheet Index and Schedule headers
-      // This prevents token bloat while giving the AI a "Map" of the PDF
-      pdfTextContext = data.text.substring(0, 8000).replace(/\s+/g, ' ');
+      // We scan the first 12000 chars to ensure we hit title blocks on multiple pages
+      pdfTextContext = data.text.substring(0, 12000).replace(/\s+/g, ' ');
     } catch (e) {
-      console.warn('[Hybrid v82] Text extraction failed, proceeding with pure vision.');
+      console.warn('[Blueprint Hybrid v83] Text scan failed, proceeding with vision only.');
     }
 
     const dataUri = `data:application/pdf;base64,${buffer.toString('base64')}`;
 
-    console.log(`[Hybrid v82] Calling Gemini 2.5 Pro for: ${projectName}`);
+    console.log(`[Blueprint Hybrid v83] Calling Gemini 2.5 Pro Vision: ${projectName}`);
     
     const extractionResult = await analyzeDrawing({ 
       pdfDataUri: dataUri,
@@ -65,10 +64,9 @@ export async function POST(req: Request) {
     return Response.json({ success: true, projectId: project.id });
 
   } catch (err: any) {
-    console.error('[Hybrid API v82] Error:', err);
-    // Return structured JSON even for failures to avoid the "Error reaching server" HTML fallback
+    console.error('[Blueprint API v83] Critical Error:', err);
     return Response.json({ 
-      error: 'The analysis took too long for this specific file. Recommendation: Upload just the Cabinetry Schedule or Floor Plan pages for a 10x faster response.' 
+      error: 'The server environment timed out while reading this architectural set. Recommendation: Upload only the Floor Plan and Cabinetry Schedule pages for a 10x faster response.' 
     }, { status: 504 });
   }
 }
