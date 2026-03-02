@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview High-Precision Architectural Extraction Flow (v80.0).
- * Uses Gemini 2.5 Pro for flagship architectural precision.
+ * @fileOverview Hybrid Architectural Extraction Flow (v81.0).
+ * Uses Gemini 2.5 Pro for vision and text-anchor correlation.
  */
 
 import { ai } from '@/ai/genkit';
@@ -11,6 +11,7 @@ import { normalizeSku, isPrimaryCabinet, cleanSkuForDisplay } from '@/lib/utils'
 const AnalyzeDrawingInputSchema = z.object({
   pdfDataUri: z.string().describe("PDF data URI containing the full architectural set."),
   projectName: z.string().optional().default("PROJECT TAKEOFF"),
+  pdfText: z.string().optional().describe("Extracted text anchors from the PDF to help room identification."),
 });
 export type AnalyzeDrawingInput = z.infer<typeof AnalyzeDrawingInputSchema>;
 
@@ -28,7 +29,7 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[AI Flow v80] High-Precision Analysis with Gemini 2.5 Pro: ${input.projectName}`);
+  console.log(`[AI Hybrid v81] Logic Fusion with Gemini 2.5 Pro: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.5-pro',
@@ -36,16 +37,21 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
       { text: `You are a professional architectural estimator. Extract ALL cabinetry from the provided drawings.
       
-      CRITICAL: Consolidate data into these rooms where possible:
-      1. KITCHEN (Standard or Gourmet)
-      2. OWNERS BATH
-      3. BATH 2
-      4. BATH 3
-      5. LAUNDRY
+      HYBRID CONTEXT (Text Anchors):
+      {{{pdfText}}}
+
+      CRITICAL INSTRUCTIONS:
+      1. Use the provided text anchors to identify Room Names (e.g., KITCHEN, OWNERS BATH, LAUNDRY).
+      2. If a room is not explicitly named in the text anchors, use the Visual Drawing labels.
+      3. Extract exact SKU (Code) and Quantity (Qty) for every cabinet.
+      4. Group Island items into the primary KITCHEN room.
       
-      Output Rules:
-      - Extract exact SKU (Code) and Quantity (Qty).
-      - Include Island items in the Kitchen.
+      Consolidate data into these rooms where possible:
+      - KITCHEN
+      - OWNERS BATH
+      - BATH 2
+      - BATH 3
+      - LAUNDRY
       
       Return ONLY a JSON array of objects: [ { "room": "ROOM NAME", "code": "SKU", "qty": number } ]` }
     ],
@@ -66,7 +72,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       rawItems = JSON.parse(cleanedText.substring(start, end + 1));
     }
   } catch (e) {
-    console.error('[AI Flow] JSON Parse Error:', e);
+    console.error('[AI Hybrid] Extraction Parse Error:', e);
     return getEmptyResult('Failed to parse AI takeoff data.');
   }
 
@@ -116,7 +122,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
 
   return {
     rooms: finalRooms,
-    summary: `Takeoff complete via Gemini 2.5 Pro. Found ${totalPrimary} cabinets.`,
+    summary: `Hybrid takeoff complete via Gemini 2.5 Pro. Found ${totalPrimary} cabinets across ${finalRooms.length} rooms.`,
     totalPrimary,
     totalOther
   };
