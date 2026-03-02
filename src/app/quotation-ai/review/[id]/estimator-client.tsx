@@ -240,7 +240,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                     </div>
                   </div>
                   <div className="border-l border-slate-100 pl-10">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Parts & Hardware</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Accessories And Others</p>
                     <div className="flex items-baseline gap-2">
                       <span className="text-3xl font-black text-slate-500">{totals.other}</span>
                       <Package className="w-5 h-5 text-slate-400" />
@@ -248,7 +248,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                   </div>
                </div>
                <Button onClick={() => setStep('manufacturer')} className="h-12 px-10 gradient-button text-base">
-                  Continue to Brand
+                  Select Manufacturer
                   <ChevronRight className="ml-2 w-5 h-5" />
                </Button>
             </div>
@@ -283,7 +283,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                              className="text-xl font-bold text-slate-900 border-none bg-transparent h-auto p-0 focus-visible:ring-0"
                            />
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(idx)} className="text-slate-300 hover:text-red-500">
+                        <Button variant="ghost" size="icon" onClick={() => handleRemoveRoom(rIdx)} className="text-slate-300 hover:text-red-500">
                            <Trash2 className="w-5 h-5" />
                         </Button>
                      </div>
