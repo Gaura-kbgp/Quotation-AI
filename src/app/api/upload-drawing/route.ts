@@ -2,13 +2,11 @@ import { createServerSupabase } from '@/lib/supabase-server';
 import { analyzeDrawing } from '@/ai/flows/analyze-drawing-flow';
 import pdf from 'pdf-parse';
 
-// High-capacity timeout for complex blueprint sets
 export const maxDuration = 300; 
 
 /**
- * HYBRID BLUEPRINT EXTRACTION (v83.0)
- * 1. Sheet Title Scan: Local text parsing finds room headers and title blocks.
- * 2. Vision Mapping: Gemini 2.5 Pro scans plan views using sheet headers as anchors.
+ * HIGH-SPEED HYBRID EXTRACTION (v84.0)
+ * Uses architectural anchors to speed up Gemini 2.5 Pro Vision scan.
  */
 export async function POST(req: Request) {
   try {
@@ -17,26 +15,24 @@ export async function POST(req: Request) {
     const projectName = (formData.get('projectName') as string) || 'NEW PROJECT';
 
     if (!file) {
-      return Response.json({ error: 'No drawing PDF provided.' }, { status: 400 });
+      return Response.json({ error: 'No PDF provided.' }, { status: 400 });
     }
 
     const supabase = createServerSupabase();
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // STAGE 1: Architectural Anchor Extraction
+    // STAGE 1: Fast Anchor Extraction
     let pdfTextContext = '';
     try {
       const data = await pdf(buffer);
-      // We scan the first 12000 chars to ensure we hit title blocks on multiple pages
-      pdfTextContext = data.text.substring(0, 12000).replace(/\s+/g, ' ');
+      // Scan the first 8000 chars for sheet index to act as AI roadmap
+      pdfTextContext = data.text.substring(0, 8000).replace(/\s+/g, ' ');
     } catch (e) {
-      console.warn('[Blueprint Hybrid v83] Text scan failed, proceeding with vision only.');
+      console.warn('[Blueprint v84] Local scan skipped.');
     }
 
     const dataUri = `data:application/pdf;base64,${buffer.toString('base64')}`;
-
-    console.log(`[Blueprint Hybrid v83] Calling Gemini 2.5 Pro Vision: ${projectName}`);
     
     const extractionResult = await analyzeDrawing({ 
       pdfDataUri: dataUri,
@@ -64,9 +60,9 @@ export async function POST(req: Request) {
     return Response.json({ success: true, projectId: project.id });
 
   } catch (err: any) {
-    console.error('[Blueprint API v83] Critical Error:', err);
+    console.error('[Blueprint v84] Error:', err);
     return Response.json({ 
-      error: 'The server environment timed out while reading this architectural set. Recommendation: Upload only the Floor Plan and Cabinetry Schedule pages for a 10x faster response.' 
+      error: 'The server environment timed out while reading this architectural set. Recommendation: Upload only the Cabinetry Plan/Schedule pages for a 10x faster response.' 
     }, { status: 504 });
   }
 }

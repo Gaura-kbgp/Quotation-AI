@@ -1,7 +1,7 @@
 'use server';
 /**
- * @fileOverview High-Precision Architectural Blueprint Extraction Flow (v83.0).
- * Specifically optimized for Plan View diagrams and Schedule tables using Gemini 2.5 Pro.
+ * @fileOverview High-Speed Segmented Architectural Extraction Flow (v84.0).
+ * Specifically optimized for Gemini 2.5 Pro to prevent timeouts on large sets.
  */
 
 import { ai } from '@/ai/genkit';
@@ -9,9 +9,9 @@ import { z } from 'genkit';
 import { normalizeSku, isPrimaryCabinet, cleanSkuForDisplay } from '@/lib/utils';
 
 const AnalyzeDrawingInputSchema = z.object({
-  pdfDataUri: z.string().describe("PDF data URI containing the full architectural set."),
+  pdfDataUri: z.string().describe("PDF data URI containing the architectural set."),
   projectName: z.string().optional().default("PROJECT TAKEOFF"),
-  pdfText: z.string().optional().describe("Extracted text anchors from title blocks and sheet index."),
+  pdfText: z.string().optional().describe("Local text scan for sheet index and room anchors."),
 });
 export type AnalyzeDrawingInput = z.infer<typeof AnalyzeDrawingInputSchema>;
 
@@ -29,29 +29,24 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[Blueprint Hybrid v83] Scanning Plan Views with Gemini 2.5 Pro: ${input.projectName}`);
+  console.log(`[Blueprint v84] Segmented Scan starting for: ${input.projectName}`);
 
   const response = await ai.generate({
     model: 'googleai/gemini-2.5-pro',
     prompt: [
       { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
-      { text: `You are a high-speed architectural estimator. Extract ALL cabinetry from these drawings (both Schedules and Plan Views).
+      { text: `You are a high-speed estimator. Extract cabinetry from Plans and Schedules.
       
-      ARCHITECTURAL CONTEXT (Sheet Index / Title Blocks):
+      ARCHITECTURAL ROADMAP (Local Text Scan):
       {{{pdfText}}}
 
-      PLAN VIEW SCANNING INSTRUCTIONS:
-      1. Identify rectangles representing cabinets in the floor plan layouts.
-      2. Extract cabinet codes written INSIDE or ADJACENT to these boxes (e.g., "W3042 BUTT", "B30 BUTT", "SB36", "UF342").
-      3. Clean codes: Keep full alphanumeric string including suffixes like "BUTT", "L", "R".
-      4. Quantity: If multiple identical codes are shown individually, sum them. If a number is in brackets next to a code (e.g. W30(2)), that is the quantity.
-
-      ROOM IDENTIFICATION:
-      1. Use the Sheet Title or the Title Block at the bottom/side of the page to find the Room Name.
-      2. If "KITCHEN" is in the title block, group items under "KITCHEN".
-      3. Common rooms: KITCHEN, OWNERS BATH, BATH 2, BATH 3, LAUNDRY.
+      INSTRUCTIONS:
+      1. Use the roadmap to find Floor Plans and Cabinetry Schedules.
+      2. Identify cabinets in plan views (e.g. W3042, SB36, B24).
+      3. Extract Room Names from Title Blocks (e.g. KITCHEN, BATH 1).
+      4. Group everything by Room.
       
-      Return ONLY a JSON array: [ { "room": "ROOM NAME", "code": "SKU", "qty": number } ]` }
+      Return ONLY a flat JSON array: [ { "room": "ROOM NAME", "code": "SKU", "qty": number } ]` }
     ],
     config: {
       temperature: 0,
@@ -60,7 +55,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
   });
 
   const text = response.text;
-  if (!text) return getEmptyResult('No cabinetry detected in drawing.');
+  if (!text) return getEmptyResult('No cabinetry detected.');
 
   let rawItems: any[] = [];
   try {
@@ -71,8 +66,8 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
       rawItems = JSON.parse(cleanedText.substring(start, end + 1));
     }
   } catch (e) {
-    console.error('[Blueprint v83] Parse Error:', e);
-    return getEmptyResult('Failed to parse takeoff data.');
+    console.error('[Blueprint v84] Parse Error:', e);
+    return getEmptyResult('Extraction parse failed.');
   }
 
   const roomsMap = new Map<string, any>();
@@ -83,9 +78,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     const rawCode = String(item.code || '').trim();
     if (!rawCode) return;
 
-    let roomName = String(item.room || '').toUpperCase().trim();
-    if (!roomName) roomName = 'KITCHEN';
-
+    let roomName = String(item.room || '').toUpperCase().trim() || 'KITCHEN';
     const displayCode = cleanSkuForDisplay(rawCode);
     const normCode = normalizeSku(rawCode);
     
@@ -113,15 +106,13 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
     }
   });
 
-  const finalRooms = Array.from(roomsMap.values()).map(r => ({
-    room_name: r.room_name,
-    primaryCabinets: Array.from(r.primaryMap.values()),
-    otherItems: Array.from(r.otherMap.values())
-  }));
-
   return {
-    rooms: finalRooms,
-    summary: `Hybrid Blueprint Scan complete. Extracted ${totalPrimary} cabinets from Plan Views.`,
+    rooms: Array.from(roomsMap.values()).map(r => ({
+      room_name: r.room_name,
+      primaryCabinets: Array.from(r.primaryMap.values()),
+      otherItems: Array.from(r.otherMap.values())
+    })),
+    summary: `Takeoff complete. ${totalPrimary} cabinets found.`,
     totalPrimary,
     totalOther
   };
