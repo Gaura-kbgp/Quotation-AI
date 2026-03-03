@@ -328,16 +328,19 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                           <h2 className="text-xl font-black uppercase tracking-tight">{roomName}</h2>
                        </div>
                        
-                       <div className="flex items-center gap-4 bg-slate-100/50 px-4 py-1.5 rounded-full border border-slate-200">
-                          <Tag className="w-3.5 h-3.5 text-sky-600" />
-                          <Label className="text-[10px] font-black uppercase text-slate-500">Room Discount (%)</Label>
-                          <Input 
-                            type="number" 
-                            value={roomDiscounts[roomName] || 0} 
-                            onChange={(e) => setRoomDiscounts(prev => ({ ...prev, [roomName]: parseFloat(e.target.value) || 0 }))}
-                            className="w-16 h-7 text-center font-bold bg-white border-none text-xs"
-                          />
-                       </div>
+                       {/* Conditional Room Discount Visibility: Only show if there are multiple rooms */}
+                       {roomsList.length > 1 && (
+                         <div className="flex items-center gap-4 bg-slate-100/50 px-4 py-1.5 rounded-full border border-slate-200">
+                            <Tag className="w-3.5 h-3.5 text-sky-600" />
+                            <Label className="text-[10px] font-black uppercase text-slate-500">Room Discount (%)</Label>
+                            <Input 
+                              type="number" 
+                              value={roomDiscounts[roomName] || 0} 
+                              onChange={(e) => setRoomDiscounts(prev => ({ ...prev, [roomName]: parseFloat(e.target.value) || 0 }))}
+                              className="w-16 h-7 text-center font-bold bg-white border-none text-xs"
+                            />
+                         </div>
+                       )}
                     </div>
 
                     {categories.map(cat => {
@@ -747,35 +750,34 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
               </CardContent>
             </Card>
 
-            {step === 'pricing' && (
-              <Card className="rounded-[2rem] border-slate-200 shadow-xl overflow-hidden bg-white">
-                <CardHeader className="bg-slate-50 border-b border-slate-100">
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Internal Cost Breakdown</p>
-                </CardHeader>
-                <CardContent className="p-6 space-y-3">
-                  <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
-                    <span>Gross List</span>
-                    <span className="font-mono">${financials.listSubtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs font-bold text-sky-600 uppercase">
-                    <span>Dealer Cost ({pricingFactor})</span>
-                    <span className="font-mono">${financials.dealerCost.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase">
-                    <span>Margin ({targetMargin}%)</span>
-                    <span className="font-mono">+${(financials.marginSell - financials.dealerCost).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs font-bold text-amber-600 uppercase">
-                    <span>Add'l Charges</span>
-                    <span className="font-mono">+${financials.additionalExpenses.toFixed(2)}</span>
-                  </div>
-                  <div className="border-t border-slate-100 pt-3 flex justify-between text-sm font-black text-slate-900 uppercase">
-                    <span>Subtotal</span>
-                    <span className="font-mono">${financials.netTotal.toFixed(2)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {/* Repositioned Internal Cost Breakdown Card per user screenshot */}
+            <Card className="rounded-[2rem] border-slate-200 shadow-xl overflow-hidden bg-white">
+              <CardHeader className="bg-slate-50 border-b border-slate-100">
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Internal Cost Breakdown</p>
+              </CardHeader>
+              <CardContent className="p-6 space-y-3">
+                <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
+                  <span>Gross List</span>
+                  <span className="font-mono">${financials.listSubtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-sky-600 uppercase">
+                  <span>Dealer Cost ({pricingFactor})</span>
+                  <span className="font-mono">${financials.dealerCost.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase">
+                  <span>Margin ({targetMargin}%)</span>
+                  <span className="font-mono">+${(financials.marginSell - financials.dealerCost).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-amber-600 uppercase">
+                  <span>Add'l Charges</span>
+                  <span className="font-mono">+${financials.additionalExpenses.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-slate-100 pt-3 flex justify-between text-sm font-black text-slate-900 uppercase">
+                  <span>Subtotal</span>
+                  <span className="font-mono">${(financials.marginSell + financials.additionalExpenses).toFixed(2)}</span>
+                </div>
+              </CardContent>
+            </Card>
 
             <div className="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl space-y-4">
                <div className="flex items-center gap-2">
