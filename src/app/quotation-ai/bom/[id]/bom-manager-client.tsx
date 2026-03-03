@@ -114,7 +114,9 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const [activePrintRoom, setActivePrintRoom] = useState<string | null>(null);
 
   const financials = useMemo(() => {
-    const activeItems = bom.filter(item => item.is_billable && selectedRooms.includes(item.room));
+    // CRITICAL FIX: If printing a specific room, isolate all totals to that room only
+    const effectiveRooms = activePrintRoom ? [activePrintRoom] : selectedRooms;
+    const activeItems = bom.filter(item => item.is_billable && effectiveRooms.includes(item.room));
     
     let listSubtotal = 0;
     activeItems.forEach(item => {
@@ -127,7 +129,12 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     const dealerCost = listSubtotal * Number(pricingFactor);
     const marginDecimal = Number(targetMargin) / 100;
     const marginSell = marginDecimal < 1 ? dealerCost / (1 - marginDecimal) : dealerCost;
-    const additionalExpenses = Number(freight) + Number(fuelSurcharge) + Number(miscCharges);
+    
+    // Additional project-level expenses are only included in full project quotes, 
+    // or we include them if specifically billing one room. 
+    // For isolated room PDFs, we usually just want the cabinetry total.
+    const additionalExpenses = activePrintRoom ? 0 : (Number(freight) + Number(fuelSurcharge) + Number(miscCharges));
+    
     const netBeforeDiscount = marginSell + additionalExpenses;
     const discountAmt = netBeforeDiscount * (Number(globalDiscount) / 100);
     const netTotal = netBeforeDiscount - discountAmt;
@@ -144,7 +151,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
       taxes, 
       grandTotal 
     };
-  }, [bom, selectedRooms, pricingFactor, targetMargin, globalDiscount, taxRate, freight, fuelSurcharge, miscCharges, roomDiscounts]);
+  }, [bom, selectedRooms, activePrintRoom, pricingFactor, targetMargin, globalDiscount, taxRate, freight, fuelSurcharge, miscCharges, roomDiscounts]);
 
   const toggleAllRooms = (checked: boolean) => {
     setSelectedRooms(checked ? roomsList : []);
@@ -234,10 +241,11 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const triggerPrint = (roomName?: string) => {
     if (roomName) {
       setActivePrintRoom(roomName);
+      // Brief timeout to allow financials useMemo to recalculate for the single room
       setTimeout(() => {
         window.print();
         setActivePrintRoom(null);
-      }, 100);
+      }, 150);
     } else {
       setActivePrintRoom(null);
       window.print();
