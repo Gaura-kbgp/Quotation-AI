@@ -39,7 +39,9 @@ import {
   Mail,
   DollarSign,
   Percent,
-  Tag
+  Tag,
+  TrendingUp,
+  Factory
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn, detectCategory } from '@/lib/utils';
@@ -114,7 +116,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const [activePrintRoom, setActivePrintRoom] = useState<string | null>(null);
 
   const financials = useMemo(() => {
-    // CRITICAL FIX: If printing a specific room, isolate all totals to that room only
     const effectiveRooms = activePrintRoom ? [activePrintRoom] : selectedRooms;
     const activeItems = bom.filter(item => item.is_billable && effectiveRooms.includes(item.room));
     
@@ -130,9 +131,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     const marginDecimal = Number(targetMargin) / 100;
     const marginSell = marginDecimal < 1 ? dealerCost / (1 - marginDecimal) : dealerCost;
     
-    // Additional project-level expenses are only included in full project quotes, 
-    // or we include them if specifically billing one room. 
-    // For isolated room PDFs, we usually just want the cabinetry total.
     const additionalExpenses = activePrintRoom ? 0 : (Number(freight) + Number(fuelSurcharge) + Number(miscCharges));
     
     const netBeforeDiscount = marginSell + additionalExpenses;
@@ -140,6 +138,10 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     const netTotal = netBeforeDiscount - discountAmt;
     const taxes = netTotal * (Number(taxRate) / 100);
     const grandTotal = netTotal + taxes;
+
+    // Financial Metrics for Manufacturer Oversight
+    const estimatedMfgCost = dealerCost;
+    const estimatedProfit = netTotal - dealerCost;
 
     return { 
       listSubtotal, 
@@ -149,7 +151,9 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
       discountAmt, 
       netTotal, 
       taxes, 
-      grandTotal 
+      grandTotal,
+      estimatedMfgCost,
+      estimatedProfit
     };
   }, [bom, selectedRooms, activePrintRoom, pricingFactor, targetMargin, globalDiscount, taxRate, freight, fuelSurcharge, miscCharges, roomDiscounts]);
 
@@ -241,7 +245,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const triggerPrint = (roomName?: string) => {
     if (roomName) {
       setActivePrintRoom(roomName);
-      // Brief timeout to allow financials useMemo to recalculate for the single room
       setTimeout(() => {
         window.print();
         setActivePrintRoom(null);
@@ -311,13 +314,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
               {roomsList.map(roomName => {
                 const roomItems = bom.filter(i => i.room === roomName);
                 const isSelected = selectedRooms.includes(roomName);
-                const categories = [
-                  'Wall Cabinets', 
-                  'Base Cabinets', 
-                  'Tall Cabinets', 
-                  'Vanity Cabinets', 
-                  'Universal Fillers'
-                ];
+                const categories = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets', 'Universal Fillers'];
 
                 return (
                   <section key={roomName} className={cn("space-y-4 transition-opacity duration-300", !isSelected && "opacity-40 grayscale-[0.5]")}>
@@ -328,7 +325,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                           <h2 className="text-xl font-black uppercase tracking-tight">{roomName}</h2>
                        </div>
                        
-                       {roomsList.length > 1 && (
+                       {roomsList.length > 1 && isSelected && (
                          <div className="flex items-center gap-4 bg-slate-100/50 px-4 py-1.5 rounded-full border border-slate-200">
                             <Tag className="w-3.5 h-3.5 text-sky-600" />
                             <Label className="text-[10px] font-black uppercase text-slate-500">Room Discount (%)</Label>
@@ -736,8 +733,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-slate-100">
-                   <div className="flex justify-between text-xs mb-1">
+                <div className="pt-6 border-t border-slate-100 space-y-3">
+                   <div className="flex justify-between text-xs">
                       <span className="text-slate-400 font-bold uppercase tracking-widest">Net Value</span>
                       <span className="font-mono text-slate-900 font-bold">${financials.netTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                    </div>
@@ -745,7 +742,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       <span className="text-sky-600 font-bold uppercase tracking-widest">Dealer Cost</span>
                       <span className="font-mono text-sky-900 font-bold">${financials.dealerCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                    </div>
-                   <div className="pt-6">
+                   <div className="pt-4 border-t border-slate-50">
                       <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.3em] mb-1">Total Amount</p>
                       <p className="text-2xl font-black font-mono tracking-tighter text-slate-900">
                          ${financials.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -764,35 +761,37 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
               <CardHeader className="bg-slate-50 border-b border-slate-100">
                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Internal Cost Breakdown</p>
               </CardHeader>
-              <CardContent className="p-6 space-y-3">
+              <CardContent className="p-6 space-y-4">
                 <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
                   <span>Gross List</span>
                   <span className="font-mono">${financials.listSubtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-xs font-bold text-sky-600 uppercase">
-                  <span>Dealer Cost ({pricingFactor})</span>
-                  <span className="font-mono">${financials.dealerCost.toFixed(2)}</span>
+                <div className="flex justify-between items-center text-xs font-bold text-sky-600 uppercase">
+                  <span className="flex items-center gap-1"><Factory className="w-3 h-3" /> Est. Mfg Cost</span>
+                  <span className="font-mono">${financials.estimatedMfgCost.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase">
-                  <span>Margin ({targetMargin}%)</span>
-                  <span className="font-mono">+${(financials.marginSell - financials.dealerCost).toFixed(2)}</span>
+                <div className="flex justify-between items-center text-xs font-bold text-emerald-600 uppercase">
+                  <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Est. Profit</span>
+                  <span className="font-mono">+${financials.estimatedProfit.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-xs font-bold text-amber-600 uppercase">
-                  <span>Add'l Charges</span>
-                  <span className="font-mono">+${financials.additionalExpenses.toFixed(2)}</span>
-                </div>
-                {financials.discountAmt > 0 && (
-                  <div className="flex justify-between text-xs font-bold text-red-600 uppercase">
-                    <span>Discount ({globalDiscount}%)</span>
-                    <span className="font-mono">-${financials.discountAmt.toFixed(2)}</span>
+                <div className="border-t border-slate-50 pt-3 space-y-2">
+                  <div className="flex justify-between text-xs font-bold text-slate-400 uppercase">
+                    <span>Add'l Charges</span>
+                    <span className="font-mono">+${financials.additionalExpenses.toFixed(2)}</span>
                   </div>
-                )}
-                <div className="flex justify-between text-xs font-bold text-slate-400 uppercase">
-                  <span>Sales Tax ({taxRate}%)</span>
-                  <span className="font-mono">+${financials.taxes.toFixed(2)}</span>
+                  {financials.discountAmt > 0 && (
+                    <div className="flex justify-between text-xs font-bold text-red-600 uppercase">
+                      <span>Discount ({globalDiscount}%)</span>
+                      <span className="font-mono">-${financials.discountAmt.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xs font-bold text-slate-300 uppercase">
+                    <span>Sales Tax</span>
+                    <span className="font-mono">+${financials.taxes.toFixed(2)}</span>
+                  </div>
                 </div>
                 <div className="border-t border-slate-100 pt-3 flex justify-between text-sm font-black text-slate-900 uppercase">
-                  <span>Total Amount</span>
+                  <span>Final Total</span>
                   <span className="font-mono">${financials.grandTotal.toFixed(2)}</span>
                 </div>
               </CardContent>
