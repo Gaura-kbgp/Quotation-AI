@@ -529,9 +529,9 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                   </div>
 
                   <div className="mt-20 pt-10 border-t-2 border-slate-900 flex flex-col items-end text-right avoid-break">
-                    <div className="w-full max-w-sm space-y-3">
+                    <div className="w-full max-w-sm space-y-4">
                       {viewMode === 'internal' && (
-                        <div className="bg-slate-50 p-6 rounded-lg mb-4 space-y-2 border border-slate-200">
+                        <div className="bg-slate-50 p-6 rounded-lg mb-4 space-y-2 border border-slate-200 text-left">
                           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Cost Breakdown</p>
                           <div className="flex justify-between text-[11px] font-bold uppercase text-slate-500">
                              <span>Gross List</span>
@@ -557,10 +557,15 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                          <span className="font-mono">${financials.taxes.toFixed(2)}</span>
                       </div>
                       <div className="border-t border-slate-200 my-2" />
-                      <div className="flex justify-between text-3xl font-black uppercase text-slate-900 px-2">
-                         <span className="tracking-tighter">Total Amount</span>
-                         <span className="font-mono text-sky-600">${financials.grandTotal.toFixed(2)}</span>
+                      
+                      {/* Industrial Summary Block */}
+                      <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg border border-slate-200">
+                         <span className="text-sm font-black uppercase text-slate-900 tracking-widest">Total Amount</span>
+                         <span className="font-mono text-2xl font-black text-sky-600 whitespace-nowrap ml-4">
+                            ${financials.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                         </span>
                       </div>
+
                       <div className="pt-8 space-y-1">
                         <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Valid until: {new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString()}</p>
                         <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Terms: Net 30</p>
@@ -586,7 +591,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
             <CardHeader className="bg-slate-50 border-b border-slate-100">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Calculator className="w-5 h-5 text-sky-600" />
-                Total Amount
+                Pricing Control
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6 space-y-8">
@@ -619,7 +624,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                     <span className="font-mono text-sky-900 font-bold">${financials.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                  </div>
                  <div className="pt-6">
-                    <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.3em] mb-1">Invoice Total</p>
+                    <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.3em] mb-1">Total Amount</p>
                     <p className="text-3xl font-black font-mono tracking-tighter text-slate-900">
                        ${financials.grandTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>

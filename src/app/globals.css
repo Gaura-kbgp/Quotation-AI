@@ -58,7 +58,7 @@
 @media print {
   @page {
     size: A4;
-    margin: 15mm;
+    margin: 10mm;
   }
 
   body {
@@ -73,18 +73,19 @@
   }
 
   .print-page-wrapper {
-    border: 1px solid #cbd5e1 !important;
-    padding: 20mm !important;
-    min-height: calc(297mm - 30mm) !important;
+    border: 1px solid #000 !important;
+    padding: 15mm !important;
+    min-height: calc(297mm - 20mm) !important;
     box-sizing: border-box !important;
     position: relative;
     overflow: visible;
+    background: white !important;
   }
 
   .avoid-break {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-bottom: 10mm;
+    margin-bottom: 8mm;
   }
 
   .print-footer {
