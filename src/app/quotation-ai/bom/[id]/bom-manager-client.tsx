@@ -205,7 +205,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Invoice Management</h1>
+            <h1 className="text-xl font-bold tracking-tight">Bill of Materials</h1>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               Project: {project.project_name} • {manufacturerName}
             </p>
@@ -220,7 +220,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
             <Save className="w-4 h-4 mr-2" /> Save Draft
           </Button>
           <Button className="rounded-xl h-11 px-6 gradient-button" onClick={() => setStep(step === 'pricing' ? 'preview' : 'pricing')}>
-             {step === 'pricing' ? 'Next: Review Invoice' : 'Edit BOM'}
+             {step === 'pricing' ? 'Next: Preview Proposal' : 'Edit BOM'}
              <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </div>
@@ -489,12 +489,12 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           )}
         </div>
 
-        <aside className="space-y-6 print:hidden">
+        <aside className="space-y-6 print:hidden lg:sticky lg:top-28 h-fit">
           <Card className="rounded-[2rem] border-slate-200 shadow-2xl overflow-hidden bg-white">
             <CardHeader className="bg-slate-50 border-b border-slate-100">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Calculator className="w-5 h-5 text-sky-600" />
-                Quote Control
+                Total Amount
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6 space-y-8">
@@ -502,12 +502,12 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                  <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.2em]">BOM Multipliers</p>
                  
                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-500 uppercase">Cost Factor</Label>
+                    <Label className="text-[11px] font-bold text-slate-500 uppercase">Pricing Factor (Cost)</Label>
                     <Input type="number" step="0.01" value={pricingFactor} onChange={e => setPricingFactor(parseFloat(e.target.value) || 0)} className="h-10 bg-white border-sky-200 font-bold rounded-lg text-sm" />
                  </div>
 
                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-500 uppercase">Margin (%)</Label>
+                    <Label className="text-[11px] font-bold text-slate-500 uppercase">Target Margin (%)</Label>
                     <Input type="number" value={targetMargin} onChange={e => setTargetMargin(parseFloat(e.target.value) || 0)} className="h-10 bg-white border-sky-200 font-bold rounded-lg text-sm" />
                  </div>
               </div>
