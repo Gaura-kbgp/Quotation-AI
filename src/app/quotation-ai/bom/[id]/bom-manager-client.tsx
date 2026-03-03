@@ -665,36 +665,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
         <aside className="print:hidden lg:sticky lg:top-24 h-fit">
           <div className="max-h-[calc(100vh-160px)] overflow-y-auto pr-2 space-y-6 scrollbar-thin scrollbar-thumb-slate-200">
-            {step === 'pricing' && (
-              <Card className="rounded-[2rem] border-slate-200 shadow-xl overflow-hidden bg-white">
-                <CardHeader className="bg-slate-50 border-b border-slate-100">
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Internal Cost Breakdown</p>
-                </CardHeader>
-                <CardContent className="p-6 space-y-3">
-                  <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
-                    <span>Gross List</span>
-                    <span className="font-mono">${financials.listSubtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs font-bold text-sky-600 uppercase">
-                    <span>Dealer Cost ({pricingFactor})</span>
-                    <span className="font-mono">${financials.dealerCost.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase">
-                    <span>Margin ({targetMargin}%)</span>
-                    <span className="font-mono">+${(financials.marginSell - financials.dealerCost).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs font-bold text-amber-600 uppercase">
-                    <span>Add'l Charges</span>
-                    <span className="font-mono">+${financials.additionalExpenses.toFixed(2)}</span>
-                  </div>
-                  <div className="border-t border-slate-100 pt-3 flex justify-between text-sm font-black text-slate-900 uppercase">
-                    <span>Subtotal</span>
-                    <span className="font-mono">${financials.netTotal.toFixed(2)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             <Card className="rounded-[2rem] border-slate-200 shadow-2xl overflow-hidden bg-white">
               <CardHeader className="bg-slate-50 border-b border-slate-100 flex flex-row items-center gap-2">
                 <Calculator className="w-5 h-5 text-sky-600" />
@@ -776,6 +746,36 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 </Button>
               </CardContent>
             </Card>
+
+            {step === 'pricing' && (
+              <Card className="rounded-[2rem] border-slate-200 shadow-xl overflow-hidden bg-white">
+                <CardHeader className="bg-slate-50 border-b border-slate-100">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Internal Cost Breakdown</p>
+                </CardHeader>
+                <CardContent className="p-6 space-y-3">
+                  <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
+                    <span>Gross List</span>
+                    <span className="font-mono">${financials.listSubtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-sky-600 uppercase">
+                    <span>Dealer Cost ({pricingFactor})</span>
+                    <span className="font-mono">${financials.dealerCost.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase">
+                    <span>Margin ({targetMargin}%)</span>
+                    <span className="font-mono">+${(financials.marginSell - financials.dealerCost).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-amber-600 uppercase">
+                    <span>Add'l Charges</span>
+                    <span className="font-mono">+${financials.additionalExpenses.toFixed(2)}</span>
+                  </div>
+                  <div className="border-t border-slate-100 pt-3 flex justify-between text-sm font-black text-slate-900 uppercase">
+                    <span>Subtotal</span>
+                    <span className="font-mono">${financials.netTotal.toFixed(2)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <div className="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl space-y-4">
                <div className="flex items-center gap-2">
