@@ -34,7 +34,9 @@ import {
   Phone,
   MapPin,
   User,
-  Truck
+  Truck,
+  Building2,
+  Mail
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn, detectCategory } from '@/lib/utils';
@@ -92,13 +94,12 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     delivery: project.bom_data?.customerDelivery || '',
   });
 
-  // Mock Manufacturer Details for the Industrial Invoice
-  const manufacturerDetails = {
-    name: manufacturerName,
-    address: "123 Manufacturing Way, Industry City, IN 46201",
-    phone: "(800) 555-KABS",
-    email: `orders@${manufacturerName.toLowerCase().replace(/\s+/g, '')}.com`
-  };
+  const [dealer, setDealer] = useState({
+    name: project.bom_data?.dealerName || manufacturerName,
+    address: project.bom_data?.dealerAddress || "123 Manufacturing Way, Industry City, IN 46201",
+    phone: project.bom_data?.dealerPhone || "(800) 555-KABS",
+    email: project.bom_data?.dealerEmail || `orders@${manufacturerName.toLowerCase().replace(/\s+/g, '')}.com`
+  });
 
   const [isSaving, setIsSaving] = useState(false);
   const [isPricing, setIsPricing] = useState(false);
@@ -184,6 +185,10 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           customerAddress: customer.address,
           customerPhone: customer.phone,
           customerDelivery: customer.delivery,
+          dealerName: dealer.name,
+          dealerAddress: dealer.address,
+          dealerPhone: dealer.phone,
+          dealerEmail: dealer.email,
           listSubtotal: financials.listSubtotal,
           grandTotal: financials.grandTotal,
           selectedRooms
@@ -201,26 +206,33 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     <main className="min-h-screen bg-slate-50 pb-32 print:bg-white print:pb-0">
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 h-20 flex items-center justify-between print:hidden">
         <div className="flex items-center gap-6">
-          <Button variant="ghost" size="icon" className="rounded-full" onClick={() => router.back()}>
+          <Button variant="ghost" size="icon" className="rounded-full" onClick={() => {
+            if (step === 'preview') setStep('pricing');
+            else router.back();
+          }}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Bill of Materials</h1>
+            <h1 className="text-xl font-bold tracking-tight">
+              {step === 'pricing' ? 'Bill of Materials' : 'Proposal Preview'}
+            </h1>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               Project: {project.project_name} • {manufacturerName}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="rounded-xl h-11 px-4 border-slate-200" onClick={handleReprice} disabled={isPricing}>
-             {isPricing ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
-             Match Catalog Prices
-          </Button>
+          {step === 'pricing' && (
+            <Button variant="outline" className="rounded-xl h-11 px-4 border-slate-200" onClick={handleReprice} disabled={isPricing}>
+               {isPricing ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
+               Match Catalog Prices
+            </Button>
+          )}
           <Button variant="outline" className="rounded-xl h-11 px-5 border-slate-200 font-bold" onClick={handleSaveAll} disabled={isSaving}>
             <Save className="w-4 h-4 mr-2" /> Save Draft
           </Button>
           <Button className="rounded-xl h-11 px-6 gradient-button" onClick={() => setStep(step === 'pricing' ? 'preview' : 'pricing')}>
-             {step === 'pricing' ? 'Next: Preview Proposal' : 'Edit BOM'}
+             {step === 'pricing' ? 'Next: Preview Proposal' : 'Back to BOM List'}
              <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </div>
@@ -349,21 +361,102 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           )}
 
           {step === 'preview' && (
-            <div className="animate-in fade-in duration-500 space-y-8">
+            <div className="animate-in fade-in duration-500 space-y-12">
+               {/* Industrial Info Form Card */}
+               <Card className="rounded-3xl border-slate-200 shadow-sm bg-white overflow-hidden print:hidden">
+                  <CardHeader className="bg-slate-50 border-b border-slate-100">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                       <FileText className="w-5 h-5 text-sky-600" />
+                       Invoice & Proposal Configuration
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-8 space-y-10">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                      <div className="space-y-6">
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4">Customer Information</p>
+                        <div className="grid grid-cols-1 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-bold text-slate-500 uppercase">Customer Name</Label>
+                            <div className="relative">
+                              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <Input value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-11 pl-10 bg-slate-50 border-slate-200 rounded-xl" placeholder="Full Name" />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-bold text-slate-500 uppercase">Phone Number</Label>
+                            <div className="relative">
+                              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <Input value={customer.phone} onChange={e => setCustomer({...customer, phone: e.target.value})} className="h-11 pl-10 bg-slate-50 border-slate-200 rounded-xl" placeholder="(000) 000-0000" />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-bold text-slate-500 uppercase">Billing Address</Label>
+                            <div className="relative">
+                              <MapPin className="absolute left-3 top-4 w-4 h-4 text-slate-400" />
+                              <Input value={customer.address} onChange={e => setCustomer({...customer, address: e.target.value})} className="h-11 pl-10 bg-slate-50 border-slate-200 rounded-xl" placeholder="123 Street, City, State" />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-bold text-slate-500 uppercase">Delivery Location</Label>
+                            <div className="relative">
+                              <Truck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <Input value={customer.delivery} onChange={e => setCustomer({...customer, delivery: e.target.value})} className="h-11 pl-10 bg-slate-50 border-slate-200 rounded-xl" placeholder="Job Site Address" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.2em] mb-4">Manufacturer / Dealer Details</p>
+                        <div className="grid grid-cols-1 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-bold text-slate-500 uppercase">Company Name</Label>
+                            <div className="relative">
+                              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <Input value={dealer.name} onChange={e => setDealer({...dealer, name: e.target.value})} className="h-11 pl-10 bg-slate-50 border-slate-200 rounded-xl font-bold" />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-bold text-slate-500 uppercase">Office Phone</Label>
+                            <div className="relative">
+                              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <Input value={dealer.phone} onChange={e => setDealer({...dealer, phone: e.target.value})} className="h-11 pl-10 bg-slate-50 border-slate-200 rounded-xl" />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-bold text-slate-500 uppercase">Company Address</Label>
+                            <div className="relative">
+                              <MapPin className="absolute left-3 top-4 w-4 h-4 text-slate-400" />
+                              <Input value={dealer.address} onChange={e => setDealer({...dealer, address: e.target.value})} className="h-11 pl-10 bg-slate-50 border-slate-200 rounded-xl" />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-bold text-slate-500 uppercase">Orders Email</Label>
+                            <div className="relative">
+                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <Input value={dealer.email} onChange={e => setDealer({...dealer, email: e.target.value})} className="h-11 pl-10 bg-slate-50 border-slate-200 rounded-xl" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+               </Card>
+
                <div className="print:hidden flex justify-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
                   <Button 
                     variant={viewMode === 'client' ? 'default' : 'outline'} 
                     onClick={() => setViewMode('client')}
                     className="rounded-xl h-11 px-6"
                   >
-                    <Eye className="w-4 h-4 mr-2" /> Client Invoice
+                    <Eye className="w-4 h-4 mr-2" /> Client Invoice View
                   </Button>
                   <Button 
                     variant={viewMode === 'internal' ? 'default' : 'outline'} 
                     onClick={() => setViewMode('internal')}
                     className="rounded-xl h-11 px-6"
                   >
-                    <EyeOff className="w-4 h-4 mr-2" /> Internal Calculation
+                    <EyeOff className="w-4 h-4 mr-2" /> Internal Margin View
                   </Button>
                </div>
 
@@ -372,13 +465,13 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                   <div className="flex justify-between items-start mb-16 border-b-2 border-slate-900 pb-10">
                     <div className="space-y-4 max-w-[50%]">
                       <div>
-                        <h2 className="text-3xl font-black tracking-tight text-slate-900 uppercase">{manufacturerDetails.name}</h2>
+                        <h2 className="text-3xl font-black tracking-tight text-slate-900 uppercase">{dealer.name}</h2>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Cabinetry Manufacturer</p>
                       </div>
                       <div className="space-y-1 text-xs text-slate-600">
-                        <p className="flex items-center gap-2"><MapPin className="w-3 h-3" /> {manufacturerDetails.address}</p>
-                        <p className="flex items-center gap-2"><Phone className="w-3 h-3" /> {manufacturerDetails.phone}</p>
-                        <p className="flex items-center gap-2 font-medium text-sky-600">{manufacturerDetails.email}</p>
+                        <p className="flex items-center gap-2"><MapPin className="w-3 h-3" /> {dealer.address}</p>
+                        <p className="flex items-center gap-2"><Phone className="w-3 h-3" /> {dealer.phone}</p>
+                        <p className="flex items-center gap-2 font-medium text-sky-600">{dealer.email}</p>
                       </div>
                     </div>
                     <div className="text-right space-y-4 max-w-[50%]">
@@ -481,7 +574,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       <Printer className="w-5 h-5 mr-3" /> Print Invoice (A4)
                     </Button>
                     <Button size="lg" variant="outline" className="h-16 px-12 text-lg rounded-2xl border-slate-200" onClick={() => window.print()}>
-                      <FileDown className="w-5 h-5 mr-3" /> Export PDF
+                      <FileDown className="w-5 h-5 mr-3" /> Save PDF
                     </Button>
                   </div>
                </div>
@@ -512,28 +605,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                  </div>
               </div>
 
-              <div className="space-y-4">
-                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Customer Details</p>
-                 <div className="space-y-2">
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                      <Input value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-10 pl-8 bg-slate-50 border-none rounded-lg text-sm font-bold" placeholder="Customer Name" />
-                    </div>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                      <Input value={customer.phone} onChange={e => setCustomer({...customer, phone: e.target.value})} className="h-10 pl-8 bg-slate-50 border-none rounded-lg text-sm" placeholder="Phone Number" />
-                    </div>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-3 w-3 h-3 text-slate-400" />
-                      <Input value={customer.address} onChange={e => setCustomer({...customer, address: e.target.value})} className="h-10 pl-8 bg-slate-50 border-none rounded-lg text-sm" placeholder="Full Address" />
-                    </div>
-                    <div className="relative">
-                      <Truck className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
-                      <Input value={customer.delivery} onChange={e => setCustomer({...customer, delivery: e.target.value})} className="h-10 pl-8 bg-slate-50 border-none rounded-lg text-sm" placeholder="Delivery Location" />
-                    </div>
-                 </div>
-              </div>
-
               <div className="space-y-2 pt-4 border-t border-slate-100">
                 <Label className="text-[11px] font-bold text-slate-400 uppercase">Tax Rate (%)</Label>
                 <Input type="number" step="0.01" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="h-10 bg-slate-50 border-none rounded-lg text-sm" />
@@ -555,6 +626,11 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                     </p>
                  </div>
               </div>
+
+              <Button variant="outline" className="w-full h-11 rounded-xl" onClick={handleSaveAll} disabled={isSaving}>
+                {isSaving ? <Loader2 className="animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save Financials
+              </Button>
             </CardContent>
           </Card>
 
@@ -565,7 +641,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
              </div>
              <div>
                 <p className="text-xl font-black leading-tight">{selectedRooms.length} Rooms Selected</p>
-                <p className="text-xs text-slate-400 font-medium">Ready for {manufacturerName} Export</p>
+                <p className="text-xs text-slate-400 font-medium">Ready for {dealer.name} Export</p>
              </div>
           </div>
         </aside>
