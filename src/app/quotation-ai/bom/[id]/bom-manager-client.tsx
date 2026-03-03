@@ -30,7 +30,11 @@ import {
   EyeOff,
   FileText,
   CheckCircle2,
-  FileDown
+  FileDown,
+  Phone,
+  MapPin,
+  User,
+  Truck
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn, detectCategory } from '@/lib/utils';
@@ -72,7 +76,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   );
 
   const roomsList = useMemo(() => Array.from(new Set(bom.map(i => i.room))), [bom]);
-  const [selectedRooms, setSelectedRooms] = useState<string[]>(roomsList);
+  const [selectedRooms, setSelectedRooms] = useState<string[]>(project.bom_data?.selectedRooms || roomsList);
   const [step, setStep] = useState<WorkflowStep>('pricing');
   const [viewMode, setViewMode] = useState<ViewMode>('client');
 
@@ -84,13 +88,22 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const [customer, setCustomer] = useState({
     name: project.bom_data?.customerName || '',
     address: project.bom_data?.customerAddress || '',
+    phone: project.bom_data?.customerPhone || '',
+    delivery: project.bom_data?.customerDelivery || '',
   });
+
+  // Mock Manufacturer Details for the Industrial Invoice
+  const manufacturerDetails = {
+    name: manufacturerName,
+    address: "123 Manufacturing Way, Industry City, IN 46201",
+    phone: "(800) 555-KABS",
+    email: `orders@${manufacturerName.toLowerCase().replace(/\s+/g, '')}.com`
+  };
 
   const [isSaving, setIsSaving] = useState(false);
   const [isPricing, setIsPricing] = useState(false);
 
   const financials = useMemo(() => {
-    // Filter items based on both item-level billable status and room-level selection
     const activeItems = bom.filter(item => item.is_billable && selectedRooms.includes(item.room));
     
     const listSubtotal = activeItems
@@ -169,6 +182,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           taxRate,
           customerName: customer.name,
           customerAddress: customer.address,
+          customerPhone: customer.phone,
+          customerDelivery: customer.delivery,
           listSubtotal: financials.listSubtotal,
           grandTotal: financials.grandTotal,
           selectedRooms
@@ -190,7 +205,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Bill of Materials</h1>
+            <h1 className="text-xl font-bold tracking-tight">Invoice Management</h1>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               Project: {project.project_name} • {manufacturerName}
             </p>
@@ -205,7 +220,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
             <Save className="w-4 h-4 mr-2" /> Save Draft
           </Button>
           <Button className="rounded-xl h-11 px-6 gradient-button" onClick={() => setStep(step === 'pricing' ? 'preview' : 'pricing')}>
-             {step === 'pricing' ? 'Next: Preview Proposal' : 'Edit BOM'}
+             {step === 'pricing' ? 'Next: Review Invoice' : 'Edit BOM'}
              <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </div>
@@ -278,7 +293,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                                         <Checkbox checked={item.is_billable} onCheckedChange={v => handleUpdateItem(idx, { is_billable: !!v })} />
                                       </TableCell>
                                       <TableCell>
-                                        <div className="font-bold text-slate-900">{item.sku}</div>
+                                        <div className="font-bold text-slate-900 text-sm">{item.sku}</div>
                                         <div className="text-[9px] text-slate-400 font-mono">{item.matched_sku}</div>
                                       </TableCell>
                                       <TableCell className="text-center">
@@ -290,7 +305,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                                            <Input type="number" value={item.unit_price} onChange={e => handleUpdateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} className="w-24 text-right h-9 font-bold bg-slate-50 border-none font-mono" />
                                         </div>
                                       </TableCell>
-                                      <TableCell className="text-right font-black font-mono text-slate-900">
+                                      <TableCell className="text-right font-black font-mono text-slate-900 text-sm">
                                         ${(item.unit_price * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                       </TableCell>
                                     </TableRow>
@@ -341,68 +356,75 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                     onClick={() => setViewMode('client')}
                     className="rounded-xl h-11 px-6"
                   >
-                    <Eye className="w-4 h-4 mr-2" /> Client View
+                    <Eye className="w-4 h-4 mr-2" /> Client Invoice
                   </Button>
                   <Button 
                     variant={viewMode === 'internal' ? 'default' : 'outline'} 
                     onClick={() => setViewMode('internal')}
                     className="rounded-xl h-11 px-6"
                   >
-                    <EyeOff className="w-4 h-4 mr-2" /> Internal Breakdown
+                    <EyeOff className="w-4 h-4 mr-2" /> Internal Calculation
                   </Button>
                </div>
 
-               <div className="bg-white shadow-2xl rounded-[3rem] p-20 print:p-0 print:shadow-none print:rounded-none">
-                  <div className="flex justify-between items-center mb-16 border-b-2 border-slate-900 pb-10">
-                    <div>
-                      <h1 className="text-5xl font-black tracking-tighter uppercase">Quotation</h1>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] mt-2">KABS AI-POWERED ESTIMATION</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xl font-black text-sky-600">KABS PRO</p>
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{manufacturerName}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-20 mb-20">
-                    <div className="space-y-4">
-                      <h4 className="text-[10px] font-black uppercase text-sky-600 tracking-widest">Client / Project Info</h4>
-                      <div className="space-y-1">
-                        <p className="font-black text-slate-900">{customer.name || 'VALUED CUSTOMER'}</p>
-                        <p className="text-slate-500 text-sm">{customer.address || 'PROJECT ADDRESS PENDING'}</p>
+               {/* Industrial Ready Invoice Layout */}
+               <div className="bg-white shadow-2xl rounded-sm p-16 print:p-0 print:shadow-none print:rounded-none border border-slate-100">
+                  <div className="flex justify-between items-start mb-16 border-b-2 border-slate-900 pb-10">
+                    <div className="space-y-4 max-w-[50%]">
+                      <div>
+                        <h2 className="text-3xl font-black tracking-tight text-slate-900 uppercase">{manufacturerDetails.name}</h2>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Cabinetry Manufacturer</p>
+                      </div>
+                      <div className="space-y-1 text-xs text-slate-600">
+                        <p className="flex items-center gap-2"><MapPin className="w-3 h-3" /> {manufacturerDetails.address}</p>
+                        <p className="flex items-center gap-2"><Phone className="w-3 h-3" /> {manufacturerDetails.phone}</p>
+                        <p className="flex items-center gap-2 font-medium text-sky-600">{manufacturerDetails.email}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <h4 className="text-[10px] font-black uppercase text-sky-600 tracking-widest">Investment Summary</h4>
-                      <p className="text-5xl font-black font-mono tracking-tighter text-slate-900">${financials.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    <div className="text-right space-y-4 max-w-[50%]">
+                      <div>
+                        <h1 className="text-4xl font-black text-slate-900 uppercase">Invoice</h1>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Ref: {id.substring(0, 8).toUpperCase()}</p>
+                      </div>
+                      <div className="space-y-1 text-xs text-slate-900">
+                        <p className="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Bill To:</p>
+                        <p className="font-bold text-sm">{customer.name || 'VALUED CUSTOMER'}</p>
+                        <p>{customer.address || 'PROJECT ADDRESS PENDING'}</p>
+                        <p className="flex items-center justify-end gap-2"><Phone className="w-3 h-3" /> {customer.phone || 'PHONE PENDING'}</p>
+                        {customer.delivery && (
+                           <p className="flex items-center justify-end gap-2 text-sky-600 font-medium">
+                             <Truck className="w-3 h-3" /> Ship to: {customer.delivery}
+                           </p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="space-y-12">
+                  <div className="space-y-12 min-h-[400px]">
                     {selectedRooms.map(roomName => {
                       const roomItems = bom.filter(i => i.room === roomName && i.is_billable);
                       if (roomItems.length === 0) return null;
                       return (
-                        <div key={roomName} className="avoid-break">
-                          <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400 mb-6 border-b border-slate-100 pb-2">{roomName}</h3>
+                        <div key={roomName} className="avoid-break mb-8">
+                          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-4 bg-slate-50 p-2 border-l-4 border-slate-900">{roomName}</h3>
                           <Table>
-                             <TableHeader className="bg-slate-50/50">
+                             <TableHeader className="bg-slate-50 border-y border-slate-200">
                                <TableRow className="h-10 hover:bg-transparent">
-                                 <TableHead className="text-[10px] font-bold uppercase p-2">CAB Code</TableHead>
-                                 <TableHead className="text-center text-[10px] font-bold uppercase p-2 w-12">QTY</TableHead>
-                                 <TableHead className="text-right text-[10px] font-bold uppercase p-2">Unit</TableHead>
-                                 <TableHead className="text-right text-[10px] font-bold uppercase p-2">Total</TableHead>
+                                 <TableHead className="text-[10px] font-bold uppercase p-2 text-slate-900">CAB Code</TableHead>
+                                 <TableHead className="text-center text-[10px] font-bold uppercase p-2 w-12 text-slate-900">QTY</TableHead>
+                                 <TableHead className="text-right text-[10px] font-bold uppercase p-2 text-slate-900">Unit Price</TableHead>
+                                 <TableHead className="text-right text-[10px] font-bold uppercase p-2 text-slate-900">Amount</TableHead>
                                </TableRow>
                              </TableHeader>
                              <TableBody>
                                 {roomItems.map(item => (
-                                  <TableRow key={item.id} className="border-b border-slate-50 h-10 hover:bg-transparent">
-                                     <TableCell className="font-bold text-[11px] p-2">{item.sku}</TableCell>
+                                  <TableRow key={item.id} className="border-b border-slate-100 h-10 hover:bg-transparent">
+                                     <TableCell className="font-medium text-[11px] p-2">{item.sku}</TableCell>
                                      <TableCell className="text-center text-[11px] w-12 p-2">{item.qty}</TableCell>
-                                     <TableCell className="text-right font-mono text-[11px] font-bold p-2">
+                                     <TableCell className="text-right font-mono text-[11px] p-2">
                                        ${viewMode === 'internal' ? item.unit_price.toFixed(2) : (item.unit_price * (financials.grandTotal / financials.listSubtotal)).toFixed(2)}
                                      </TableCell>
-                                     <TableCell className="text-right font-mono text-[11px] font-black p-2 text-slate-900">
+                                     <TableCell className="text-right font-mono text-[11px] font-bold p-2 text-slate-900">
                                        ${(item.unit_price * item.qty * (viewMode === 'internal' ? 1 : (financials.grandTotal / financials.listSubtotal))).toFixed(2)}
                                      </TableCell>
                                   </TableRow>
@@ -414,39 +436,52 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                     })}
                   </div>
 
-                  <div className="mt-20 pt-10 border-t-2 border-slate-900 flex justify-end text-right">
-                    <div className="w-96 space-y-4">
+                  <div className="mt-20 pt-10 border-t-2 border-slate-900 flex flex-col items-end text-right">
+                    <div className="w-full max-w-sm space-y-3">
                       {viewMode === 'internal' && (
-                        <>
-                          <div className="flex justify-between text-[11px] font-bold uppercase text-slate-400">
-                             <span>List Subtotal</span>
+                        <div className="bg-slate-50 p-6 rounded-lg mb-4 space-y-2 border border-slate-200">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Cost Breakdown</p>
+                          <div className="flex justify-between text-[11px] font-bold uppercase text-slate-500">
+                             <span>Gross List</span>
                              <span className="font-mono">${financials.listSubtotal.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between text-[11px] font-bold uppercase text-sky-600">
-                             <span>Dealer Cost ({pricingFactor} Factor)</span>
+                             <span>Dealer Cost ({pricingFactor})</span>
                              <span className="font-mono">${financials.totalCost.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between text-[11px] font-bold uppercase text-emerald-600">
-                             <span>Our Margin ({targetMargin}%)</span>
+                             <span>Margin ({targetMargin}%)</span>
                              <span className="font-mono">+${(financials.grossSell - financials.totalCost).toFixed(2)}</span>
                           </div>
-                          <div className="border-t border-slate-100 my-2" />
-                        </>
+                        </div>
                       )}
-                      <div className="flex justify-between text-2xl font-black uppercase text-slate-900">
-                         <span>Grand Total</span>
+                      
+                      <div className="flex justify-between text-xs font-bold uppercase text-slate-500 px-2">
+                         <span>Subtotal</span>
+                         <span className="font-mono">${financials.netTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold uppercase text-slate-500 px-2">
+                         <span>Tax ({taxRate}%)</span>
+                         <span className="font-mono">${financials.taxes.toFixed(2)}</span>
+                      </div>
+                      <div className="border-t border-slate-200 my-2" />
+                      <div className="flex justify-between text-3xl font-black uppercase text-slate-900 px-2">
+                         <span className="tracking-tighter">Total Amount</span>
                          <span className="font-mono text-sky-600">${financials.grandTotal.toFixed(2)}</span>
                       </div>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest pt-4">Proposal valid for 30 days from {new Date().toLocaleDateString()}</p>
+                      <div className="pt-8 space-y-1">
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Valid until: {new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString()}</p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Terms: Net 30</p>
+                      </div>
                     </div>
                   </div>
 
                   <div className="mt-32 pt-10 border-t border-slate-100 flex justify-center gap-6 print:hidden">
                     <Button size="lg" className="gradient-button h-16 px-12 text-lg rounded-2xl shadow-xl shadow-sky-500/30" onClick={() => window.print()}>
-                      <Printer className="w-5 h-5 mr-3" /> Print Proposal (A4)
+                      <Printer className="w-5 h-5 mr-3" /> Print Invoice (A4)
                     </Button>
                     <Button size="lg" variant="outline" className="h-16 px-12 text-lg rounded-2xl border-slate-200" onClick={() => window.print()}>
-                      <FileDown className="w-5 h-5 mr-3" /> Download PDF
+                      <FileDown className="w-5 h-5 mr-3" /> Export PDF
                     </Button>
                   </div>
                </div>
@@ -455,75 +490,82 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         </div>
 
         <aside className="space-y-6 print:hidden">
-          <Card className="rounded-[2.5rem] border-slate-200 shadow-2xl overflow-hidden bg-white">
+          <Card className="rounded-[2rem] border-slate-200 shadow-2xl overflow-hidden bg-white">
             <CardHeader className="bg-slate-50 border-b border-slate-100">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Calculator className="w-5 h-5 text-sky-600" />
                 Quote Control
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-8 space-y-10">
-              <div className="p-6 bg-sky-50 rounded-3xl border border-sky-100 space-y-6">
-                 <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.2em]">Financial Factors</p>
+            <CardContent className="p-6 space-y-8">
+              <div className="p-5 bg-sky-50 rounded-2xl border border-sky-100 space-y-4">
+                 <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.2em]">BOM Multipliers</p>
                  
-                 <div className="space-y-2">
-                    <Label className="text-[11px] font-bold text-slate-600">Pricing Factor (Cost)</Label>
-                    <div className="relative">
-                       <Input type="number" step="0.01" value={pricingFactor} onChange={e => setPricingFactor(parseFloat(e.target.value) || 0)} className="h-12 bg-white border-sky-200 font-bold rounded-xl" />
-                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Multiplier</span>
-                    </div>
-                    <p className="text-[9px] text-sky-500 font-medium italic">EX: 0.45 means your cost is 45% of list.</p>
+                 <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-slate-500 uppercase">Cost Factor</Label>
+                    <Input type="number" step="0.01" value={pricingFactor} onChange={e => setPricingFactor(parseFloat(e.target.value) || 0)} className="h-10 bg-white border-sky-200 font-bold rounded-lg text-sm" />
                  </div>
 
-                 <div className="space-y-2">
-                    <Label className="text-[11px] font-bold text-slate-600">Target Margin (%)</Label>
-                    <div className="relative">
-                       <Input type="number" value={targetMargin} onChange={e => setTargetMargin(parseFloat(e.target.value) || 0)} className="h-12 bg-white border-sky-200 font-bold rounded-xl" />
-                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold uppercase">%</span>
-                    </div>
+                 <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-slate-500 uppercase">Margin (%)</Label>
+                    <Input type="number" value={targetMargin} onChange={e => setTargetMargin(parseFloat(e.target.value) || 0)} className="h-10 bg-white border-sky-200 font-bold rounded-lg text-sm" />
                  </div>
               </div>
 
               <div className="space-y-4">
+                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Customer Details</p>
                  <div className="space-y-2">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Customer Name</Label>
-                    <Input value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-12 bg-slate-50 border-none px-4 rounded-xl font-bold" placeholder="e.g. John Smith" />
-                 </div>
-                 <div className="space-y-2">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Tax Rate (%)</Label>
-                    <Input type="number" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="h-12 bg-slate-50 border-none px-4 rounded-xl" />
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                      <Input value={customer.name} onChange={e => setCustomer({...customer, name: e.target.value})} className="h-10 pl-8 bg-slate-50 border-none rounded-lg text-sm font-bold" placeholder="Customer Name" />
+                    </div>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                      <Input value={customer.phone} onChange={e => setCustomer({...customer, phone: e.target.value})} className="h-10 pl-8 bg-slate-50 border-none rounded-lg text-sm" placeholder="Phone Number" />
+                    </div>
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-3 w-3 h-3 text-slate-400" />
+                      <Input value={customer.address} onChange={e => setCustomer({...customer, address: e.target.value})} className="h-10 pl-8 bg-slate-50 border-none rounded-lg text-sm" placeholder="Full Address" />
+                    </div>
+                    <div className="relative">
+                      <Truck className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                      <Input value={customer.delivery} onChange={e => setCustomer({...customer, delivery: e.target.value})} className="h-10 pl-8 bg-slate-50 border-none rounded-lg text-sm" placeholder="Delivery Location" />
+                    </div>
                  </div>
               </div>
 
-              <div className="pt-8 border-t border-slate-100 space-y-5">
-                 <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-400 font-bold uppercase tracking-widest">List Subtotal</span>
-                    <span className="font-mono text-slate-900 font-bold">${financials.listSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <div className="space-y-2 pt-4 border-t border-slate-100">
+                <Label className="text-[11px] font-bold text-slate-400 uppercase">Tax Rate (%)</Label>
+                <Input type="number" step="0.01" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="h-10 bg-slate-50 border-none rounded-lg text-sm" />
+              </div>
+
+              <div className="pt-6 border-t border-slate-100">
+                 <div className="flex justify-between text-xs mb-1">
+                    <span className="text-slate-400 font-bold uppercase tracking-widest">Net Value</span>
+                    <span className="font-mono text-slate-900 font-bold">${financials.netTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                  </div>
                  <div className="flex justify-between items-center text-xs">
                     <span className="text-sky-600 font-bold uppercase tracking-widest">Dealer Cost</span>
                     <span className="font-mono text-sky-900 font-bold">${financials.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                  </div>
-                 <div className="pt-6 border-t border-slate-50">
-                    <div className="space-y-2">
-                       <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.3em]">Total Investment</p>
-                       <p className="text-4xl font-black font-mono tracking-tighter text-slate-900">
-                          ${financials.grandTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                       </p>
-                    </div>
+                 <div className="pt-6">
+                    <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.3em] mb-1">Invoice Total</p>
+                    <p className="text-3xl font-black font-mono tracking-tighter text-slate-900">
+                       ${financials.grandTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </p>
                  </div>
               </div>
             </CardContent>
           </Card>
 
-          <div className="p-8 bg-slate-900 rounded-[2.5rem] text-white shadow-2xl">
-             <div className="flex items-center gap-3 mb-6">
-                <CheckCircle2 className="w-6 h-6 text-emerald-500" />
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-500">Selection Summary</p>
+          <div className="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl space-y-4">
+             <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Live Invoice Status</p>
              </div>
-             <div className="space-y-2">
-                <p className="text-2xl font-black leading-tight">{selectedRooms.length} Rooms</p>
-                <p className="text-sm text-slate-400 font-medium">Billed from {manufacturerName}</p>
+             <div>
+                <p className="text-xl font-black leading-tight">{selectedRooms.length} Rooms Selected</p>
+                <p className="text-xs text-slate-400 font-medium">Ready for {manufacturerName} Export</p>
              </div>
           </div>
         </aside>
@@ -531,4 +573,3 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     </main>
   );
 }
-
