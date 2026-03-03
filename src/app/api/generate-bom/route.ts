@@ -5,12 +5,12 @@ import stringSimilarity from 'string-similarity';
 export const maxDuration = 300;
 
 /**
- * UNIVERSAL "SMART JACK" PRICING ENGINE (v66.0)
+ * UNIVERSAL "SMART JACK" PRICING ENGINE (v99.0)
  * 
  * ARCHITECTURE:
  * 1. EXHAUSTIVE CATALOG STREAMING: Loads 100% of DB records in batches.
- * 2. MULTI-TIER GLOBAL SEARCH: Prioritizes Universal sheets for Fillers/Molding.
- * 3. CATEGORY FALLBACK: Prevents zero-price quotations for missing SKUs.
+ * 2. MULTI-STAGE NORMALIZED SEARCH: Matches "UF 342" to "UF342" using compressed keys.
+ * 3. UNIVERSAL PRIORITY: Prioritizes Accessory/Filler sheets for global matches.
  */
 export async function POST(req: Request) {
   try {
@@ -53,11 +53,11 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[Smart Engine v66] Indexed ${allPricing.length} pricing records.`);
+    console.log(`[Smart Engine v99] Indexed ${allPricing.length} pricing records.`);
 
     const localMap = new Map<string, any>();
     const globalSkuMap = new Map<string, any>();
-    const compressedMap = new Map<string, any>();
+    const compressedGlobalMap = new Map<string, any>();
     const categoryStats = new Map<string, { total: number, count: number }>();
     const allSkus: string[] = [];
 
@@ -65,15 +65,26 @@ export async function POST(req: Request) {
 
     allPricing.forEach(p => {
       const sku = normalizeKey(p.sku);
+      const compSku = compressSku(sku);
       const col = normalizeKey(p.collection_name);
-      const comp = compressSku(sku);
       const cat = detectCategory(sku);
 
       allSkus.push(sku);
+      
+      // Local indexing (Specific to room's chosen collection)
       localMap.set(`${sku}|${col}`, p);
-      if (!globalSkuMap.has(sku) || col === "UNIVERSAL") globalSkuMap.set(sku, p);
-      if (!compressedMap.has(comp) || col === "UNIVERSAL") compressedMap.set(comp, p);
+      
+      // Global indexing (Priority to UNIVERSAL sheets)
+      if (!globalSkuMap.has(sku) || col === "UNIVERSAL") {
+        globalSkuMap.set(sku, p);
+      }
+      
+      // Compressed indexing (UF 342 -> UF342)
+      if (!compressedGlobalMap.has(compSku) || col === "UNIVERSAL") {
+        compressedGlobalMap.set(compSku, p);
+      }
 
+      // Stats for fallback
       const stats = categoryStats.get(cat) || { total: 0, count: 0 };
       stats.total += Number(p.price) || 0;
       stats.count += 1;
@@ -88,6 +99,7 @@ export async function POST(req: Request) {
       const targetComp = compressSku(target);
       const category = detectCategory(target);
 
+      // Variants to try: Original, No Spaces, Basic Regex Clean
       const variants = [
         target,
         target.replace(/\s+/g, ''),
@@ -95,29 +107,31 @@ export async function POST(req: Request) {
         target.replace(/[^A-Z0-9]/g, '')
       ].filter((v, i, self) => v && self.indexOf(v) === i);
 
-      // TIER 1: STRICT LOCAL MATCH
+      // TIER 1: STRICT LOCAL MATCH (Exact SKU in Room Collection)
       for (const v of variants) {
         const key = `${v}|${col}`;
         if (localMap.has(key)) return { match: localMap.get(key), type: 'STRICT_LOCAL' };
       }
 
-      // TIER 2: GLOBAL CATALOG FALLBACK (Crucial for UF3, UF342, etc)
+      // TIER 2: GLOBAL CATALOG MATCH (Universal prioritized)
       for (const v of variants) {
         if (globalSkuMap.has(v)) return { match: globalSkuMap.get(v), type: 'GLOBAL_CATALOG' };
       }
 
-      // TIER 3: COMPRESSED SEARCH
-      if (compressedMap.has(targetComp)) return { match: compressedMap.get(targetComp), type: 'COMPRESSED_GLOBAL' };
+      // TIER 3: COMPRESSED GLOBAL MATCH (UF 342 -> UF342)
+      if (compressedGlobalMap.has(targetComp)) {
+        return { match: compressedGlobalMap.get(targetComp), type: 'COMPRESSED_MATCH' };
+      }
 
-      // TIER 4: AI FUZZY MATCH
+      // TIER 4: AI FUZZY MATCH (High threshold for production safety)
       if (allSkus.length > 0) {
         const fuzzy = stringSimilarity.findBestMatch(target, allSkus);
-        if (fuzzy.bestMatch.rating > 0.85) {
+        if (fuzzy.bestMatch.rating > 0.88) {
           return { match: globalSkuMap.get(fuzzy.bestMatch.target), type: 'AI_FUZZY_MATCH' };
         }
       }
 
-      // TIER 5: CATEGORY FALLBACK (Prevents zero-price)
+      // TIER 5: CATEGORY FALLBACK (Only if all else fails)
       const stats = categoryStats.get(category);
       if (stats && stats.count > 0) {
         return { 
@@ -169,7 +183,7 @@ export async function POST(req: Request) {
     return Response.json({ success: true, matched: matchedCount });
 
   } catch (err: any) {
-    console.error('[Smart Engine v66] Failure:', err);
+    console.error('[Smart Engine v99] Failure:', err);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
