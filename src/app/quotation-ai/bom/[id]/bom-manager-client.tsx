@@ -85,7 +85,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const [step, setStep] = useState<WorkflowStep>('pricing');
   const [viewMode, setViewMode] = useState<ViewMode>('client');
 
-  // Advanced Industrial Financials State
   const [pricingFactor, setPricingFactor] = useState(project.bom_data?.pricingFactor ?? 1);
   const [targetMargin, setTargetMargin] = useState(project.bom_data?.targetMargin ?? 35);
   const [globalDiscount, setGlobalDiscount] = useState(project.bom_data?.discount ?? 0);
@@ -94,7 +93,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const [fuelSurcharge, setFuelSurcharge] = useState(project.bom_data?.fuelSurcharge ?? 0);
   const [miscCharges, setMiscCharges] = useState(project.bom_data?.miscCharges ?? 0);
 
-  // Per-Room Discounts State
   const [roomDiscounts, setRoomDiscounts] = useState<Record<string, number>>(project.bom_data?.roomDiscounts || {});
 
   const [customer, setCustomer] = useState({
@@ -118,7 +116,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const financials = useMemo(() => {
     const activeItems = bom.filter(item => item.is_billable && selectedRooms.includes(item.room));
     
-    // Calculate List Subtotal with individual room discounts
     let listSubtotal = 0;
     activeItems.forEach(item => {
       const roomDiscount = roomDiscounts[item.room] || 0;
@@ -129,16 +126,11 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
     const dealerCost = listSubtotal * Number(pricingFactor);
     const marginDecimal = Number(targetMargin) / 100;
-    
-    // Formula: Sell = Cost / (1 - Margin%)
     const marginSell = marginDecimal < 1 ? dealerCost / (1 - marginDecimal) : dealerCost;
-    
     const additionalExpenses = Number(freight) + Number(fuelSurcharge) + Number(miscCharges);
     const netBeforeDiscount = marginSell + additionalExpenses;
-    
     const discountAmt = netBeforeDiscount * (Number(globalDiscount) / 100);
     const netTotal = netBeforeDiscount - discountAmt;
-    
     const taxes = netTotal * (Number(taxRate) / 100);
     const grandTotal = netTotal + taxes;
 
@@ -328,7 +320,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                           <h2 className="text-xl font-black uppercase tracking-tight">{roomName}</h2>
                        </div>
                        
-                       {/* Conditional Room Discount Visibility: Only show if there are multiple rooms */}
                        {roomsList.length > 1 && (
                          <div className="flex items-center gap-4 bg-slate-100/50 px-4 py-1.5 rounded-full border border-slate-200">
                             <Tag className="w-3.5 h-3.5 text-sky-600" />
@@ -508,8 +499,8 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                   </CardContent>
                </Card>
 
-               <div className="print:hidden flex flex-col md:flex-row justify-center items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                  <div className="flex gap-4">
+               <div className="print:hidden flex flex-col md:flex-row justify-center items-center gap-6 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                  <div className="flex gap-4 shrink-0">
                     <Button 
                       variant={viewMode === 'client' ? 'default' : 'outline'} 
                       onClick={() => setViewMode('client')}
@@ -525,10 +516,11 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       <EyeOff className="w-4 h-4 mr-2" /> Internal Margin View
                     </Button>
                   </div>
-                  <div className="border-l border-slate-200 pl-4 flex gap-2">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest self-center mr-2">Download Room PDF:</p>
+                  
+                  <div className="border-l border-slate-200 pl-6 flex flex-wrap gap-2 items-center justify-center">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest whitespace-nowrap">Download Room PDF:</p>
                     {selectedRooms.map(room => (
-                      <Button key={room} variant="outline" size="sm" className="text-[9px] h-8 rounded-lg" onClick={() => triggerPrint(room)}>
+                      <Button key={room} variant="outline" size="sm" className="text-[9px] h-8 rounded-lg px-3" onClick={() => triggerPrint(room)}>
                         {room}
                       </Button>
                     ))}
@@ -537,30 +529,30 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
                <div className="bg-white shadow-2xl rounded-sm p-16 print:p-0 print:shadow-none print:rounded-none border border-slate-100 print-page-wrapper">
                   <div className="flex justify-between items-start mb-16 border-b-2 border-slate-900 pb-10">
-                    <div className="space-y-4 max-w-[50%]">
+                    <div className="space-y-4 max-w-[48%] flex flex-col items-start">
                       <div>
-                        <h2 className="text-3xl font-black tracking-tight text-slate-900 uppercase">{dealer.name}</h2>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Cabinetry Manufacturer</p>
+                        <h2 className="text-3xl font-black tracking-tight text-slate-900 uppercase leading-none">{dealer.name}</h2>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2">Cabinetry Manufacturer</p>
                       </div>
                       <div className="space-y-1 text-xs text-slate-600">
-                        <p className="flex items-center gap-2"><MapPin className="w-3 h-3" /> {dealer.address}</p>
-                        <p className="flex items-center gap-2"><Phone className="w-3 h-3" /> {dealer.phone}</p>
+                        <p className="flex items-center gap-2"><MapPin className="w-3 h-3 shrink-0" /> {dealer.address}</p>
+                        <p className="flex items-center gap-2"><Phone className="w-3 h-3 shrink-0" /> {dealer.phone}</p>
                         <p className="flex items-center gap-2 font-medium text-sky-600">{dealer.email}</p>
                       </div>
                     </div>
-                    <div className="text-right space-y-4 max-w-[50%]">
+                    <div className="text-right space-y-4 max-w-[48%] flex flex-col items-end">
                       <div>
-                        <h1 className="text-4xl font-black text-slate-900 uppercase">Invoice</h1>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Ref: {id.substring(0, 8).toUpperCase()}</p>
+                        <h1 className="text-4xl font-black text-slate-900 uppercase leading-none">Invoice</h1>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Ref: {id.substring(0, 8).toUpperCase()}</p>
                       </div>
                       <div className="space-y-1 text-xs text-slate-900">
                         <p className="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Bill To:</p>
                         <p className="font-bold text-sm">{customer.name || 'VALUED CUSTOMER'}</p>
                         <p>{customer.address || 'PROJECT ADDRESS PENDING'}</p>
-                        <p className="flex items-center justify-end gap-2"><Phone className="w-3 h-3" /> {customer.phone || 'PHONE PENDING'}</p>
+                        <p className="flex items-center justify-end gap-2"><Phone className="w-3 h-3 shrink-0" /> {customer.phone || 'PHONE PENDING'}</p>
                         {customer.delivery && (
                            <p className="flex items-center justify-end gap-2 text-sky-600 font-medium">
-                             <Truck className="w-3 h-3" /> Ship to: {customer.delivery}
+                             <Truck className="w-3 h-3 shrink-0" /> Ship to: {customer.delivery}
                            </p>
                         )}
                       </div>
@@ -750,7 +742,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
               </CardContent>
             </Card>
 
-            {/* Repositioned Internal Cost Breakdown Card per user screenshot */}
             <Card className="rounded-[2rem] border-slate-200 shadow-xl overflow-hidden bg-white">
               <CardHeader className="bg-slate-50 border-b border-slate-100">
                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Internal Cost Breakdown</p>
