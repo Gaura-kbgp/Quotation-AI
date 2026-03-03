@@ -618,6 +618,16 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                               <span className="font-mono">+${financials.additionalExpenses.toFixed(2)}</span>
                             </div>
                           )}
+                          {financials.discountAmt > 0 && (
+                             <div className="flex justify-between text-[11px] font-bold uppercase text-red-600">
+                               <span>Discount ({globalDiscount}%)</span>
+                               <span className="font-mono">-${financials.discountAmt.toFixed(2)}</span>
+                             </div>
+                          )}
+                           <div className="flex justify-between text-[11px] font-bold uppercase text-sky-600 border-t border-slate-200 pt-2 mt-2">
+                             <span>Total Amount</span>
+                             <span className="font-mono">${financials.grandTotal.toFixed(2)}</span>
+                          </div>
                         </div>
                       )}
                       
@@ -721,16 +731,16 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 <div className="pt-6 border-t border-slate-100">
                    <div className="flex justify-between text-xs mb-1">
                       <span className="text-slate-400 font-bold uppercase tracking-widest">Net Value</span>
-                      <span className="font-mono text-slate-900 font-bold">${financials.netTotal.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                      <span className="font-mono text-slate-900 font-bold">${financials.netTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                    </div>
                    <div className="flex justify-between items-center text-xs">
                       <span className="text-sky-600 font-bold uppercase tracking-widest">Dealer Cost</span>
-                      <span className="font-mono text-sky-900 font-bold">${financials.dealerCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                      <span className="font-mono text-sky-900 font-bold">${financials.dealerCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                    </div>
                    <div className="pt-6">
                       <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.3em] mb-1">Total Amount</p>
                       <p className="text-2xl font-black font-mono tracking-tighter text-slate-900">
-                         ${financials.grandTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                         ${financials.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                    </div>
                 </div>
@@ -763,9 +773,19 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                   <span>Add'l Charges</span>
                   <span className="font-mono">+${financials.additionalExpenses.toFixed(2)}</span>
                 </div>
+                {financials.discountAmt > 0 && (
+                  <div className="flex justify-between text-xs font-bold text-red-600 uppercase">
+                    <span>Discount ({globalDiscount}%)</span>
+                    <span className="font-mono">-${financials.discountAmt.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs font-bold text-slate-400 uppercase">
+                  <span>Sales Tax ({taxRate}%)</span>
+                  <span className="font-mono">+${financials.taxes.toFixed(2)}</span>
+                </div>
                 <div className="border-t border-slate-100 pt-3 flex justify-between text-sm font-black text-slate-900 uppercase">
-                  <span>Subtotal</span>
-                  <span className="font-mono">${(financials.marginSell + financials.additionalExpenses).toFixed(2)}</span>
+                  <span>Total Amount</span>
+                  <span className="font-mono">${financials.grandTotal.toFixed(2)}</span>
                 </div>
               </CardContent>
             </Card>
