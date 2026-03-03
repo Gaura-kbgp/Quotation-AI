@@ -129,7 +129,7 @@ export default function QuotationAiPage() {
              </div>
              <div>
                <p className="text-xs font-bold text-sky-800 uppercase tracking-wider mb-1">Hybrid Mode Enabled</p>
-               <p className="text-[11px] text-sky-700 leading-relaxed">Processing architectural anchors and cabinetry schedules. This takes 45-90 seconds.</p>
+               <p className="text-[11px] text-sky-700 leading-relaxed">Processing architectural anchors and cabinetry schedules.</p>
              </div>
           </div>
         )}
