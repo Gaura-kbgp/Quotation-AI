@@ -39,7 +39,7 @@ import {
   Mail,
   DollarSign,
   Percent,
-  Download
+  Tag
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn, detectCategory } from '@/lib/utils';
@@ -88,11 +88,14 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   // Advanced Industrial Financials State
   const [pricingFactor, setPricingFactor] = useState(project.bom_data?.pricingFactor ?? 1);
   const [targetMargin, setTargetMargin] = useState(project.bom_data?.targetMargin ?? 35);
-  const [discount, setDiscount] = useState(project.bom_data?.discount ?? 0);
+  const [globalDiscount, setGlobalDiscount] = useState(project.bom_data?.discount ?? 0);
   const [taxRate, setTaxRate] = useState(project.bom_data?.taxRate ?? 8.25);
   const [freight, setFreight] = useState(project.bom_data?.freight ?? 0);
   const [fuelSurcharge, setFuelSurcharge] = useState(project.bom_data?.fuelSurcharge ?? 0);
   const [miscCharges, setMiscCharges] = useState(project.bom_data?.miscCharges ?? 0);
+
+  // Per-Room Discounts State
+  const [roomDiscounts, setRoomDiscounts] = useState<Record<string, number>>(project.bom_data?.roomDiscounts || {});
 
   const [customer, setCustomer] = useState({
     name: project.bom_data?.customerName || '',
@@ -115,8 +118,14 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
   const financials = useMemo(() => {
     const activeItems = bom.filter(item => item.is_billable && selectedRooms.includes(item.room));
     
-    const listSubtotal = activeItems
-      .reduce((acc, curr) => acc + (Number(curr.unit_price) * Number(curr.qty) || 0), 0);
+    // Calculate List Subtotal with individual room discounts
+    let listSubtotal = 0;
+    activeItems.forEach(item => {
+      const roomDiscount = roomDiscounts[item.room] || 0;
+      const basePrice = (Number(item.unit_price) * Number(item.qty) || 0);
+      const discountedPrice = basePrice * (1 - roomDiscount / 100);
+      listSubtotal += discountedPrice;
+    });
 
     const dealerCost = listSubtotal * Number(pricingFactor);
     const marginDecimal = Number(targetMargin) / 100;
@@ -127,7 +136,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
     const additionalExpenses = Number(freight) + Number(fuelSurcharge) + Number(miscCharges);
     const netBeforeDiscount = marginSell + additionalExpenses;
     
-    const discountAmt = netBeforeDiscount * (Number(discount) / 100);
+    const discountAmt = netBeforeDiscount * (Number(globalDiscount) / 100);
     const netTotal = netBeforeDiscount - discountAmt;
     
     const taxes = netTotal * (Number(taxRate) / 100);
@@ -143,7 +152,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
       taxes, 
       grandTotal 
     };
-  }, [bom, selectedRooms, pricingFactor, targetMargin, discount, taxRate, freight, fuelSurcharge, miscCharges]);
+  }, [bom, selectedRooms, pricingFactor, targetMargin, globalDiscount, taxRate, freight, fuelSurcharge, miscCharges, roomDiscounts]);
 
   const toggleAllRooms = (checked: boolean) => {
     setSelectedRooms(checked ? roomsList : []);
@@ -203,11 +212,12 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
         bom_data: {
           pricingFactor,
           targetMargin,
-          discount,
+          discount: globalDiscount,
           taxRate,
           freight,
           fuelSurcharge,
           miscCharges,
+          roomDiscounts,
           customerName: customer.name,
           customerAddress: customer.address,
           customerPhone: customer.phone,
@@ -311,10 +321,23 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
                 return (
                   <section key={roomName} className={cn("space-y-4 transition-opacity duration-300", !isSelected && "opacity-40 grayscale-[0.5]")}>
-                    <div className="flex items-center gap-3 border-b-2 border-slate-900 pb-2 mb-4">
-                       <Checkbox checked={isSelected} onCheckedChange={v => toggleRoom(roomName, !!v)} />
-                       <Box className="w-5 h-5 text-sky-600" />
-                       <h2 className="text-xl font-black uppercase tracking-tight">{roomName}</h2>
+                    <div className="flex items-center justify-between border-b-2 border-slate-900 pb-2 mb-4">
+                       <div className="flex items-center gap-3">
+                          <Checkbox checked={isSelected} onCheckedChange={v => toggleRoom(roomName, !!v)} />
+                          <Box className="w-5 h-5 text-sky-600" />
+                          <h2 className="text-xl font-black uppercase tracking-tight">{roomName}</h2>
+                       </div>
+                       
+                       <div className="flex items-center gap-4 bg-slate-100/50 px-4 py-1.5 rounded-full border border-slate-200">
+                          <Tag className="w-3.5 h-3.5 text-sky-600" />
+                          <Label className="text-[10px] font-black uppercase text-slate-500">Room Discount (%)</Label>
+                          <Input 
+                            type="number" 
+                            value={roomDiscounts[roomName] || 0} 
+                            onChange={(e) => setRoomDiscounts(prev => ({ ...prev, [roomName]: parseFloat(e.target.value) || 0 }))}
+                            className="w-16 h-7 text-center font-bold bg-white border-none text-xs"
+                          />
+                       </div>
                     </div>
 
                     {categories.map(cat => {
@@ -642,10 +665,40 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
         <aside className="print:hidden lg:sticky lg:top-24 h-fit">
           <div className="max-h-[calc(100vh-160px)] overflow-y-auto pr-2 space-y-6 scrollbar-thin scrollbar-thumb-slate-200">
+            {step === 'pricing' && (
+              <Card className="rounded-[2rem] border-slate-200 shadow-xl overflow-hidden bg-white">
+                <CardHeader className="bg-slate-50 border-b border-slate-100">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Internal Cost Breakdown</p>
+                </CardHeader>
+                <CardContent className="p-6 space-y-3">
+                  <div className="flex justify-between text-xs font-bold text-slate-500 uppercase">
+                    <span>Gross List</span>
+                    <span className="font-mono">${financials.listSubtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-sky-600 uppercase">
+                    <span>Dealer Cost ({pricingFactor})</span>
+                    <span className="font-mono">${financials.dealerCost.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-emerald-600 uppercase">
+                    <span>Margin ({targetMargin}%)</span>
+                    <span className="font-mono">+${(financials.marginSell - financials.dealerCost).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-amber-600 uppercase">
+                    <span>Add'l Charges</span>
+                    <span className="font-mono">+${financials.additionalExpenses.toFixed(2)}</span>
+                  </div>
+                  <div className="border-t border-slate-100 pt-3 flex justify-between text-sm font-black text-slate-900 uppercase">
+                    <span>Subtotal</span>
+                    <span className="font-mono">${financials.netTotal.toFixed(2)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <Card className="rounded-[2rem] border-slate-200 shadow-2xl overflow-hidden bg-white">
               <CardHeader className="bg-slate-50 border-b border-slate-100 flex flex-row items-center gap-2">
                 <Calculator className="w-5 h-5 text-sky-600" />
-                <CardTitle className="text-lg">Quote Financials</CardTitle>
+                <CardTitle className="text-lg">Total Amount</CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
                 <div className="p-5 bg-sky-50 rounded-2xl border border-sky-100 space-y-4">
@@ -672,7 +725,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 <div className="space-y-4">
                   <div className="space-y-1">
                     <Label className="text-[11px] font-bold text-slate-400 uppercase">Add'l Discount (%)</Label>
-                    <Input type="number" value={discount} onChange={e => setDiscount(parseFloat(e.target.value) || 0)} className="h-10 bg-slate-50 border-slate-100 rounded-lg text-sm" />
+                    <Input type="number" value={globalDiscount} onChange={e => setGlobalDiscount(parseFloat(e.target.value) || 0)} className="h-10 bg-slate-50 border-slate-100 rounded-lg text-sm" />
                   </div>
 
                   <div className="space-y-1">
@@ -703,11 +756,11 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                 <div className="pt-6 border-t border-slate-100">
                    <div className="flex justify-between text-xs mb-1">
                       <span className="text-slate-400 font-bold uppercase tracking-widest">Net Value</span>
-                      <span className="font-mono text-slate-900 font-bold">${financials.netTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-slate-900 font-bold">${financials.netTotal.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
                    </div>
                    <div className="flex justify-between items-center text-xs">
                       <span className="text-sky-600 font-bold uppercase tracking-widest">Dealer Cost</span>
-                      <span className="font-mono text-sky-900 font-bold">${financials.dealerCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-sky-900 font-bold">${financials.dealerCost.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
                    </div>
                    <div className="pt-6">
                       <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.3em] mb-1">Total Amount</p>
