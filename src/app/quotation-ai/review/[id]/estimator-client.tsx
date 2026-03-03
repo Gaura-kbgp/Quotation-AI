@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -27,11 +28,9 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Loader2,
-  CheckCircle2,
-  Factory,
-  PlusCircle,
   Layout,
-  Package
+  Package,
+  PlusCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { updateProjectAction } from '../../actions';
@@ -139,7 +138,7 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
     const nr = [...rooms];
     const newItem = { code: '', qty: 1 };
     
-    const primaryCats = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets'];
+    const primaryCats = ['Wall Cabinets', 'Base Cabinets', 'Tall Cabinets', 'Vanity Cabinets', 'Universal Fillers'];
     if (primaryCats.includes(targetCategory)) {
       nr[rIdx].primaryCabinets.push(newItem);
     } else {
@@ -251,12 +250,12 @@ export function EstimatorClient({ project, manufacturers }: EstimatorClientProps
                   'Base Cabinets': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Base Cabinets'),
                   'Tall Cabinets': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Tall Cabinets'),
                   'Vanity Cabinets': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Vanity Cabinets'),
+                  'Universal Fillers': room.primaryCabinets.filter(c => detectCategory(c.code) === 'Universal Fillers'),
                 };
 
                 const groupedOther = {
-                  'Universal Fillers': room.otherItems.filter(c => detectCategory(c.code) === 'Universal Fillers'),
                   'Hardwares': room.otherItems.filter(c => detectCategory(c.code) === 'Hardwares'),
-                  'Other Accessories': room.otherItems.filter(c => !['Universal Fillers', 'Hardwares'].includes(detectCategory(c.code))),
+                  'Other Accessories': room.otherItems.filter(c => !['Hardwares'].includes(detectCategory(c.code))),
                 };
 
                 return (

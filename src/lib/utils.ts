@@ -1,3 +1,4 @@
+
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -40,13 +41,14 @@ export function isPrimaryCabinet(sku: string): boolean {
     'O',    // Oven
     'REF',  // Refrigerator Cabinet
     'DW',   // Dishwasher Return
-    'MICRO' // Microwave Cabinet
+    'MICRO', // Microwave Cabinet
+    'UF'    // Universal Fillers (Elevated to primary as requested)
   ];
   
   return primaryPrefixes.some(p => {
-    // Matches prefix followed by numbers (e.g., W3042, B24)
+    // Matches prefix followed by numbers (e.g., W3042, B24, UF3)
     const regex = new RegExp(`^${p}\\d+`, 'i');
-    return regex.test(s);
+    return regex.test(s) || (p === 'UF' && s.startsWith('UF'));
   });
 }
 
@@ -58,20 +60,20 @@ export function detectCategory(sku: string): string {
   if (!sku) return 'Accessories';
   const s = String(sku || "").toUpperCase().trim();
   
-  // 1. Wall Cabinets
+  // 1. Universal Fillers (Priority Category as requested)
+  if (s.startsWith('UF') || s.startsWith('F')) return 'Universal Fillers';
+
+  // 2. Wall Cabinets
   if (s.startsWith('W')) return 'Wall Cabinets';
   
-  // 2. Base Cabinets (Standard & Sink)
+  // 3. Base Cabinets (Standard & Sink)
   if (s.startsWith('SB') || s.startsWith('B')) return 'Base Cabinets';
-  
-  // 3. Vanity Cabinets (Excluding Vanity Sink Base if grouped with Sink Bases)
-  if (s.startsWith('V')) return 'Vanity Cabinets';
   
   // 4. Tall Cabinets (Pantry, Oven, Utility)
   if (s.startsWith('T') || s.startsWith('P') || s.startsWith('O') || s.startsWith('UTIL') || s.startsWith('REF')) return 'Tall Cabinets';
   
-  // 5. Universal Fillers
-  if (s.startsWith('UF') || s.startsWith('F')) return 'Universal Fillers';
+  // 5. Vanity Cabinets
+  if (s.startsWith('V')) return 'Vanity Cabinets';
   
   // 6. Hardwares
   if (s.startsWith('HW') || s.includes('KNOB') || s.includes('PULL') || s.includes('HINGE')) return 'Hardwares';
