@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo } from 'react';
@@ -461,7 +460,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                </div>
 
                {/* Industrial Ready Invoice Layout */}
-               <div className="bg-white shadow-2xl rounded-sm p-16 print:p-0 print:shadow-none print:rounded-none border border-slate-100">
+               <div className="bg-white shadow-2xl rounded-sm p-16 print:p-0 print:shadow-none print:rounded-none border border-slate-100 print-page-wrapper">
                   <div className="flex justify-between items-start mb-16 border-b-2 border-slate-900 pb-10">
                     <div className="space-y-4 max-w-[50%]">
                       <div>
@@ -529,7 +528,7 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                     })}
                   </div>
 
-                  <div className="mt-20 pt-10 border-t-2 border-slate-900 flex flex-col items-end text-right">
+                  <div className="mt-20 pt-10 border-t-2 border-slate-900 flex flex-col items-end text-right avoid-break">
                     <div className="w-full max-w-sm space-y-3">
                       {viewMode === 'internal' && (
                         <div className="bg-slate-50 p-6 rounded-lg mb-4 space-y-2 border border-slate-200">
