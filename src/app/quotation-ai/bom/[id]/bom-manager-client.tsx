@@ -290,9 +290,9 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                                <TableRow className="border-b border-slate-100 bg-transparent hover:bg-transparent">
                                  <TableHead className="w-10"></TableHead>
                                  <TableHead className="text-[10px] uppercase font-bold text-slate-400">CAB Code</TableHead>
-                                 <TableHead className="text-[10px] uppercase font-bold text-slate-400 text-center">QTY</TableHead>
-                                 <TableHead className="text-[10px] uppercase font-bold text-slate-400 text-right">UNIT PRICE (LIST)</TableHead>
-                                 <TableHead className="text-[10px] uppercase font-bold text-slate-400 text-right">TOTAL</TableHead>
+                                 <TableHead className="text-center text-[10px] uppercase font-bold text-slate-400 text-center">QTY</TableHead>
+                                 <TableHead className="text-right text-[10px] uppercase font-bold text-slate-400 text-right">UNIT PRICE (LIST)</TableHead>
+                                 <TableHead className="text-right text-[10px] uppercase font-bold text-slate-400 text-right">TOTAL</TableHead>
                                </TableRow>
                              </TableHeader>
                              <TableBody>
@@ -361,7 +361,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
 
           {step === 'preview' && (
             <div className="animate-in fade-in duration-500 space-y-12">
-               {/* Industrial Info Form Card */}
                <Card className="rounded-3xl border-slate-200 shadow-sm bg-white overflow-hidden print:hidden">
                   <CardHeader className="bg-slate-50 border-b border-slate-100">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -459,7 +458,6 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                   </Button>
                </div>
 
-               {/* Industrial Ready Invoice Layout */}
                <div className="bg-white shadow-2xl rounded-sm p-16 print:p-0 print:shadow-none print:rounded-none border border-slate-100 print-page-wrapper">
                   <div className="flex justify-between items-start mb-16 border-b-2 border-slate-900 pb-10">
                     <div className="space-y-4 max-w-[50%]">
@@ -558,10 +556,9 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
                       </div>
                       <div className="border-t border-slate-200 my-2" />
                       
-                      {/* Industrial Summary Block */}
                       <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg border border-slate-200">
                          <span className="text-sm font-black uppercase text-slate-900 tracking-widest">Total Amount</span>
-                         <span className="font-mono text-2xl font-black text-sky-600 whitespace-nowrap ml-4">
+                         <span className="font-mono text-xl font-black text-sky-600 whitespace-nowrap ml-4">
                             ${financials.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                          </span>
                       </div>
@@ -586,67 +583,69 @@ export function BomManagerClient({ id, project, initialBom, manufacturerName }: 
           )}
         </div>
 
-        <aside className="space-y-6 print:hidden lg:sticky lg:top-28 h-fit">
-          <Card className="rounded-[2rem] border-slate-200 shadow-2xl overflow-hidden bg-white">
-            <CardHeader className="bg-slate-50 border-b border-slate-100">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Calculator className="w-5 h-5 text-sky-600" />
-                Pricing Control
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-8">
-              <div className="p-5 bg-sky-50 rounded-2xl border border-sky-100 space-y-4">
-                 <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.2em]">BOM Multipliers</p>
-                 
-                 <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-500 uppercase">Pricing Factor (Cost)</Label>
-                    <Input type="number" step="0.01" value={pricingFactor} onChange={e => setPricingFactor(parseFloat(e.target.value) || 0)} className="h-10 bg-white border-sky-200 font-bold rounded-lg text-sm" />
-                 </div>
+        <aside className="print:hidden lg:sticky lg:top-24 h-fit">
+          <div className="max-h-[calc(100vh-160px)] overflow-y-auto pr-2 space-y-6 scrollbar-thin scrollbar-thumb-slate-200">
+            <Card className="rounded-[2rem] border-slate-200 shadow-2xl overflow-hidden bg-white">
+              <CardHeader className="bg-slate-50 border-b border-slate-100">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Calculator className="w-5 h-5 text-sky-600" />
+                  Total Amount
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-8">
+                <div className="p-5 bg-sky-50 rounded-2xl border border-sky-100 space-y-4">
+                   <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.2em]">BOM Multipliers</p>
+                   
+                   <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-slate-500 uppercase">Pricing Factor (Cost)</Label>
+                      <Input type="number" step="0.01" value={pricingFactor} onChange={e => setPricingFactor(parseFloat(e.target.value) || 0)} className="h-10 bg-white border-sky-200 font-bold rounded-lg text-sm" />
+                   </div>
 
-                 <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-500 uppercase">Target Margin (%)</Label>
-                    <Input type="number" value={targetMargin} onChange={e => setTargetMargin(parseFloat(e.target.value) || 0)} className="h-10 bg-white border-sky-200 font-bold rounded-lg text-sm" />
-                 </div>
-              </div>
+                   <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-slate-500 uppercase">Target Margin (%)</Label>
+                      <Input type="number" value={targetMargin} onChange={e => setTargetMargin(parseFloat(e.target.value) || 0)} className="h-10 bg-white border-sky-200 font-bold rounded-lg text-sm" />
+                   </div>
+                </div>
 
-              <div className="space-y-2 pt-4 border-t border-slate-100">
-                <Label className="text-[11px] font-bold text-slate-400 uppercase">Tax Rate (%)</Label>
-                <Input type="number" step="0.01" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="h-10 bg-slate-50 border-none rounded-lg text-sm" />
-              </div>
+                <div className="space-y-2 pt-4 border-t border-slate-100">
+                  <Label className="text-[11px] font-bold text-slate-400 uppercase">Tax Rate (%)</Label>
+                  <Input type="number" step="0.01" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} className="h-10 bg-slate-50 border-none rounded-lg text-sm" />
+                </div>
 
-              <div className="pt-6 border-t border-slate-100">
-                 <div className="flex justify-between text-xs mb-1">
-                    <span className="text-slate-400 font-bold uppercase tracking-widest">Net Value</span>
-                    <span className="font-mono text-slate-900 font-bold">${financials.netTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                 </div>
-                 <div className="flex justify-between items-center text-xs">
-                    <span className="text-sky-600 font-bold uppercase tracking-widest">Dealer Cost</span>
-                    <span className="font-mono text-sky-900 font-bold">${financials.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                 </div>
-                 <div className="pt-6">
-                    <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.3em] mb-1">Total Amount</p>
-                    <p className="text-3xl font-black font-mono tracking-tighter text-slate-900">
-                       ${financials.grandTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </p>
-                 </div>
-              </div>
+                <div className="pt-6 border-t border-slate-100">
+                   <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-400 font-bold uppercase tracking-widest">Net Value</span>
+                      <span className="font-mono text-slate-900 font-bold">${financials.netTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                   </div>
+                   <div className="flex justify-between items-center text-xs">
+                      <span className="text-sky-600 font-bold uppercase tracking-widest">Dealer Cost</span>
+                      <span className="font-mono text-sky-900 font-bold">${financials.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                   </div>
+                   <div className="pt-6">
+                      <p className="text-[10px] font-black uppercase text-sky-600 tracking-[0.3em] mb-1">Total Amount</p>
+                      <p className="text-2xl font-black font-mono tracking-tighter text-slate-900">
+                         ${financials.grandTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </p>
+                   </div>
+                </div>
 
-              <Button variant="outline" className="w-full h-11 rounded-xl" onClick={handleSaveAll} disabled={isSaving}>
-                {isSaving ? <Loader2 className="animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Save Financials
-              </Button>
-            </CardContent>
-          </Card>
+                <Button variant="outline" className="w-full h-11 rounded-xl" onClick={handleSaveAll} disabled={isSaving}>
+                  {isSaving ? <Loader2 className="animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Financials
+                </Button>
+              </CardContent>
+            </Card>
 
-          <div className="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl space-y-4">
-             <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Live Invoice Status</p>
-             </div>
-             <div>
-                <p className="text-xl font-black leading-tight">{selectedRooms.length} Rooms Selected</p>
-                <p className="text-xs text-slate-400 font-medium">Ready for {dealer.name} Export</p>
-             </div>
+            <div className="p-6 bg-slate-900 rounded-[2rem] text-white shadow-2xl space-y-4">
+               <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Live Invoice Status</p>
+               </div>
+               <div>
+                  <p className="text-xl font-black leading-tight">{selectedRooms.length} Rooms Selected</p>
+                  <p className="text-xs text-slate-400 font-medium">Ready for {dealer.name} Export</p>
+               </div>
+            </div>
           </div>
         </aside>
       </div>
