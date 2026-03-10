@@ -6,7 +6,7 @@ export const maxDuration = 300;
 
 /**
  * HIGH-SPEED HYBRID EXTRACTION (v86.0)
- * Uses Gemini 2.5 Pro for flagship vision precision.
+ * Uses Gemini 3.1 Flash Lite for ultra-fast vision precision.
  */
 export async function POST(req: Request) {
   try {
@@ -22,30 +22,37 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // STAGE 1: Hybrid Text Anchors
-    let pdfTextContext = '';
-    try {
-      const data = await pdf(buffer);
-      pdfTextContext = data.text.substring(0, 10000).replace(/\s+/g, ' ');
-    } catch (e) {
-      console.warn('[Blueprint v86] Context pre-scan skipped.');
-    }
-
+    // STAGE 1: Hyper-Parallel AI Analysis & Cloud Storage
+    const storagePath = `quotations/drawings/${crypto.randomUUID()}.pdf`;
     const dataUri = `data:application/pdf;base64,${buffer.toString('base64')}`;
 
-    // Calls Flow which is hardcoded to Gemini 2.5 Pro
-    const extractionResult = await analyzeDrawing({
-      pdfDataUri: dataUri,
-      projectName: projectName,
-      pdfText: pdfTextContext
-    });
+    console.log(`[Blueprint v86] Processing ${projectName} (Hyper-Parallel Mode)`);
 
-    const storagePath = `quotations/drawings/${crypto.randomUUID()}.pdf`;
-    const { error: storageError } = await supabase.storage.from('manufacturer-docs').upload(storagePath, buffer, { contentType: 'application/pdf' });
+    const [extractionResult, uploadResult] = await Promise.all([
+      (async () => {
+        let pdfTextContext = '';
+        try {
+          const data = await pdf(buffer);
+          pdfTextContext = data.text.substring(0, 5000).replace(/\s+/g, ' ');
+        } catch (e) {
+          console.warn('[Blueprint v86] Context pre-scan skipped.');
+        }
+        return analyzeDrawing({
+          pdfDataUri: dataUri,
+          projectName: projectName,
+          pdfText: pdfTextContext
+        });
+      })(),
+      supabase.storage.from('manufacturer-docs').upload(storagePath, buffer, {
+        contentType: 'application/pdf',
+        cacheControl: '3600',
+        upsert: false
+      })
+    ]);
 
-    if (storageError) {
-      console.error('[Blueprint v86] Supabase Storage Error:', storageError);
-      throw new Error(`Cloud storage upload failed: ${storageError.message}`);
+    if (uploadResult.error) {
+      console.error('[Blueprint v86] Supabase Storage Error:', uploadResult.error);
+      throw new Error(`Cloud storage upload failed: ${uploadResult.error.message}`);
     }
 
     const { data: { publicUrl } } = supabase.storage.from('manufacturer-docs').getPublicUrl(storagePath);

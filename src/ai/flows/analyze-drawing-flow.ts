@@ -30,13 +30,13 @@ const AnalyzeDrawingOutputSchema = z.object({
 export type AnalyzeDrawingOutput = z.infer<typeof AnalyzeDrawingOutputSchema>;
 
 export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<AnalyzeDrawingOutput> {
-  console.log(`[Blueprint v86] Hybrid Scan starting with Gemini 3 Flash Preview for: ${input.projectName}`);
+  console.log(`[Blueprint v86] High-Speed Scan starting with Gemini 3.1 Flash Lite for: ${input.projectName}`);
 
   let text = '';
 
   try {
     const response = await ai.generate({
-      model: 'googleai/gemini-3-flash-preview',
+      model: 'googleai/gemini-3.1-flash-lite-preview',
       prompt: [
         { media: { url: input.pdfDataUri, contentType: 'application/pdf' } },
         {
@@ -58,6 +58,7 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
         - Extract Room Names from Title Blocks (KITCHEN, BATH, LAUNDRY).
         - Group items by Room.
         - Capture full SKU codes including suffixes (e.g. W3042 BUTT).
+        - BE FAST: Focus on the schedules and floor plans only.
         
         Return ONLY a flat JSON array: [ { "room": "ROOM NAME", "code": "SKU", "qty": number } ]` }
       ],
@@ -75,14 +76,15 @@ export async function analyzeDrawing(input: AnalyzeDrawingInput): Promise<Analyz
         auth: process.env.REPLICATE_API_TOKEN,
       });
 
-      // Using LLaVA or similar vision model as fallback
-      // Since it's a fallback, we prioritize getting some results even if less precise than Gemini
+      // Using LLaVA for fallback as it handles vision prompts well
       const output: any = await replicate.run(
         "yorickvp/llava-13b:e27306d716412a970225102a9cf297dae08764b85c2c77f0a8c232c918342718",
         {
           input: {
-            image: input.pdfDataUri, // Some Replicate models can handle data URIs/images
-            prompt: `Extract cabinetry from this drawing. Focus on SKU codes like W3042, SB36, etc. Return ONLY a JSON array: [{"room": "name", "code": "SKU", "qty": 1}]`
+            image: input.pdfDataUri,
+            prompt: `Extract cabinetry codes from this architectural drawing. 
+            Identify Room Names and SKU codes (like W3042, B36, VSB30). 
+            Return ONLY a JSON array: [{"room": "ROOM", "code": "SKU", "qty": number}]`
           }
         }
       );
